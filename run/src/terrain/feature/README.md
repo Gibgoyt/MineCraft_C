@@ -95,11 +95,13 @@ A site then needs what its row asks for. Those in the table come in addition to 
 | Birch | 5 to 7 | As oak | 2 |
 | Spruce | 6 to 10 | A cone of boughs, up to 3 across | 3 |
 | Jungle, 1 in 4 | 5 to 8 | As oak | 7 |
-| Jungle, 3 in 4 | 12 to 21, 2 by 2 | A blob 5 across, and 2 or 3 boughs with blobs on | 7 |
+| Jungle, 3 in 4 | 12 to 21, 2 by 2 | A blob 5 across, less any leaf more than 6 steps from the trunk, and 2 or 3 boughs with blobs on | 7 |
 | Acacia | 3 to 5, leaning by 1 or 2 | A flat top 3 across | 5 |
 | Dark oak | 6 to 9, 2 by 2 | A blob 3 across | 4 |
 | Mangrove | 5 to 8 over the water | A blob 3 across, and roots | 3 |
 | Cherry | 4 to 6 | 2 boughs going opposite ways, each with a blob 3 across | 6 |
+
+**No leaf the game would take.** The game's leaves go when no log is within 6 steps through leaves (`run/src/world/tick/`). The wide jungle tree's blob reached 7 at its rim, so in the game a jungle's crowns crumbled where its trees stood apart (plan 006 phase 04 found it, when the rain thinned the jungles near the default spawn and `run_terrain_cave_walk`'s body walked where they fell). Its blob now leaves those out.
 
 **Reach** is the furthest a voxel is from its site on `x` or `y`, and it is under a chunk. So a tree can only reach the chunks next to its own, and that is why a tile looks at 8 others. `tests/run/terrain/feature/` holds each to its reach over many seeds.
 

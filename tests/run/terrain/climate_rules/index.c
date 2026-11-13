@@ -17,8 +17,8 @@
 
 /* Ahmed's seed, the world of ~/Pictures/1.png. */
 static const uint64_t CR_AHMED_SEED = 2198175988018515243ull;
-static const uint64_t CR_SEEDS[8] = {2198175988018515243ull, 1ull, 36ull, 11ull, 0x1234567890ABCDEFull,
-                                     0x4D494E4543524146ull, 7ull, 0xC0FFEEull};
+static const uint64_t CR_SEEDS[8] = {2198175988018515243ull, 1ull, 36ull,      11ull, 0x1234567890ABCDEFull,
+                                     0x4D494E4543524146ull,  7ull, 0xC0FFEEull};
 
 enum : uint32_t {
     CR_CHUNK = 16u,
@@ -318,8 +318,8 @@ TEST(sand_only_in_desert_and_steppe_and_snowy_beach_only_in_ice_and_tundra) {
         }
         terrain_deinit(&terrain);
     }
-    printf("8 seeds: %" PRIu64 " land columns, %" PRIu64 " of desert sand; %" PRIu64 " beach, %" PRIu64 " snowy\n", land,
-           sand, beaches, snowy);
+    printf("8 seeds: %" PRIu64 " land columns, %" PRIu64 " of desert sand; %" PRIu64 " beach, %" PRIu64 " snowy\n",
+           land, sand, beaches, snowy);
     CHECK(sand > 0u && snowy > 0u);
 }
 
@@ -369,8 +369,8 @@ TEST(the_equator_has_no_snow_and_no_ice) {
                     const terrain_climate_point_t p = terrain_climate_nearest_at(&one, cx, cy, top);
                     cells++;
                     coldest_cc = p.t_cold_cc < coldest_cc ? p.t_cold_cc : coldest_cc;
-                    lowest_line = sample.cells[j][i].snow_line_z < lowest_line ? sample.cells[j][i].snow_line_z
-                                                                               : lowest_line;
+                    lowest_line =
+                        sample.cells[j][i].snow_line_z < lowest_line ? sample.cells[j][i].snow_line_z : lowest_line;
                     CHECK(sample.cells[j][i].snow_line_z > top + TERRAIN_SURFACE_SNOW_WANDER_BLOCKS);
                     CHECK(p.t_warm_cc >= 0); /* not Ice, where snow lies at any height */
                     warmest_low_cc = p.t_warm_cc < warmest_low_cc ? p.t_warm_cc : warmest_low_cc;
@@ -486,7 +486,8 @@ static void cr_tally_chunk(test_context_t *t, const cr_rig_t *rig, int32_t x0, i
         }
         const uint16_t ground = blocks[i + (uint64_t)CR_CHUNK_COLUMNS * (uint32_t)g];
         const int32_t z = g + COLUMN_Z_STORAGE_MIN;
-        const bool must = ice || (line < TERRAIN_CLIMATE_NO_SNOW_LINE && z >= line + TERRAIN_SURFACE_SNOW_WANDER_BLOCKS);
+        const bool must =
+            ice || (line < TERRAIN_CLIMATE_NO_SNOW_LINE && z >= line + TERRAIN_SURFACE_SNOW_WANDER_BLOCKS);
         if (ground == BLOCK_ID_WATER || ground == BLOCK_ID_LAVA || !must) {
             continue;
         }
@@ -670,8 +671,8 @@ TEST(the_far_field_agrees_with_near_columns) {
             }
             const uint16_t near = blocks[i + (uint64_t)CR_CHUNK_COLUMNS * (uint32_t)near_iz];
             /* Something grew at the top, a lake lies there, or a cave cut near the top: what the far field leaves out. */
-            const terrain_feature_lake_t lake = terrain_feature_chunk_lake(rig.terrain->borrowed_feature, &sample,
-                                                                           x0 >> 4, y0 >> 4);
+            const terrain_feature_lake_t lake =
+                terrain_feature_chunk_lake(rig.terrain->borrowed_feature, &sample, x0 >> 4, y0 >> 4);
             bool cut = false;
             for (int32_t iz = ground_iz - 4; iz <= ground_iz + 2; iz++) {
                 const uint8_t at = iz >= 0 && iz < (int32_t)CR_LAYERS
@@ -679,7 +680,8 @@ TEST(the_far_field_agrees_with_near_columns) {
                                        : (uint8_t)0u;
                 cut = cut || (at & ~(uint8_t)TERRAIN_CAVE_WANTED_UNCUT) != 0u;
             }
-            if (cr_is_growth(near) || near_iz - ground_iz > 1 || terrain_feature_lake_depth(&lake, 5u, 9u) > 0u || cut) {
+            if (cr_is_growth(near) || near_iz - ground_iz > 1 || terrain_feature_lake_depth(&lake, 5u, 9u) > 0u ||
+                cut) {
                 continue;
             }
             int32_t far_z = 0;

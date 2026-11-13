@@ -68,14 +68,18 @@ static const int32_t BIO_CAVE_LEVEL_Z[BIO_CAVE_LEVELS] = {-210, -170, -100, -60,
  * the biomes, and the surface and features they lay, moved; height, density, hydrology, caves and ores did not (their pins hold). */
 /* Plan 007 phase 03: plateaus, escarpments and long ranges moved the land, and the height axis reads ground less lift
  * (terrain_biome_height). Its old value 0xB7BC9D34E16EB6CD. */
-static const uint64_t BIO_DIGEST_PIN = 0x25D0412DAF6F66DDull;
+/* Plan 006 phase 04: snow, ice, sand and trees follow the climate: a snow biome lays its own top below the snowline.
+ * Its old value 0x25D0412DAF6F66DD. */
+static const uint64_t BIO_DIGEST_PIN = 0x15285D7F380A63E5ull;
 /* Plan 003 phase 8 stage 3 moved the coast and the rivers. */
 /* Plan 003 phase 8 stage 4 raised the land and made its ranges, valleys and wetlands. */
 /* Plan 003 phase 8 stage 6 moved the biomes' boxes to the coast and the height the terrain now has. */
 /* Plan 006 phase 03: biomes follow the climate (the family from the climate at the column's height first, then the box within it), so
  * the biomes, and the surface and features they lay, moved; height, density, hydrology, caves and ores did not (their pins hold). */
 /* Plan 007 phase 03: the same. Its old value 0x7A499FEBA8AD1D5C. */
-static const uint64_t BIO_COLUMNS_PIN = 0x23D9C77E20CFE804ull;
+/* Plan 006 phase 04: snow, ice, sand and trees follow the climate: a column also carries its snowline, coldest month and
+ * yearly rain, so its bytes moved and not its biome. Its old value 0x23D9C77E20CFE804. */
+static const uint64_t BIO_COLUMNS_PIN = 0x393C1B15967EB4B5ull;
 
 static uint64_t bio_digest(uint64_t hash, const void *memory, uint64_t bytes) {
     const uint8_t *const data = memory;
@@ -1112,8 +1116,8 @@ static uint16_t bio_expected_block(const biome_def_t *def, const uint16_t *bands
         return depth < def->wet_depth ? def->wet_top : block;
     }
     const uint16_t laid = bio_expected_dry(def, bands, z, depth, block, noise, patch, steep, wander, snow_from);
-    const bool frozen = laid == BLOCK_ID_SNOW_BLOCK || laid == BLOCK_ID_ICE || laid == BLOCK_ID_PACKED_ICE ||
-                        laid == BLOCK_ID_BLUE_ICE;
+    const bool frozen =
+        laid == BLOCK_ID_SNOW_BLOCK || laid == BLOCK_ID_ICE || laid == BLOCK_ID_PACKED_ICE || laid == BLOCK_ID_BLUE_ICE;
     if (block == BLOCK_ID_STONE && frozen && z < snow_from) {
         const uint16_t instead = depth == 0u ? def->below_top : def->below_filler;
         return instead != BLOCK_ID_AIR ? instead : laid;
@@ -1226,10 +1230,10 @@ static void bio_expected_chunk(test_context_t *t, const terrain_t *terrain, int3
                 if (depth < 16u) {
                     const int32_t snow_from = terrain_surface_snow_from(
                         surface, columns[i].family, columns[i].snow_line_z, cx + (int32_t)ix, cy + (int32_t)iy);
-                    *voxel = bio_expected_block(&biome_defs[columns[i].biome], surface->bands,
-                                                MC_WORLD_Z_MIN + (int32_t)iz, depth, *voxel, wet,
-                                                bio_spread(depth_noise[i]), bio_spread(patch_noise[i]), steep,
-                                                bio_spread(wander_noise[i]), snow_from);
+                    *voxel =
+                        bio_expected_block(&biome_defs[columns[i].biome], surface->bands, MC_WORLD_Z_MIN + (int32_t)iz,
+                                           depth, *voxel, wet, bio_spread(depth_noise[i]), bio_spread(patch_noise[i]),
+                                           steep, bio_spread(wander_noise[i]), snow_from);
                 }
                 depth++;
             }

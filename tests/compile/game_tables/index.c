@@ -1313,8 +1313,8 @@ static const gtt_bad_case_t GTT_BAD_BIOMES[] = {
      ":7:", "a patch's from must be below its to"},
     {GTT_LAND_START GTT_LAND_SURFACE "features: { cactus: 257 }\n", ":5:", "cactus is '257'"},
     /* Plan 006 phase 04: the climate lays permanent snow and ice now, so the rates are refused, saying so. */
-    {GTT_LAND_START GTT_LAND_SURFACE "features: { ice: 1 }\n", ":5:",
-     "ice has moved: the climate lays permanent snow by the snowline and ice by the coldest month"},
+    {GTT_LAND_START GTT_LAND_SURFACE "features: { ice: 1 }\n",
+     ":5:", "ice has moved: the climate lays permanent snow by the snowline and ice by the coldest month"},
     {GTT_LAND_START GTT_LAND_SURFACE "features: { cactus: 1, snow: 1 }\n", ":5:", "snow has moved"},
     {GTT_LAND_START GTT_LAND_CLIMATE "surface: { top: stone, filler: stone, top_below_snowline: stone }\n",
      ":4:", "has a below-snowline block but lays no snow or ice"},
@@ -1367,12 +1367,12 @@ TEST(a_snow_biome_says_what_it_lays_below_the_snowline) {
     gtt_write(t, gtt_path(t, tree.borrowed_config, "blocks/snow_block/index.yaml"),
               "name: snow_block\nhardness: 0.2\ntexture: { all: blocks/stone }\ndrops: []\nsound: stone\n");
     static const gtt_bad_case_t BAD[] = {
-        {GTT_LAND_START GTT_LAND_CLIMATE "surface: { top: snow_block, filler: stone }\n", ":4:",
-         "so it needs top_below_snowline"},
-        {GTT_LAND_START GTT_LAND_CLIMATE
-         "surface: { top: stone, filler: snow_block, top_below_snowline: stone }\n",
+        {GTT_LAND_START GTT_LAND_CLIMATE "surface: { top: snow_block, filler: stone }\n",
+         ":4:", "so it needs top_below_snowline"},
+        {GTT_LAND_START GTT_LAND_CLIMATE "surface: { top: stone, filler: snow_block, top_below_snowline: stone }\n",
          ":4:", "so it needs filler_below_snowline"},
-        {GTT_LAND_START GTT_LAND_CLIMATE "surface: { top: snow_block, filler: stone, top_below_snowline: snow_block }\n",
+        {GTT_LAND_START GTT_LAND_CLIMATE
+         "surface: { top: snow_block, filler: stone, top_below_snowline: snow_block }\n",
          ":4:", "must not itself be snow or ice"},
     };
     for (uint32_t i = 0u; i < sizeof(BAD) / sizeof(BAD[0]); i++) {

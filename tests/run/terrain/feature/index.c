@@ -60,8 +60,11 @@ static const uint64_t FEA_DIGEST_OF_GENERATOR[] = {
      * row's old value, 0xCFD3A129B38458E6. Plan 007 phase 03's plateaus, escarpments and long ranges moved the land again,
      * and the biomes read the biome height, ground less lift: the value below, putting back 0x3FDD8CCBDFEA453B. Both are
      * written here for now, while the version stays 1: the joint final check of plan 006 phase 05 and plan 007 phase 06
-     * raises it once and gives this value row 2. Meanwhile a world saved on the old land opens on the new. */
-    0xA73E3EF2016E4EE3ull,
+     * raises it once and gives this value row 2. Meanwhile a world saved on the old land opens on the new.
+     * Plan 006 phase 04: snow, ice, sand and trees follow the climate (snow by the snowline, ice by the coldest month,
+     * every feature rate scaled by the rain, and the wide jungle tree's crown trimmed to the leaves the game keeps): the
+     * value below, putting back 0xA73E3EF2016E4EE3. */
+    0xD794182E99A19489ull,
 };
 static_assert(sizeof(FEA_DIGEST_OF_GENERATOR) / sizeof(FEA_DIGEST_OF_GENERATOR[0]) == TERRAIN_GENERATOR_VERSION + 1u);
 /* Plan 003 phase 8 stage 3 moved the coast and the rivers. */
@@ -83,7 +86,9 @@ static_assert(sizeof(FEA_DIGEST_OF_GENERATOR) / sizeof(FEA_DIGEST_OF_GENERATOR[0
 /* Plan 006 phase 03: biomes follow the climate (the family from the climate at the column's height first, then the box within it), so
  * the biomes, and the surface and features they lay, moved; height, density, hydrology, caves and ores did not (their pins hold). */
 /* Plan 007 phase 03: plateaus, escarpments and long ranges moved the land. Its old value 0x703627B51572B80C. */
-static const uint64_t FEA_FOREST_PIN = 0x7745E8634869CCBAull;
+/* Plan 006 phase 04: snow, ice, sand and trees follow the climate; the forest's trees are scaled by its rain. Its old
+ * value 0x7745E8634869CCBA. */
+static const uint64_t FEA_FOREST_PIN = 0x28D864B0AD53007Bull;
 
 static uint64_t fea_digest(uint64_t hash, const void *memory, uint64_t bytes) {
     const uint8_t *const data = memory;
@@ -854,11 +859,10 @@ TEST(lily_pads_grow_on_a_swamps_standing_water) {
     uint16_t *const blocks = test_alloc(t, (uint64_t)FEA_COLUMNS * LAYERS * sizeof(uint16_t));
     uint8_t *const opened = test_alloc(t, (uint64_t)FEA_COLUMNS * LAYERS);
     uint32_t chunks = 0u;
-    uint32_t swamps = 0u;
     uint64_t pads = 0u;
     uint64_t logs = 0u;
     const int32_t z_low = MC_WORLD_Z_SEA - 20;
-    for (uint32_t row = 0u; row < FEA_SEARCH_SIDE && (chunks < 600u || swamps < 40u); row++) {
+    for (uint32_t row = 0u; row < FEA_SEARCH_SIDE && chunks < 600u; row++) {
         const terrain_fields_area_t area = {
             .origin_x = -half,
             .origin_y = -half + (int32_t)(row * 16u * FEA_CHUNK),
@@ -868,19 +872,12 @@ TEST(lily_pads_grow_on_a_swamps_standing_water) {
             .count_y = 1u,
         };
         terrain_biome_columns_area(terrain.borrowed_biome, nullptr, &area, columns);
-        for (uint32_t i = 0u; i < FEA_SEARCH_SIDE && (chunks < 600u || swamps < 40u); i++) {
+        for (uint32_t i = 0u; i < FEA_SEARCH_SIDE && chunks < 600u; i++) {
             const bool land = biome_defs[columns[i].biome].where == BIOME_WHERE_LAND;
             if (!land || columns[i].ground >= (float32_t)MC_WORLD_Z_SEA) {
                 continue;
             }
-            /* Plan 006 phase 04 scales a swamp's pads by its rain, to a third where it is dry for one, so past the first 600
-             * chunks of low land only swamps are made, until 40 of them are. */
-            const bool swamp = columns[i].biome == BIOME_ID_SWAMP || columns[i].biome == BIOME_ID_MANGROVE_SWAMP;
-            if (chunks >= 600u && !swamp) {
-                continue;
-            }
-            chunks += chunks < 600u ? 1u : 0u;
-            swamps += swamp ? 1u : 0u;
+            chunks++;
             const terrain_density_box_t box = {
                 .origin_x = area.origin_x + (int32_t)(i * 16u * FEA_CHUNK),
                 .origin_y = area.origin_y,
@@ -906,8 +903,33 @@ TEST(lily_pads_grow_on_a_swamps_standing_water) {
             }
         }
     }
-    printf("    %" PRIu64 " pads and %" PRIu64 " logs on %u wet chunks of land and %u of swamp\n", pads, logs, chunks, swamps);
+    printf("    %" PRIu64 " pads and %" PRIu64 " logs on %u wet chunks of land\n", pads, logs, chunks);
     REQUIRE(chunks > 0u);
+    /* Plan 006 phase 04 scales a swamp's pads by its rain, to a third where a swamp is dry for one, and few of the chunks
+     * above are swamp, so the swamps' own places are looked at too: a few of each kind, all their water. */
+    fea_place_t *const places = test_alloc(t, BIOME_COUNT * sizeof(*places));
+    const uint64_t voxels = (uint64_t)FEA_MAP_ACROSS * FEA_MAP_ACROSS * 220u;
+    uint16_t *const map = test_alloc(t, voxels * sizeof(uint16_t));
+    uint8_t *const map_opened = test_alloc(t, voxels);
+    const biome_id_t swamps[2] = {BIOME_ID_SWAMP, BIOME_ID_MANGROVE_SWAMP};
+    for (uint32_t pass = 0u; pass < FEA_PLACES_EACH; pass++) {
+        fea_find_places_after(t, &terrain, places, pass);
+        for (uint32_t s = 0u; s < 2u; s++) {
+            if (places[swamps[s]].found == 0u) {
+                continue;
+            }
+            const terrain_density_box_t box = fea_map_box(&places[swamps[s]]);
+            terrain_generate_box_fallback(&terrain, &box, map_opened, map);
+            const uint64_t layer = (uint64_t)box.count_x * box.count_y;
+            for (uint64_t at = layer; at < voxels; at++) {
+                if (map[at] == BLOCK_ID_LILY_PAD) {
+                    pads++;
+                    CHECK(map[at - layer] == BLOCK_ID_WATER);
+                }
+            }
+        }
+    }
+    printf("    %" PRIu64 " pads with the swamps' own places\n", pads);
     CHECK(pads > 0u);
     terrain_deinit(&terrain);
 }
@@ -1016,9 +1038,9 @@ TEST(everything_stands_where_it_may_in_every_biome) {
     terrain_deinit(&terrain);
 }
 
-/* A forest's trunks against what its file asks for: each tree's lowest log, with soil under it. A file's whole number of tries is
- * exactly how many sites are drawn, so standing trees can only be fewer, or as many where wide trunks count twice, but not many
- * fewer, as nearly all of a forest's floor can take one. */
+/* A forest's trunks against what its file asks for: each tree's lowest log, with soil under it. Since plan 006 phase 04 a
+ * column's number is the file's scaled by its rain, so what is asked is the mean of those over the forest's columns, and
+ * standing trees can be a little more or fewer, but not many fewer, as nearly all of a forest's floor can take one. */
 TEST(a_forest_has_about_the_trees_its_file_asks_for) {
     terrain_t terrain;
     REQUIRE(terrain_init(&terrain, FEA_WORLD));
@@ -1064,8 +1086,8 @@ TEST(a_forest_has_about_the_trees_its_file_asks_for) {
     const float64_t per_chunk = (float64_t)trunks / chunks;
     REQUIRE(grounds > 0u);
     const float64_t asked = asked_sum / (float64_t)grounds;
-    printf("    %u trunks on %.1f chunks of it: %.2f a chunk, of %.2f asked (the file's, scaled by the rain)\n", trunks, (libc_double_t)chunks,
-           (libc_double_t)per_chunk, (libc_double_t)asked);
+    printf("    %u trunks on %.1f chunks of it: %.2f a chunk, of %.2f asked (the file's, scaled by the rain)\n", trunks,
+           (libc_double_t)chunks, (libc_double_t)per_chunk, (libc_double_t)asked);
     CHECK(chunks >= 5.0f64);
     CHECK(per_chunk > asked * 0.6f64);
     CHECK(per_chunk <= asked * 1.05f64);
@@ -1243,9 +1265,9 @@ TEST(ice_and_snow_are_where_each_biomes_file_says) {
             /* Plan 006 phase 04: ice by the coldest month at the water's top, snow by the snowline. */
             const int32_t x = chunk_x * (int32_t)FEA_CHUNK + (int32_t)(i % FEA_CHUNK);
             const int32_t y = chunk_y * (int32_t)FEA_CHUNK + (int32_t)(i / FEA_CHUNK);
-            const bool snow_holds = (int32_t)column->top >= terrain_surface_snow_from(terrain.borrowed_surface,
-                                                                                    column->family, column->snow_line_z,
-                                                                                    x, y);
+            const bool snow_holds =
+                (int32_t)column->top >=
+                terrain_surface_snow_from(terrain.borrowed_surface, column->family, column->snow_line_z, x, y);
             if (column->water > 0u) {
                 const bool cold = terrain_surface_freezes(column->t_cold_cc, surface);
                 const bool lily = over == BLOCK_ID_LILY_PAD;
@@ -1259,9 +1281,9 @@ TEST(ice_and_snow_are_where_each_biomes_file_says) {
                     open_water += at == BLOCK_ID_WATER ? 1u : 0u;
                 }
                 CHECK(!lily || !cold);
-            } else if (snow_holds && column->block != BLOCK_ID_SNOW_BLOCK &&
-                       column->block != BLOCK_ID_ICE && column->block != BLOCK_ID_PACKED_ICE &&
-                       column->block != BLOCK_ID_BLUE_ICE && column->block != BLOCK_ID_LAVA) {
+            } else if (snow_holds && column->block != BLOCK_ID_SNOW_BLOCK && column->block != BLOCK_ID_ICE &&
+                       column->block != BLOCK_ID_PACKED_ICE && column->block != BLOCK_ID_BLUE_ICE &&
+                       column->block != BLOCK_ID_LAVA) {
                 snowy += over == BLOCK_ID_SNOW_BLOCK ? 1u : 0u;
                 /* Snow unless something grew there first. */
                 CHECK(over == BLOCK_ID_SNOW_BLOCK || over == BLOCK_ID_SPRUCE_LOG || over == BLOCK_ID_SPRUCE_LEAVES ||

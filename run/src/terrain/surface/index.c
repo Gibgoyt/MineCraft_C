@@ -187,8 +187,8 @@ static int64_t snow_octave(uint64_t seed, int64_t x, int64_t y, int64_t cell) {
 
 int32_t terrain_surface_snow_wander(uint32_t snow_seed, int64_t x, int64_t y) {
     const uint64_t seed = (uint64_t)snow_seed;
-    const int64_t raw = (2 * snow_octave(seed, x, y, SNOW_CELL_1) +
-                         snow_octave(seed | (1ull << 32u), x, y, SNOW_CELL_2)) / 3;
+    const int64_t raw =
+        (2 * snow_octave(seed, x, y, SNOW_CELL_1) + snow_octave(seed | (1ull << 32u), x, y, SNOW_CELL_2)) / 3;
     /* Doubled and clamped, then 1.5 u - 0.5 u^3, as the climate spreads its warp: the band is used to its edges. */
     int64_t unit = 4 * raw;
     unit = unit > SNOW_ONE ? SNOW_ONE : (unit < -SNOW_ONE ? -SNOW_ONE : unit);
@@ -482,11 +482,10 @@ static void surface_tile_lay(const terrain_surface_t *surface, terrain_surface_t
             const uint64_t column_at = (uint64_t)(span->ix + ix) + (uint64_t)box->count_x * (span->iy + iy);
             /* Its snowline, worked out only where a frozen block of its biome may give way. */
             const int32_t snow_from =
-                surface_may_thaw(def) ? terrain_surface_snow_from(surface, tile->columns[i].family,
-                                                                  tile->columns[i].snow_line_z,
-                                                                  (int64_t)span->x + (int64_t)ix,
-                                                                  (int64_t)span->y + (int64_t)iy)
-                                      : INT32_MIN;
+                surface_may_thaw(def)
+                    ? terrain_surface_snow_from(surface, tile->columns[i].family, tile->columns[i].snow_line_z,
+                                                (int64_t)span->x + (int64_t)ix, (int64_t)span->y + (int64_t)iy)
+                    : INT32_MIN;
             uint32_t walking = depth[i];
             uint8_t walking_wet = wet[i];
             for (uint32_t iz = box->count_z; iz-- > 0u;) {

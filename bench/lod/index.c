@@ -52,8 +52,8 @@ static void bench_lod_sample_whole(const void *borrowed_context, int32_t x, int3
         return;
     }
     /* render_lod_sample_freeze: plan 006 phase 04's cold rules, on the fallback climate. */
-    terrain_feature_cold_column(terrain->borrowed_feature, nullptr, x, y, COLUMN_Z_STORAGE_MIN, RENDER_LOD_HEIGHT_BLOCKS,
-                                out);
+    terrain_feature_cold_column(terrain->borrowed_feature, nullptr, x, y, COLUMN_Z_STORAGE_MIN,
+                                RENDER_LOD_HEIGHT_BLOCKS, out);
 }
 
 /* One column of one level, as render_lod_job_run samples it, through sample. Returns nanoseconds. */

@@ -209,8 +209,8 @@ static void map_stages_run(const terrain_t *terrain, const terrain_density_box_t
 }
 
 /* A column's blocks, in a box only as tall as it needs. A voxel is the same whatever box it came in. */
-static void map_column_make(const terrain_t *terrain, const terrain_hydrology_column_t *field, int16_t t_cold_cc, int32_t x,
-                            int32_t y, uint16_t *blocks, uint8_t *opened, map_column_t *out) {
+static void map_column_make(const terrain_t *terrain, const terrain_hydrology_column_t *field, int16_t t_cold_cc,
+                            int32_t x, int32_t y, uint16_t *blocks, uint8_t *opened, map_column_t *out) {
     const float32_t lowest_ground = field->ground < field->height ? field->ground : field->height;
     const float32_t highest_ground = field->height > 0.0f32 ? field->height : 0.0f32;
     int32_t low = (int32_t)floorf(lowest_ground - field->softness) - (int32_t)MAP_BAND_UNDER;

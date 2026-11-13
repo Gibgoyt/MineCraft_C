@@ -198,10 +198,25 @@ static void feature_logs(const terrain_feature_canvas_t *canvas, int32_t x, int3
     }
 }
 
+enum : int32_t {
+    /* The game takes leaves with no log within this many steps through leaves (run/src/world/tick/, TICK_LEAF_REACH), so no
+     * crown is drawn past it. */
+    FEATURE_LEAF_REACH = 6,
+};
+
+/* How many steps a leaf at (dx, dy, dz) from a wide crown's middle, its trunk's last log one under it, lies from that trunk:
+ * across to the nearest of the four logs' columns, then up from the last log. */
+static int32_t feature_wide_crown_steps(int32_t dx, int32_t dy, int32_t dz) {
+    const int32_t across_x = dx < 0 ? -dx : (dx > 1 ? dx - 1 : 0);
+    const int32_t across_y = dy < 0 ? -dy : (dy > 1 ? dy - 1 : 0);
+    return across_x + across_y + (dz + 1 > 0 ? dz + 1 : 0);
+}
+
 /* Leaves in a rounded blob. A wide blob is centred between x and x + 1, so it is the same round a wide trunk. Its outer shell is
- * bitten here and there, from the tree's seed. */
+ * bitten here and there, from the tree's seed. A reach above 0 leaves out what lies more steps than that from a wide trunk under
+ * its middle (feature_wide_crown_steps). */
 static void feature_blob(const terrain_feature_canvas_t *canvas, int32_t x, int32_t y, int32_t z, int32_t across,
-                         int32_t tall, bool wide, uint16_t block, uint64_t seed) {
+                         int32_t tall, bool wide, uint16_t block, uint64_t seed, int32_t reach) {
     const int32_t half = wide ? 1 : 0;
     const int32_t limit = 4 * across * across * tall * tall;
     const int32_t shell = 4 * (across - 1) * (across - 1) * tall * tall;
@@ -216,6 +231,9 @@ static void feature_blob(const terrain_feature_canvas_t *canvas, int32_t x, int3
                 }
                 if (distance > shell && (terrain_rng_hash3(seed, dx, dy, dz) & 3u) == 0u) {
                     continue;
+                }
+                if (reach > 0 && feature_wide_crown_steps(dx, dy, dz) > reach) {
+                    continue; /* plan 006 phase 04: a leaf the game's decay would take, as no log is near enough */
                 }
                 feature_put(canvas, x + dx, y + dy, z + dz, block, FEATURE_PUT_LEAF);
             }
@@ -287,7 +305,8 @@ static void feature_tree_jungle(const terrain_feature_canvas_t *canvas, const te
     const int32_t trunk = 12 + (int32_t)terrain_rng_next_below(rng, 10u);
     const int32_t top = site->z + trunk;
     feature_wide_trunk(canvas, site, top - 1, BLOCK_ID_JUNGLE_LOG);
-    feature_blob(canvas, site->x, site->y, top, 5, 3, true, BLOCK_ID_JUNGLE_LEAVES, site->seed);
+    feature_blob(canvas, site->x, site->y, top, 5, 3, true, BLOCK_ID_JUNGLE_LEAVES, site->seed,
+                 (int32_t)FEATURE_LEAF_REACH);
     const uint32_t branches = 2u + terrain_rng_next_below(rng, 2u);
     for (uint32_t b = 0u; b < branches; b++) {
         const int32_t dx = terrain_rng_next_below(rng, 2u) == 0u ? -1 : 1;
@@ -300,7 +319,7 @@ static void feature_tree_jungle(const terrain_feature_canvas_t *canvas, const te
             feature_put(canvas, sx + dx * i, sy + dy * i, from + i, BLOCK_ID_JUNGLE_LOG, FEATURE_PUT_LOG);
         }
         feature_blob(canvas, sx + dx * length, sy + dy * length, from + length + 1, 2, 1, false, BLOCK_ID_JUNGLE_LEAVES,
-                     site->seed + b + 1u);
+                     site->seed + b + 1u, 0);
     }
 }
 
@@ -328,7 +347,7 @@ static void feature_tree_dark_oak(const terrain_feature_canvas_t *canvas, const 
     const int32_t trunk = 6 + (int32_t)terrain_rng_next_below(rng, 4u);
     const int32_t top = site->z + trunk;
     feature_wide_trunk(canvas, site, top - 1, BLOCK_ID_DARK_OAK_LOG);
-    feature_blob(canvas, site->x, site->y, top - 1, 3, 2, true, BLOCK_ID_DARK_OAK_LEAVES, site->seed);
+    feature_blob(canvas, site->x, site->y, top - 1, 3, 2, true, BLOCK_ID_DARK_OAK_LEAVES, site->seed, 0);
 }
 
 /* Stands in water up to its knees, on roots that arc from the trunk down to the ground beside it. */
@@ -347,7 +366,7 @@ static void feature_tree_mangrove(const terrain_feature_canvas_t *canvas, const 
         feature_logs(canvas, site->x + SIDE_X[side], site->y + SIDE_Y[side], (int32_t)site->foot[side] + 1, above + 1,
                      BLOCK_ID_MANGROVE_LOG);
     }
-    feature_blob(canvas, site->x, site->y, top, 3, 2, false, BLOCK_ID_MANGROVE_LEAVES, site->seed);
+    feature_blob(canvas, site->x, site->y, top, 3, 2, false, BLOCK_ID_MANGROVE_LEAVES, site->seed, 0);
 }
 
 /* Two boughs going opposite ways, each with a wide pink cloud on it. */
@@ -366,7 +385,7 @@ static void feature_tree_cherry(const terrain_feature_canvas_t *canvas, const te
                         FEATURE_PUT_LOG);
         }
         feature_blob(canvas, site->x + sign * dx * length, site->y + sign * dy * length, top + length, 3, 2, false,
-                     BLOCK_ID_CHERRY_LEAVES, site->seed + (uint64_t)bough + 1u);
+                     BLOCK_ID_CHERRY_LEAVES, site->seed + (uint64_t)bough + 1u, 0);
     }
 }
 

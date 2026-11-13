@@ -63,11 +63,11 @@ static_assert(sizeof(terrain_feature_t) == 8u * TERRAIN_FEATURE_ROWS + 40u);
 
 /* What one column has on it, before anything grows there. */
 typedef struct terrain_feature_column_t {
-    int16_t top;          /* 0: its highest block not air or water; TERRAIN_FEATURE_NO_GROUND if the ground is cut away */
-    uint16_t water;       /* 2: how many layers of water lie directly on that */
-    uint16_t block;       /* 4: what top is */
-    uint8_t biome;        /* 6: a biome_id_t: the one on the surface */
-    uint8_t family;       /* 7: plan 006 phase 04: terrain_biome_column_t's, and the three after it */
+    int16_t top;    /* 0: its highest block not air or water; TERRAIN_FEATURE_NO_GROUND if the ground is cut away */
+    uint16_t water; /* 2: how many layers of water lie directly on that */
+    uint16_t block; /* 4: what top is */
+    uint8_t biome;  /* 6: a biome_id_t: the one on the surface */
+    uint8_t family; /* 7: plan 006 phase 04: terrain_biome_column_t's, and the three after it */
     int16_t snow_line_z;  /* 8 */
     int16_t t_cold_cc;    /* 10 */
     uint16_t rain_factor; /* 12: terrain_feature_rain_factor, thousandths */

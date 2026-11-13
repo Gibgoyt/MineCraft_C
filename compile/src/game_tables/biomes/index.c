@@ -36,10 +36,9 @@ static const char *const GZ_WHERES[] = {"land", "ocean", "deep_ocean", "river", 
 enum { GZ_WHERE_COUNT = sizeof(GZ_WHERES) / sizeof(GZ_WHERES[0]) };
 
 static const char *const GZ_FEATURES[] = {
-    "tree_oak",      "tree_birch",  "tree_spruce", "tree_jungle", "tree_acacia", "tree_dark_oak",
-    "tree_mangrove", "tree_cherry", "grass",       "fern",        "flower",      "cactus",
-    "sugar_cane",    "dead_bush",   "mushroom",    "lily_pad",    "vine",        "melon",
-    "pumpkin",       "seagrass",    "kelp",
+    "tree_oak",    "tree_birch", "tree_spruce", "tree_jungle", "tree_acacia", "tree_dark_oak", "tree_mangrove",
+    "tree_cherry", "grass",      "fern",        "flower",      "cactus",      "sugar_cane",    "dead_bush",
+    "mushroom",    "lily_pad",   "vine",        "melon",       "pumpkin",     "seagrass",      "kelp",
 };
 enum { GZ_FEATURE_COUNT = sizeof(GZ_FEATURES) / sizeof(GZ_FEATURES[0]) };
 /* Plan 006 phase 04: rates that the climate now decides, each refused with where it went. */
@@ -73,9 +72,18 @@ static_assert(GZ_FAMILY_COUNT <= 16);
 enum { GZ_LIMIT_T_WARM = 1, GZ_LIMIT_T_COLD = 2, GZ_LIMIT_RAIN = 4 };
 #define GZ_DEGREES_LIMIT 100
 #define GZ_RAIN_LIMIT 20000
-static const char *const GZ_SURFACE_FIELDS[] = {"top",         "filler",  "filler_depth", "under",
-                                                "under_depth", "wet_top", "wet_depth",    "steep",
-                                                "high",        "bands",   "patches",      "top_below_snowline",
+static const char *const GZ_SURFACE_FIELDS[] = {"top",
+                                                "filler",
+                                                "filler_depth",
+                                                "under",
+                                                "under_depth",
+                                                "wet_top",
+                                                "wet_depth",
+                                                "steep",
+                                                "high",
+                                                "bands",
+                                                "patches",
+                                                "top_below_snowline",
                                                 "filler_below_snowline"};
 enum { GZ_SURFACE_FIELD_COUNT = sizeof(GZ_SURFACE_FIELDS) / sizeof(GZ_SURFACE_FIELDS[0]) };
 static const char *const GZ_CAVE_FIELDS[] = {"floor", "ceiling", "patches"};
@@ -634,9 +642,10 @@ static void gz_read_below_snowline(gz_context_t *context, const yaml_document_t 
     const bool frozen_filler = gz_is_frozen(biome->borrowed_filler) || gz_is_frozen(biome->borrowed_steep);
     const bool warm = (biome->families & ~(uint16_t)1u) != 0u; /* any family but Ice, GZ_FAMILIES[0] */
     if ((frozen_top || frozen_filler) && warm && top == nullptr) {
-        gz_report(context, map,
-                  "lays snow or ice and has a family other than ice, so it needs top_below_snowline: the block its top is "
-                  "below the snowline (plan 006 phase 04)");
+        gz_report(
+            context, map,
+            "lays snow or ice and has a family other than ice, so it needs top_below_snowline: the block its top is "
+            "below the snowline (plan 006 phase 04)");
     }
     if (frozen_filler && warm && filler == nullptr) {
         gz_report(context, map,
