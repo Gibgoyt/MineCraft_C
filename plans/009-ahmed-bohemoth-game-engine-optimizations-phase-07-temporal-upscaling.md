@@ -207,7 +207,8 @@ Appended as they land:
 - Rebased onto `main` ed5bdbb9, which has plan 009 phase 06.
 - a6bed60e Choose a texture's mip by the output's pixel when TAA gathers a picture drawn smaller (the mip bias; the room's mean at 75 % to 0.87, held to 1).
 - 9319505b Put bench_world_slope's feet on the ground at Ahmed's x and y (the black picture: the eye was inside plan 007 phase 03's land).
-- Both rebased onto `main` db0c7d45, which has plan 008 phase 06. There, the debug build and all 20 of `render_feature_*`, `run_render_frame`, `standards_lint` and `clang_format` pass.
+- 2d6afa38 Measure plan 009 phase 07 again at Ahmed's x and y (Results; two recorded rows).
+- All rebased onto `main` db0c7d45, which has plan 008 phase 06. There the debug build, `run_render_frame`, `standards_lint`, `clang_format` and 11 of the 15 `render_feature_*` pass, every golden picture among them. Four fail one check each, the same way, and not from this phase: `render_feature_post`, `_shapes`, `_sky` and `_water` check that a game opens with `SHADE_FEATURES_EVERY` or `SHADE_FEATURES_PLAY`, but plan 008 phase 06 has `game_open` add `SHADE_FEATURE_LOD_TURN_CACHE` (bit 20) as well (`run/src/game/index.c:422`), so the features are 1507327, not 458751. Those tests, or the sets, need that bit: plan 008 phase 06's to settle. There, the debug build and all 20 of `render_feature_*`, `run_render_frame`, `standards_lint` and `clang_format` pass.
 
 ## Issues found
 
