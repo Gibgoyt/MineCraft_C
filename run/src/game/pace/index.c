@@ -85,17 +85,15 @@ void game_pace_note(game_pace_t *pace, int64_t started_ns, int64_t ready_ns, int
 /* ---- Plan 008 phase 05: the rung for each picture ------------------------------------------------------------------------------ */
 
 void game_pace_ladder(uint32_t top_percent, uint32_t floor_percent, game_pace_ladder_t *out) {
-    memset(out, 0, sizeof(*out));
     const uint32_t top = top_percent == 0u || top_percent > POST_SCALE_WHOLE ? POST_SCALE_WHOLE : top_percent;
-    out->percent[0] = (uint8_t)top;
-    out->count = 1u;
+    *out = (game_pace_ladder_t){.percent = {(uint8_t)top, 0u, 0u, 0u}, .count = 1u, ._pad0 = {0u, 0u, 0u}};
     if (floor_percent == 0u) {
         return; /* dynamic resolution off */
     }
     static const uint32_t rungs[GAME_PACE_RUNGS - 1u] = {GAME_PACE_RUNG_HIGH, GAME_PACE_RUNG_MIDDLE,
                                                          GAME_PACE_RUNG_LOW};
     for (uint32_t i = 0u; i < GAME_PACE_RUNGS - 1u; i++) {
-        if (rungs[i] < top && rungs[i] >= floor_percent) {
+        if (rungs[i] < top && rungs[i] >= floor_percent && out->count < GAME_PACE_RUNGS) {
             out->percent[out->count] = (uint8_t)rungs[i];
             out->count++;
         }

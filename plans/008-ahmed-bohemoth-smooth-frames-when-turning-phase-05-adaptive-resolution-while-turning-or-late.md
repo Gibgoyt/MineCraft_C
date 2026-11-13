@@ -1,6 +1,6 @@
 # 008-ahmed-bohemoth-smooth-frames-when-turning — phase 5: Adaptive resolution while turning or late
 
-**Status:** built and tested; the shake rows and the shots next   (updated 2026-11-13)
+**Status:** done, for Ahmed's gate: dynamic resolution on by default at floor 50; at his spot on the card at its 148 to 182 MHz floor the r64 shake goes from 28 to 75 pictures a second, p99 50 to 25 ms; the targets at 600 MHz are met in the replay, not measurable on this card today; still pictures the same to the bit   (updated 2026-11-13)
 
 Read first: `plans/008-ahmed-bohemoth-smooth-frames-when-turning-phase-00-vision-and-plan-files.md`, then the master `plans/008-ahmed-bohemoth-smooth-frames-when-turning.md`: sections 2.3, 3.5, 4 and 8. Then phase 01's cost rose and frame logs (this phase's controller is tested on them), and phase 02's $\hat{T}$ and late flag.
 
@@ -162,19 +162,27 @@ This phase may edit these, plus this file:
 - [x] `game_pace_rung`: the ladder, the four rules, the floor; tests fed phase 01's frame logs
 - [x] The rung set before each draw; F3's `res` field
 - [x] Settings `dynamic_resolution` and `dynamic_resolution_floor_percent`, file and screen
-- [ ] Shake rows with dynamic on and off; `spot/shake-720-live-capped-r64` p99 ≤ 16.7 ms and worst ≤ 25 ms, or why not, below
-- [ ] Shots at each rung looked at and described below
-- [ ] Golden pictures and every settled still row's hash unchanged
-- [ ] READMEs
+- [x] Shake rows with dynamic on and off; `spot/shake-720-live-capped-r64` p99 ≤ 16.7 ms and worst ≤ 25 ms, or why not, below
+- [x] Shots at each rung looked at and described below
+- [x] Golden pictures and every settled still row's hash unchanged
+- [x] READMEs
 
 ## Results (filled in by this phase)
 
 | Row | Interval p50 / p99 / worst, dynamic off | Dynamic on | Rungs used (share of pictures at 100 / 85 / 70 / 50) | Back to 100 % after stopping, ms |
 |---|---|---|---|---|
-| `spot/shake-720-live-capped` | | | | |
-| `spot/shake-720-live-capped-r64` | | | | |
-| `spot/shake-1440-live-capped-r64` | | | | |
-| Ahmed's frame log | | | | |
+| `spot/shake-720-live-capped` | 33.33 / 66.70 / 83.36 (29.5 a second; 175 MHz, 148 to 468) | 16.64 / 33.28 / 41.63 (67.1 a second; 512 MHz, 148 to 1006) | 17 / 20 / 15 / 48 | 257 |
+| `spot/shake-720-live-capped-r64` | 33.33 / 50.01 / 58.33 (28.3 a second; 177 MHz) | 8.37 / 25.03 / 33.34 (74.6 a second; 182 MHz) | 0 / 0 / 0 / 99 | 347 |
+| `spot/shake-1440-live-capped-r64` | 33.33 / 50.03 / 50.05 (28.9 a second; 175 MHz) | 8.38 / 25.00 / 25.03 (83.8 a second; 169 MHz) | 0 / 0 / 1 / 99 | 184 |
+| Ahmed's frame log | (his gate) | | | |
+
+All at Ahmed's spot (`bench_world_shake --at -80 134 418 --seed 14148492376765118422`), 1920x1080, profile build, his game closed (`pgrep` before every run), `gpu_watch.sh` beside each, recorded in `bench/world/shake/history.tsv` with the labels "008 phase 05: dynamic floor 0", "... 50" and "... 50, no still tail". "Off" is `--dynamic-floor 0` (the build's code with the ladder of one rung: every picture at 100 %, as before this phase), with a 2 s still tail; "on" is `--dynamic-floor 50`, 10 s of shaking with no still tail; the rungs and the way back are from the on run with the 2 s still tail (`--still-tail 2`, 12 s). **The card was at its thermal floor, 148 to 182 MHz by the clock64 kernel, in every r64 row** (the r32 on row's mean of 512 MHz is a few readings at 1006 while the card cooled between runs; its card ms are not comparable to the off row's). Camera to screen p50: 36.8 / 38.9 / 38.7 ms off, 11.0 / 16.5 / 17.1 ms on.
+
+**Against the targets.** At 148 to 182 MHz the r64 shake has p99 25.0 ms and worst 33.3 ms on, against 50.0 and 58.3 off: twice the pictures a second (28 to 75 at 720, 29 to 84 at 1440), camera to screen less than half. The master's targets (p99 16.7 ms, worst 25 ms) are on the capped card at about 600 MHz; this card spent the whole run at a quarter of that. At 50 % the shake's pictures cost 13.2 ms of card at 170 to 182 MHz (2.3 Mcycles: 3.8 ms at 600 MHz), so at 600 MHz they would be far inside the slot, with room to climb to 70 or 85 %. At 148 MHz even 50 % is near the slot, so the floor holds 99 % of the r64 pictures and the 1 % past 25 ms are the first pictures of the run (at 100 % before the controller had samples) and phase 03's flight pictures. Phase 01's shake rebuilt at 600 MHz and replayed through the controller (`run_game_pace`) gives p99 16.0 ms, worst 16.3, with the rungs spread over 85, 70 and 50.
+
+**Settled rows, the cost per rung** (spot `shake-0`, still, settled, `--scale`): 100 % 31.78 ms at 149 MHz (4.74 Mcycles); 70 % 18.11 ms at 147 MHz (2.66 Mcycles, 56 %, for 49 % of the pixels); 50 % 4.53 ms at 470 MHz (2.13 Mcycles, 45 %, for 25 %). Each pass falls with the pixels but the readback, 1.27 ms, which is the output's size whatever the rung, and the coarse pass's per-tile and the far field's fixed parts: the cost model's "mostly per pixel" holds to 70 % and over-promises at 50 % (it predicts 25 %). The controller fits its G-hat from what each rung really cost, so it errs safe, but it means 50 % buys less than the ladder says. **The upscale** (post at 70 % 2.68 ms against 4.20 x 0.49 = 2.06 at 100 %'s share): about 0.6 ms at 147 MHz, 0.09 Mcycles, 0.15 ms at 600 MHz; run only under 100 %.
+
+**The still picture.** `spot/shake-0`'s settled hash is `BA28CEC20AD658FA` with dynamic resolution off and on, as in every phase 04 row: unchanged. Golden pictures pass (`run_render_frame`, `render_feature_*`).
 
 ## Tests
 
@@ -238,6 +246,29 @@ He records a frame log; its summary goes in the results.
 
 Appended as they land:
 
+- `999e3037` Draw a picture smaller while turning or late and bring it up on the card, plan 008 phase 05: TAA and AO read the last frame's history at its own size, post_upscale takes the drawn picture to the output and the outline is drawn after it at the output's size, the render scale is the ladder's top rung in place of the CPU's nearest pixel, game_pace_rung picks each picture's rung from the cost model, the turn and lateness, and dynamic_resolution with its floor is a setting, on the Settings screen and in F3.
+- this commit: the shake rows, the shots, the measurements, and the release build's fix for the ladder's LTO warning.
+
+**Verification, as run (2026-11-13, on `db999feb`):** `pgrep` for his game printed nothing before every GPU run. `tools/test-or-build.sh cmake --build --preset debug`: clean. `run_game_pace`, `run_settings`, `run_settings_session`: passed. `render_feature_.*` (13, `render_feature_resolution` among them) and `run_render_frame` (goldens unchanged): passed. `run_game`, `run_ui_hud`, `run_ui_hud_corner`, `run_ui_screens` (settings goldens regenerated, above), `standards_lint`, `clang_format`: passed. `--preset profile`: `bench_world_shake` alone (disk, above); the bench lines ran as `bench_world_shake` at the spot with the sidecar (the shake rows have been its own program since phase 01), off and on, recorded in `bench/world/shake/history.tsv`. `--preset release`: `minecraft_c` built clean, the 16 KiB frame limit held (the whole release build's test binaries were not linked, for the disk). `pgrep -af "$PWD/build"` and `pgrep -af gpu_watch` printed nothing after.
+
 ## Issues found
 
-None.
+**The shots** (`bench_world_shake --only =shake-720 --scale 100|70|50 --shots`, the settled 720 degree a second shake's last picture at the spot, each upscaled to 1920x1080 by `post_upscale`; in `/tmp/mc_c_shake/p05_scale_*/spot-shake-720.png`, not kept). At 70 % the block faces read as before and each texel of the dirt and snow is still a square, a little soft at its edges; the silhouettes of the snow steps are smooth where 100 % has hard stairs. At 50 % the texels are visibly blurred (two output pixels a drawn pixel, bilinear), the stone floor further off smears into grey and the leaves' fine edge at the top right goes to a haze; nothing ghosts, nothing doubles, and the HUD (drawn by main at output size) and the outline stay sharp. At 720 degrees a second the turn hides most of it; still, the picture is back at 100 % within 15 pictures (184 to 347 ms measured, at 25 to 30 pictures a second on this card; 250 ms at 60).
+
+**What changed from the plan, and why:**
+
+- **The drawn picture goes into the hits block, not a new block.** Post writes the drawn picture into `frame_targets_t.borrowed_hits` (16 bytes a pixel of the output, and nothing reads it once shade is done), and `post_upscale` takes it to the frame's device picture. A block of its own would have cost 6 MiB of the frames' 256 MiB budget (already at about 245) and a pointer in `render_t`, which has no room (`app_t` is at main's frame limit). Plan 009 phase 07 (temporal upscaling at the output's size) has no need of it.
+- **`render_frame_t` gained one byte, `scale_percent`, not `rung`, `output_width` and `output_height`.** `width` and `height` stay the output's (what the blocks were sized for, what goes home); the drawn size is worked out each frame with `post_scaled_side`, the static render scale's old arithmetic, so a picture at a render scale is the very picture it was, to the byte (`render_scale_seventy_matches_its_old_picture_in_size`). `render_frame_t` had 3 bytes spare.
+- **The upscale is timed under the overlay kernel's mark** (`FRAME_KERNEL_OVERLAY`, its `ran` bit set): `frame_timings_t` is 64 bytes inside `render_frame_t` and has no room for a tenth kernel. Post's own time is then as at the full size, of fewer pixels.
+- **Slot share 0.80, not 0.85** (`compile/config/render/resolution/index.yaml`, where every number of the ladder and the controller is). Phase 01's shake rebuilt at 600 MHz and replayed through the controller gave p99 17.4 ms at 0.85: the cost changes with direction faster than 16 pictures' 90th percentile follows, and a rung stepped up on the cheap side of the shake is late on the dear one. 0.80 gives 16.0. The worked example then reads P 1 + G 16 ms: 17 at 100 %, 12.6 at 85 %, under 13.3.
+- **The late rule counts a late picture only if it was drawn at this rung (or below).** With phase 03's two frames in flight, a picture queued at 100 % lands late after the rung has already stepped to 85; counting it again would step twice for one miss.
+- **"Phase 01's frame logs" do not exist at 600 MHz**: phase 01 recorded rows at 148 MHz and no per-picture log of the capped card. So `phase_01s_shake_stays_under_the_slot` rebuilds the shake from phase 01's cost rose at r64 (9 to 24 ms at 100 % across the +-60 degrees, at 600 MHz) and replays it through the controller and the cost model. Ahmed's own frame log (his gate) is the real one; the release build's `--frame-log` now has a `rung` column.
+- **The history test is TAA's; AO has its own.** With AO on, a pixel that takes its history across a change of size takes a neighbour's running mean, and so that neighbour's sample noise, which is more than 2 in 255; that is not a ghost. So `history_survives_a_size_change` draws with every effect but AO (0 pixels differ after 30 frames back at 100 %), and `ao_history_survives_a_size_change` checks that at least 97 % of the surface pixels keep their AO samples across 100 to 50 to 100 % (98.5 and 97.5 % measured; indexed by this frame's width they would land on other surfaces and start again).
+- **The tests are a suite of their own, `render_feature_resolution` (`tests/cuda/resolution/`)**, as `tests/cuda/post/index.c` (1435 lines) and `tests/run/render/frame/index.c` (1864) are near the standard's split.
+- **F3 shows "res 70% dyn" on the `turn` line**, not a "pictures" line (there is none); "dyn" when the rung is under the render scale. `ui_hud_debug_t.skipped` became 16 bits to make room for the two bytes (it counts a second's skipped puts).
+- **The settings are two bytes**, in `settings_values_t`'s last padding and the 4 bytes `settings_t` had after it; `game_config_t.render_scale_percent` became a byte (it is at most 100) and `dynamic_floor_percent` (0 for off) took the other. On the Settings screen the render scale's slider is 132 wide, and beside it a button, "Dyn 50%", steps the floor up (70, 85, 100), then "Dyn off", then 50 again; the settings page goldens (`tests/run/ui/screens/fixtures/settings_main.png`, `settings_explain.png`) were regenerated with `MC_GOLDEN_WRITE=1` and looked at: the button sits at the right of row 4, the rest as before.
+- **`bench_world_shake`** gained `--dynamic-floor`, `--scale`, `--still-tail`, a row `shake-1440-live-capped-r64` (this file's table), and rung and back-to-the-top columns at the end of `history.tsv` (its header, written by the first run, names none of the columns added since; `card_mcycles` was the first). Its rows default to dynamic resolution off, so they compare with the history before this phase; the game defaults to on.
+- **`game_world_parts_t` grew 128 bytes** (`game_pace_t` 256 to 384: each sample's card time and rung, the ladder, the counts), in the World arena.
+- **The settled `shake-720` hash moves from run to run** (`FAD239496F15C083`, `E298452B217D3A38`, `E989FE4F8A0893C6` for the same build at 100 %): the settled turning rows were never one picture per build (phase 04's rows differ by label too); still rows are, and `shake-0` is unchanged.
+
+**Disk:** `/home` was at 99 % (2.9 GiB free) during this phase, from the worktrees; the profile build's test binaries were deleted after a link ran out of space, and the profile build was then made for `bench_world_shake` alone.

@@ -451,7 +451,10 @@ static uint64_t game_level0_pool_bytes(const render_t *render, const game_view_t
 /* Plan 008 phase 05: the ladder, from the render scale down to the floor, with the next picture at its top. */
 static void game_scale_apply(game_t *game, const game_view_t *view) {
     render_frame_scale_set(&game->borrowed_render->frame, view->scale_percent);
-    game_pace_ladder_set(game_pace_of(game), view->scale_percent, view->floor_percent);
+    game_pace_t *const pace = game_pace_of(game);
+    if (pace != nullptr) {
+        game_pace_ladder_set(pace, view->scale_percent, view->floor_percent);
+    }
 }
 
 /* The map, and what the card holds of it. Each says why if it cannot, and whatever came before it is given back. */
