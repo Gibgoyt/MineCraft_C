@@ -634,12 +634,20 @@ TEST(an_edit_reaches_level_1_and_level_2_within_100_ms) {
     /* The cube's corner: on a level 2 voxel, in the open air over the ground there. */
     const int32_t x = ((int32_t)floor(game->camera.position[0]) + DL_EDIT_DISTANCE) & ~(DL_EDIT_CUBE - 1);
     const int32_t y = (int32_t)floor(game->camera.position[1]) & ~(DL_EDIT_CUBE - 1);
-    int32_t ground = COLUMN_Z_STORAGE_END - 1;
     /* dl_block says UINT16_MAX for open air that holds no array too, so the column itself is asked for. */
     REQUIRE(world_map_column_at(&rig.world->map, column_chunk_of(x), column_chunk_of(y)) != nullptr);
-    while (ground > COLUMN_Z_STORAGE_MIN &&
-           (dl_block(rig.world, x, y, ground) == BLOCK_ID_AIR || dl_block(rig.world, x, y, ground) == UINT16_MAX)) {
-        ground--;
+    /* The highest top under any of the cube's columns, a tree's leaves included: the land there is the generator's (plan 006
+     * phase 03 put a jungle round the default seed's start), and one column's top says nothing of its neighbour's crown. */
+    int32_t ground = COLUMN_Z_STORAGE_MIN;
+    for (int32_t dy = 0; dy < DL_EDIT_CUBE; dy++) {
+        for (int32_t dx = 0; dx < DL_EDIT_CUBE; dx++) {
+            int32_t top = COLUMN_Z_STORAGE_END - 1;
+            while (top > ground && (dl_block(rig.world, x + dx, y + dy, top) == BLOCK_ID_AIR ||
+                                    dl_block(rig.world, x + dx, y + dy, top) == UINT16_MAX)) {
+                top--;
+            }
+            ground = top > ground ? top : ground;
+        }
     }
     const int32_t z = (ground + DL_EDIT_ABOVE + DL_EDIT_CUBE) & ~(DL_EDIT_CUBE - 1);
     for (int32_t dz = 0; dz < DL_EDIT_CUBE; dz++) {
