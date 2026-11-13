@@ -189,7 +189,9 @@ His answers are recorded below.
 
 Appended as they land:
 
-- 76826810 Gather a picture drawn smaller at the output's size, plan 009 phase 07 (the kernel, the 16-point jitter, the history's weight, the frame hookup, the tests, the READMEs). Verified on `main` 150986d6: the 14 tests `render_feature_*` and `run_render_frame` pass, as do `standards_lint` and `clang_format`.
+- 1a2b27fb Gather a picture drawn smaller at the output's size, plan 009 phase 07 (the kernel, the 16-point jitter, the history's weight, the frame hookup, the tests, the READMEs).
+- 9b06718b Measure plan 009 phase 07 at Ahmed's spot (Results; the frame pool to 288 MiB).
+- Rebased onto `main` ed5bdbb9, which has plan 009 phase 06. There, the debug build and all 20 of `render_feature_*`, `run_render_frame`, `standards_lint` and `clang_format` pass.
 
 ## Issues found
 
