@@ -218,7 +218,6 @@ TEST(a_long_time_without_focus_leaves_mobs_and_time_as_they_were_and_coming_back
     settings_load(settings, file);
     CHECK_EQ_U64(settings->values.pause_on_focus_loss, 1u); /* a new install pauses */
     settings->values.render_distance = 4u;
-    settings->values.full_detail = 4u;
     settings->values.effects &= ~(uint32_t)(SHADE_FEATURE_AO | SHADE_FEATURE_TAA);
 
     const uint64_t bytes = 640ull * 480ull * 4ull;

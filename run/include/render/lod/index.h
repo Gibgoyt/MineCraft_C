@@ -21,11 +21,7 @@
 #include <stdint.h>
 
 enum : uint32_t {
-    /* What a world draws block by block unless told otherwise, in chunks. Past it the far field takes over. */
-    RENDER_LOD_FULL_DETAIL_DEFAULT = 32u,
-    /* Each way from the eye's column, in a level's own columns of 16 voxels, and how many columns past what rays are let into are kept
-     * built: compile/config/render/lod/index.yaml. */
-    RENDER_LOD_RADIUS_COLUMNS = MC_TUNE_RENDER_LOD_RADIUS_COLUMNS,
+    /* How many columns past what rays are let into are kept built: compile/config/render/lod/index.yaml. */
     RENDER_LOD_MARGIN_COLUMNS = MC_TUNE_RENDER_LOD_MARGIN_COLUMNS,
     /* Columns being built at once, across all levels: compile/config/render/budget/index.yaml. */
     RENDER_LOD_JOBS = MC_TUNE_RENDER_BUDGET_LOD_JOBS,
@@ -41,7 +37,15 @@ enum : uint32_t {
     RENDER_LOD_LEVEL_COUNT = MC_TUNE_RENDER_LOD_LEVEL_COUNT,
     RENDER_LOD_RADIUS_COLUMNS_MAX = MC_TUNE_RENDER_LOD_RADIUS_COLUMNS_MAX,
     RENDER_LOD_OCTANT_LEVELS = MC_TUNE_RENDER_LOD_OCTANT_LEVELS,
+    /* Plan 009 phase 04: what the game holds block by block is d_1 and this many chunks more, never less than the least nor more than the
+     * most, nor more than the render distance: compile/config/render/lod/index.yaml. */
+    RENDER_LOD_BLOCK_MARGIN_CHUNKS = MC_TUNE_RENDER_LOD_BLOCK_MARGIN_CHUNKS,
+    RENDER_LOD_BLOCK_RADIUS_MIN_CHUNKS = MC_TUNE_RENDER_LOD_BLOCK_RADIUS_MIN_CHUNKS,
+    RENDER_LOD_BLOCK_RADIUS_MAX_CHUNKS = MC_TUNE_RENDER_LOD_BLOCK_RADIUS_MAX_CHUNKS,
 };
+/* Plan 009 phase 04: the pixel error and the band dither a far field starts with: compile/config/render/lod/index.yaml. */
+#define RENDER_LOD_PIXEL_ERROR MC_TUNE_RENDER_LOD_PIXEL_ERROR
+#define RENDER_LOD_BAND_DITHER MC_TUNE_RENDER_LOD_BAND_DITHER
 enum : uint64_t {
     /* What a level's pool gives each of its columns, and what one frame may send of finished columns: compile/config/render/budget/index.yaml.
      * The pool's numbers are in the stage file's cost section. */
@@ -56,15 +60,13 @@ enum : uint64_t {
     RENDER_LOD_SAMPLE_SCRATCH_BYTES =
         RENDER_LOD_SAMPLE_FEATURE_BYTES + RENDER_LOD_SAMPLE_CLIMATE_BYTES + MC_CPU_CACHE_LINE_BYTES,
 };
-static_assert(RENDER_LOD_RADIUS_COLUMNS > RENDER_LOD_MARGIN_COLUMNS);
-/* render_lod_plan_t.radii and render_lod_level_t.radius hold it in a byte. */
-static_assert(RENDER_LOD_RADIUS_COLUMNS <= UINT8_MAX);
 /* Ahmed's floor, beside the YAML's min. */
 static_assert(RENDER_LOD_NEAR_GUARANTEE >= 16u);
 static_assert(RENDER_LOD_LEVEL_COUNT >= 1u && (uint32_t)RENDER_LOD_LEVEL_COUNT <= (uint32_t)LOD_LEVELS_MAX);
 static_assert(RENDER_LOD_RADIUS_COLUMNS_MAX > RENDER_LOD_MARGIN_COLUMNS && RENDER_LOD_RADIUS_COLUMNS_MAX <= UINT8_MAX);
 /* A level made from the blocks is one of the pyramid's, and the one above the last of them is made from terrain. */
 static_assert(RENDER_LOD_OCTANT_LEVELS < RENDER_LOD_LEVEL_COUNT);
+static_assert(RENDER_LOD_BLOCK_RADIUS_MIN_CHUNKS <= RENDER_LOD_BLOCK_RADIUS_MAX_CHUNKS);
 
 /* One column's worth of a place in the world, as storage heights from 0 to RENDER_LOD_HEIGHT_BLOCKS - 1, which a voxel of 1 << shift blocks
  * is made from. Called on workers, so it reads only what cannot change, and writes only out and scratch: RENDER_LOD_SAMPLE_SCRATCH_BYTES,
@@ -160,9 +162,9 @@ typedef struct render_lod_t {
     void *borrowed_overlay_context;                     /* 1944 */
     uint64_t overlay_scratch_bytes;                     /* 1952 */
     uint8_t no_room_said;                               /* 1960 */
-    uint8_t covered_pass;                               /* 1961: what full detail covers is asked for too */
+    uint8_t covered_pass;                               /* 1961: what is covered is asked for too */
     uint8_t _pad0[6];                                   /* 1962 */
-    const world_buffers_t *borrowed_fine;               /* 1968: what full detail has on the card, or nullptr */
+    const world_buffers_t *borrowed_fine;               /* 1968: what level 0 has on the card, or nullptr */
     /* 1976: plan 009 phase 03, the pyramid's alone: where its levels up to RENDER_LOD_OCTANT_LEVELS are made from the blocks, or nullptr */
     render_octant_t *borrowed_octants;
     uint8_t jobs_held;                /* 1984: no column goes to a worker, as the far field rays use is busy */
@@ -174,7 +176,14 @@ typedef struct render_lod_t {
     render_octant_section_t *borrowed_octant_sections; /* 2016 */
     device_staging_t
         *borrowed_staging; /* 2024: plan 008 phase 03: the frame's, for the levels' copies; or nullptr to wait */
-    uint8_t _pad2[16];     /* 2032 */
+    /* 2032: plan 009 phase 04: the pixel error its bands are worked out by each frame, and how far a pixel's band edges move. They start as
+     * the tuning file says; a test may set others. */
+    float32_t pixel_error;
+    float32_t band_dither; /* 2036 */
+    /* 2040: the last frame's traverse_world_t band_base, or 0 before one: a column nearer than any ray of its level starts, over loaded
+     * blocks, is asked for last */
+    float32_t band_base;
+    uint8_t _pad2[4]; /* 2044 */
 } render_lod_t;
 static_assert(sizeof(render_lod_t) == 2048);
 static_assert(alignof(render_lod_t) == MC_CPU_CACHE_LINE_BYTES);
@@ -182,19 +191,23 @@ static_assert(offsetof(render_lod_t, levels) == 64);
 static_assert(offsetof(render_lod_t, stats) == 1840);
 static_assert(offsetof(render_lod_t, level_count) == 1928);
 
-/* The levels for this much of the world at full detail and this much in all, in chunks. No far field if full detail reaches it all. A
- * level whose reach full detail covers is left out, and the last is cut to what the distance needs. */
-render_lod_plan_t render_lod_plan(uint32_t full_detail_chunks, uint32_t render_distance_chunks);
-
 /* The bands for this pixel error in pixels, near guarantee in blocks, camera and picture: one pixel is theta = 2 half_fov_tangent /
  * height_pixels radians, and level k, of voxels of s = 2^k blocks, may start at s / (2 pixel_error theta). RENDER_LOD_LEVEL_COUNT levels. */
 render_lod_bands_t render_lod_bands(float64_t pixel_error, uint32_t near_guarantee, float64_t half_fov_tangent,
                                     uint32_t height_pixels);
 
 /* The pyramid's levels for these bands: every level from 1 up whose band starts inside the render distance, each as wide as its band's far
- * edge (or the render distance, if nearer) plus RENDER_LOD_MARGIN_COLUMNS, up to RENDER_LOD_RADIUS_COLUMNS_MAX. Level 1 is there whatever
- * full detail is. render_lod_plan stays for the far field rays still use until phase 04. */
+ * edge (or the render distance, if nearer) plus RENDER_LOD_MARGIN_COLUMNS, up to RENDER_LOD_RADIUS_COLUMNS_MAX. No levels when level 1's band
+ * starts past the render distance. */
 render_lod_plan_t render_lod_plan_by_bands(const render_lod_bands_t *bands, uint32_t render_distance_chunks);
+
+/* Plan 009 phase 04: traverse_world_t's band_base for this pixel error, camera and picture: 1 / (2 E theta), theta = 2 half_fov_tangent /
+ * height_pixels, so that level k starts at band_base 2^k blocks, render_lod_bands' from[k] before its floor. */
+float32_t render_lod_band_base(float32_t pixel_error, float32_t half_fov_tangent, uint32_t height_pixels);
+
+/* Plan 009 phase 04: how far the game holds blocks, in chunks, for these bands: d_1 and RENDER_LOD_BLOCK_MARGIN_CHUNKS more, at least
+ * RENDER_LOD_BLOCK_RADIUS_MIN_CHUNKS and at most RENDER_LOD_BLOCK_RADIUS_MAX_CHUNKS, and never past the render distance. */
+uint32_t render_lod_block_radius(const render_lod_bands_t *bands, uint32_t render_distance_chunks);
 
 /* Sizes, for the Owner to take memory and blocks. */
 uint64_t render_lod_table_bytes(const render_lod_plan_t *plan, uint32_t level);
@@ -236,8 +249,9 @@ gpu_status_t render_lod_init(render_lod_t *lod, arena_t *arena, device_memory_t 
 void render_lod_overlay_set(render_lod_t *lod, render_lod_overlay_t overlay, void *borrowed_context,
                             uint64_t scratch_bytes);
 
-/* What full detail has on the card, the near world's buffers, read on this same thread: a far column full detail is drawn over all of is
- * asked for after every other, as nothing of it shows. nullptr, as at init, for none. */
+/* What level 0 has on the card, the near world's buffers, read on this same thread: a far column it holds all of, nearer than any ray of
+ * that level starts, is asked for after every other, as nothing of it shows; and the levels made from octants are made from it. nullptr, as
+ * at init, for none. */
 void render_lod_fine_set(render_lod_t *lod, const world_buffers_t *fine);
 
 /* What is under a column of the world, in chunks, has changed: each level makes the column it falls in again, showing the old one until the new is ready. */

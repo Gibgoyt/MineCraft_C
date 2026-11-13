@@ -38,7 +38,6 @@ enum : uint32_t {
     SL_WIDTH = 1920u,
     SL_HEIGHT = 1080u,
     SL_FOV_DEGREES = 70u, /* his settings.yaml */
-    SL_FULL_DETAIL = 32u, /* his settings.yaml */
     SL_WARM_FRAMES = 30u,
     SL_MEASURED_FRAMES = 240u,
     /* The pictures --steps counts, after the measured ones: two of AO's four-frame turns, so its rays are all in. */
@@ -52,9 +51,10 @@ enum : uint32_t {
     SL_SUN_SEARCH_STEPS = 48u,
 };
 static_assert(MC_GPU_BUDGET_TEXTURES_MIB + MC_GPU_BUDGET_FRAMES_MIB + SL_VOXELS_MIB < 4096u);
-/* Full detail past his 32 (the sweep's 48, the reference) does not fit in that: at 48 the table is 97 columns wide and its pool about 5.9 GiB.
- * Those rows take the game's own voxel budget, as Ahmed's game would (config/machine.yaml). */
-enum : uint32_t { SL_VOXELS_WIDE_MIB = MC_GPU_BUDGET_VOXELS_MIB, SL_FULL_DETAIL_NARROW = 32u };
+/* Level 0 held past 32 chunks (--block-radius 48, the reference) does not fit in that: at 48 the table is 97 columns wide and its pool about
+ * 5.9 GiB. Nor does the pyramid's far field beside it at render distance 64 (plan 009 phase 03). Those rows take the game's own voxel budget,
+ * as Ahmed's game would (config/machine.yaml). */
+enum : uint32_t { SL_VOXELS_WIDE_MIB = MC_GPU_BUDGET_VOXELS_MIB, SL_BLOCK_RADIUS_NARROW = 32u };
 static const uint64_t SL_SEED_DEFAULT =
     14148492376765118422ull; /* saves/test_7/world.meta: the world he played at 5.png's time */
 static const int32_t SL_AT_DEFAULT[3] = {-385, 347, 2}; /* F3 of 5.png */
@@ -94,7 +94,7 @@ typedef struct sl_result_t {
     float64_t seconds;                           /* 296 */
     uint64_t picture_hash;                       /* 304 */
     uint64_t vram_voxels;                        /* 312: bytes live in the voxel pool */
-    uint32_t full_detail;                        /* 320: as asked */
+    uint32_t block_radius;                       /* 320: level 0's, as the game worked it out or as asked */
     uint32_t render_distance;                    /* 324 */
     uint32_t width;                              /* 328: what was drawn */
     uint32_t height;                             /* 332 */
@@ -117,7 +117,7 @@ typedef struct sl_options_t {
     float64_t sun_deg;     /* 64: with has_sun, in place of the row's */
     int32_t at[3];         /* 72 */
     uint32_t features_off; /* 84 */
-    uint32_t full_detail;  /* 88: 0 for his 32 */
+    uint32_t block_radius; /* 88: 0 for the game's own (plan 009 phase 04) */
     uint32_t render_scale; /* 92: percent, 0 for 100 */
     uint8_t has_sun;       /* 96 */
     uint8_t lod_reference; /* 97 */
@@ -644,15 +644,13 @@ static bool sl_run(sl_t *sl, const sl_row_t *row, const sl_options_t *options, s
     game_init(game, &app->world, &app->terrain, &app->render, &app->job, &app->texture, &app->topology);
     game_ui_set(game, &app->ui);
     const uint32_t distance = row->render_distance;
-    uint32_t full_detail = options->full_detail != 0u ? options->full_detail : SL_FULL_DETAIL;
+    uint32_t block_radius = options->block_radius < distance ? options->block_radius : distance;
     uint32_t features_off = (uint32_t)SHADE_FEATURE_DAY_CYCLE | options->features_off;
     if (options->lod_reference != 0u) {
         /* Level 0 as far as the picture goes, and no far field: every block everywhere. */
-        full_detail = distance;
+        block_radius = distance;
         features_off |= (uint32_t)SHADE_FEATURE_LOD;
     }
-    full_detail = full_detail < distance ? full_detail : distance;
-    r->full_detail = full_detail;
     r->render_distance = distance;
     r->width = sl_scaled(SL_WIDTH, options->render_scale);
     r->height = sl_scaled(SL_HEIGHT, options->render_scale);
@@ -660,15 +658,16 @@ static bool sl_run(sl_t *sl, const sl_row_t *row, const sl_options_t *options, s
                                   .width = SL_WIDTH,
                                   .height = SL_HEIGHT,
                                   .features_off = features_off,
-                                  .full_detail = full_detail,
-                                  .table_chunks = full_detail,
+                                  .block_radius_given = block_radius,
+                                  .table_chunks = block_radius,
                                   .fov_degrees = SL_FOV_DEGREES,
                                   .render_scale_percent = (uint16_t)options->render_scale};
     if (!game_open(game, &config)) {
-        LOG_ERROR("bench_world_slope: the world would not open at full detail %" PRIu32 ", render distance %" PRIu32,
-                  full_detail, distance);
+        LOG_ERROR("bench_world_slope: the world would not open with level 0 at %" PRIu32 ", render distance %" PRIu32,
+                  block_radius, distance);
         return false;
     }
+    r->block_radius = game->view.block_radius;
     r->sun_set_deg = options->has_sun != 0u ? options->sun_deg : row->sun_deg;
     game_clock_set(game, sl_clock_days(game->day_zero), sl_day_fraction_for(game->day_zero, eye[1], r->sun_set_deg));
     render_camera_start(&game->camera, eye[0], eye[1], eye[2], (float32_t)(options->yaw_deg * SL_DEGREES),
@@ -692,11 +691,11 @@ static bool sl_run(sl_t *sl, const sl_row_t *row, const sl_options_t *options, s
 }
 
 static void sl_row_print(const sl_row_t *row, const sl_result_t *r) {
-    printf("ahmed_slope/%-9s %s  rd %" PRIu32 " fd %" PRIu32
+    printf("ahmed_slope/%-9s %s  rd %" PRIu32 " r0 %" PRIu32
            " %ux%u sun %+.1f  card %.2f ms (p50 %.2f, p99 %.2f), %.2f "
            "Mcycles at %.0f MHz (%.0f-%.0f)\n",
            row->name, r->ran != 0u ? (r->sound != 0u ? "ok" : "NOT SOUND") : "FAILED", r->render_distance,
-           r->full_detail, r->width, r->height, (libc_double_t)r->sun_set_deg, (libc_double_t)r->card_mean_ms,
+           r->block_radius, r->width, r->height, (libc_double_t)r->sun_set_deg, (libc_double_t)r->card_mean_ms,
            (libc_double_t)r->card_p50_ms, (libc_double_t)r->card_p99_ms, (libc_double_t)r->card_mcycles,
            (libc_double_t)r->card_mhz, (libc_double_t)r->card_mhz_low, (libc_double_t)r->card_mhz_high);
     printf(
@@ -740,7 +739,7 @@ static bool sl_record(const sl_result_t *results, const sl_options_t *options) {
     if (ftell(file) == 0) {
         fprintf(file,
                 "date\tlabel\tpreset\trow\tseed\tat_x\tat_y\tat_z\tyaw_deg\tpitch_deg\tsun_deg\trender_distance\t"
-                "full_detail\twidth\theight\tfeatures_off\tlod_reference\tcard_mean_ms\tcard_p50_ms\tcard_p99_ms\t"
+                "block_radius\twidth\theight\tfeatures_off\tlod_reference\tcard_mean_ms\tcard_p50_ms\tcard_p99_ms\t"
                 "card_mcycles\tcard_mhz\tcard_mhz_low\tcard_mhz_high\tcoarse_ms\tprimary_ms\tlod_ms\tshade_ms\t"
                 "water_ms\tsurface_ms\tsun_ms\tao_ms\tao_fresh_ms\tpost_ms\treadback_ms\tfresh_mean\tvoxels_mib\t"
                 "picture\tsound\tprimary_steps_a_pixel\tprimary_steps\tfar_steps\tsun_steps\tao_steps\t"
@@ -762,7 +761,7 @@ static bool sl_record(const sl_result_t *results, const sl_options_t *options) {
                 "\t%.1f\t%.1f\t%.1f\t%" PRIu32 "\t%" PRIu32 "\t%" PRIu32 "\t%" PRIu32 "\t%" PRIX32 "\t%u",
                 date, options->label != nullptr ? options->label : "-", sl_preset_name(), SL_ROW_LIST[i].name,
                 options->seed, options->at[0], options->at[1], options->at[2], (libc_double_t)options->yaw_deg,
-                (libc_double_t)options->pitch_deg, (libc_double_t)r->sun_set_deg, r->render_distance, r->full_detail,
+                (libc_double_t)options->pitch_deg, (libc_double_t)r->sun_set_deg, r->render_distance, r->block_radius,
                 r->width, r->height, options->features_off, (uint32_t)options->lod_reference);
         const float64_t numbers[] = {
             r->card_mean_ms,
@@ -809,16 +808,16 @@ static void sl_usage(const char *program) {
     fprintf(
         stderr,
         "usage: %s [--only <text>] [--at <x> <y> <z>] [--seed <n>] [--look <yaw> <pitch>] [--sun <degrees>]\n"
-        "          [--full-detail <chunks>] [--render-scale <percent>] [--lod-reference] [--features-off <hex>]\n"
+        "          [--block-radius <chunks>] [--render-scale <percent>] [--lod-reference] [--features-off <hex>]\n"
         "          [--steps <file.tsv>] [--record <file>] [--label <text>] [--shots <dir>] [--list]\n"
         "  --only <text>          the rows whose name holds this, or =<name>,<name>... (with or without ahmed_slope/)\n"
         "  --at <x> <y> <z>       the block the feet are in, as F3 says: -385 347 2 unless this\n"
         "  --seed <n>             the world's seed: saves/test_7's unless this\n"
         "  --look <yaw> <pitch>   degrees, 0 east and 90 north, pitch up: the fit to 5.png unless this\n"
         "  --sun <degrees>        the sun's elevation in place of the row's, on day 92, as the clock gives it here\n"
-        "  --full-detail <chunks> in place of his 32\n"
+        "  --block-radius <chunks> level 0 held this far, in place of what the game works out from the bands\n"
         "  --render-scale <percent>  drawn at this share of 1920x1080 and brought up\n"
-        "  --lod-reference        full detail out to the render distance and no far field: every block everywhere\n"
+        "  --lod-reference        level 0 out to the render distance and no far field: every block everywhere\n"
         "  --features-off <hex>   take these SHADE_FEATURE_* bits away (shadow 20, alpha 2, AO 400, far field 8000)\n"
         "  --steps <file.tsv>     with one row: the band table, and <file>.png and its kin, the step heatmaps\n"
         "  --record <file>        add a line per row: bench/world/slope/history.tsv is the repository's\n"
@@ -859,12 +858,12 @@ static bool sl_parse(int32_t argc, char **argv, sl_options_t *out) {
             }
         } else if (strcmp(argv[i], "--features-off") == 0 && has_value) {
             out->features_off = (uint32_t)strtoul(argv[++i], nullptr, 16);
-        } else if (strcmp(argv[i], "--full-detail") == 0 && has_value) {
+        } else if (strcmp(argv[i], "--block-radius") == 0 && has_value) {
             const uint64_t chunks = strtoull(argv[++i], nullptr, 10);
             if (chunks < 2u || chunks > (uint64_t)MC_GAME_RENDER_DISTANCE_MAX) {
                 return false;
             }
-            out->full_detail = (uint32_t)chunks;
+            out->block_radius = (uint32_t)chunks;
         } else if (strcmp(argv[i], "--render-scale") == 0 && has_value) {
             const uint64_t percent = strtoull(argv[++i], nullptr, 10);
             if (percent < 25u || percent > 100u) {
@@ -960,7 +959,8 @@ static int32_t sl_process(const sl_options_t *options, uint32_t row, bool say_ca
         return 2;
     }
     int32_t status = 2;
-    const bool wide = options->lod_reference != 0u || options->full_detail > SL_FULL_DETAIL_NARROW;
+    const bool wide = options->lod_reference != 0u || options->block_radius > SL_BLOCK_RADIUS_NARROW ||
+                      SL_ROW_LIST[row].render_distance > SL_BLOCK_RADIUS_NARROW;
     if (sl_start(&sl, options->seed, wide ? SL_VOXELS_WIDE_MIB : SL_VOXELS_MIB)) {
         if (say_card) {
             const device_memory_t *const memory = &sl.borrowed_app->gpu_bridge.device_memory;

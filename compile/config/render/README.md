@@ -4,7 +4,7 @@ Tuning for the renderer. The fields of a key are in `../README.md`.
 
 | File | Defines | What it tunes | Read by |
 |---|---|---|---|
-| `lod/index.yaml` | `MC_TUNE_RENDER_LOD_*` | The far field's levels: how wide each is, how much past what rays use is kept built, which levels grow trees, and how often a ray may pass by full detail's columns | `run/include/render/lod/`, `run/include/gpu_bridge/lod/` |
+| `lod/index.yaml` | `MC_TUNE_RENDER_LOD_*` | The far field's levels: how wide each is, how much past what rays use is kept built, which levels grow trees, the pixel error and the bands (plan 009 phase 04), and how far the game holds blocks | `run/include/render/lod/`, `run/include/gpu_bridge/lod/` |
 | `traverse/index.yaml` | `MC_TUNE_RENDER_TRAVERSE_*` | The coarse pass: the stretches of ray it tries to clear at once, and the pads that keep it from skipping a block | `cuda/src/traverse/` |
 | `shade/index.yaml` | `MC_TUNE_RENDER_SHADE_*` | Surfaces a ray goes through by holes, AO's turns, rays, samples and reach, god rays' steps, how far a ray looks through water | `run/include/gpu_bridge/shade/` |
 | `temporal/index.yaml` | `MC_TUNE_RENDER_TEMPORAL_*` | TAA: how much a frame adds, how far history may be from its neighbours, and when the camera counts as still | `run/include/gpu_bridge/post/` |

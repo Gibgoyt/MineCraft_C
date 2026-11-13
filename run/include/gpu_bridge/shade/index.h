@@ -65,7 +65,7 @@ enum : uint32_t {
     SHADE_FEATURE_ENTITIES = 1u << 13, /* mobs and items are drawn as boxes, or not at all */
     SHADE_FEATURE_OUTLINE =
         1u << 14,                 /* what is aimed at has an outline, and what is being mined its crack, or neither */
-    SHADE_FEATURE_LOD = 1u << 15, /* the world goes on past full detail in coarse grids, or stops there */
+    SHADE_FEATURE_LOD = 1u << 15, /* the world goes on past level 0 in coarse grids, or stops there */
     /* To render_frame_features_set only, and past that post_temporal_t.sun_apart, as it is no effect that shows: a last surface's sun ray has a
      * kernel of its own, even with AO off: the same picture, for less time, and the hits block then ends up holding those surfaces. No setting
      * turns this off. What wants the frame's own hits afterwards, a test that holds them to something, leaves it out. */

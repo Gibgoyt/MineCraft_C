@@ -49,7 +49,7 @@ highest first:
 |---|---|---|
 | `JOB_PRIORITY_EDIT` | Encoding sections, a block edit's among them: a view of them holds up the next | `render/upload` |
 | `JOB_PRIORITY_NEAR` | Columns within `GAME_NEAR_CHUNKS` of the player | `game` |
-| `JOB_PRIORITY_COLUMN` | The other full-detail columns, nearest first as the map hands them out | `game` |
+| `JOB_PRIORITY_COLUMN` | The other columns of level 0, nearest first as the map hands them out | `game` |
 | `JOB_PRIORITY_NORMAL` | Everything not given one: mob paths, autosave, the map, tests, benches | the rest |
 | `JOB_PRIORITY_CLIMATE` | Climate tiles and pages, and the census | `climate`, `game/census` |
 | `JOB_PRIORITY_FAR` | Far-field columns | `render/lod` |

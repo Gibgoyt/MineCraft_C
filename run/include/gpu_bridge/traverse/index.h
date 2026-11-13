@@ -46,8 +46,12 @@ typedef enum traverse_face_t : uint16_t {
     TRAVERSE_FACE_NEG_Z = 4,
     TRAVERSE_FACE_POS_Z = 5,
     TRAVERSE_FACE_INSIDE = 6, /* the ray started inside this voxel: t is where it started, and no face was crossed */
-    TRAVERSE_FACE_MISS = 7,   /* nothing, inside the window */
+    TRAVERSE_FACE_MISS =
+        7, /* nothing, inside the window: t is TRAVERSE_COARSE_SKY, or a ray's t_end for TRAVERSE_FACE_PAST */
 } traverse_face_t;
+/* Plan 009 phase 04: a ray that reached its t_end with nothing met says a miss whose t is that t_end, as three bits hold no ninth face. So
+ * every reader that goes on past a miss goes on past this too, to the next level from there: traverse_hit_past tells the two apart. */
+#define TRAVERSE_FACE_PAST TRAVERSE_FACE_MISS
 static_assert(sizeof(traverse_face_t) == 2);
 
 enum : uint32_t {
@@ -60,6 +64,8 @@ enum : uint32_t {
 
 /* What the coarse pass writes for a tile no ray of which can hit anything. */
 #define TRAVERSE_COARSE_SKY F32(1e30)
+/* Plan 009 phase 04: a ray's t_end when it has none. No t a ray steps through is ever this large. */
+#define TRAVERSE_T_END_NONE F32(1e30)
 
 /* What a material draws as: a row of the table of boxes in cuda/include/traverse/index.hu. CUBE is the whole voxel, and what a
  * ray takes for anything with no row. Boxes are inside their voxel, so the tree's masks and the coarse pass never need to know.
@@ -99,8 +105,17 @@ typedef struct traverse_world_t {
     /* 52: as a storage height, no block in any column of the window is at or above this, so a ray rising past it has met all it will
      * meet, without asking each column it crosses. 0 for not known. It may be high, and never low. */
     uint32_t top_limit;
+    /* 56: plan 009 phase 04, how far along each pixel's ray this world is used, by the bands: level k, of voxels of 2^k blocks, starts at
+     * d_k = band_base 2^k blocks, never nearer than the near guarantee, so this world (level 0) ends at a pixel's d_1. band_base is
+     * 1 / (2 E theta), theta = 2 tan(fov / 2) / the picture's rows. 0 for no bands: this world to its edge, as with no far field. */
+    float32_t band_base;
+    float32_t
+        band_dither; /* 60: a pixel's edges all move by up to this share of themselves, by a hash of it: 0 for none */
+    uint32_t
+        band_seed; /* 64: hashed with the pixel: the frame with TAA on, 0 with it off, so that one picture comes out the same */
+    uint8_t _pad0[4]; /* 68 */
 } traverse_world_t;
-static_assert(sizeof(traverse_world_t) == 56);
+static_assert(sizeof(traverse_world_t) == 72);
 static_assert(alignof(traverse_world_t) == 8);
 static_assert(offsetof(traverse_world_t, borrowed_table) == 0);
 static_assert(offsetof(traverse_world_t, borrowed_pool) == 8);
@@ -108,6 +123,10 @@ static_assert(offsetof(traverse_world_t, window) == 16);
 static_assert(offsetof(traverse_world_t, borrowed_shapes) == 40);
 static_assert(offsetof(traverse_world_t, shape_count) == 48);
 static_assert(offsetof(traverse_world_t, top_limit) == 52);
+static_assert(offsetof(traverse_world_t, band_base) == 56);
+static_assert(offsetof(traverse_world_t, band_dither) == 60);
+static_assert(offsetof(traverse_world_t, band_seed) == 64);
+static_assert(offsetof(traverse_world_t, _pad0) == 68);
 
 /* A bit per material, material m at bit m % 32 of words[m / 32]: set for one that stops a ray asking only where the first thing is
  * that it cannot see through. A kernel takes it by value. */
@@ -148,13 +167,16 @@ typedef struct traverse_ray_t {
     float32_t eye_frac[3];  /* 12 */
     float32_t direction[3]; /* 24 */
     float32_t t_start;      /* 36: nothing before this is looked at */
+    float32_t
+        t_end; /* 40: plan 009 phase 04: nor anything at or past this, where it says TRAVERSE_FACE_PAST; 0 for no end */
 } traverse_ray_t;
-static_assert(sizeof(traverse_ray_t) == 40);
+static_assert(sizeof(traverse_ray_t) == 44);
 static_assert(alignof(traverse_ray_t) == 4);
 static_assert(offsetof(traverse_ray_t, eye_cell) == 0);
 static_assert(offsetof(traverse_ray_t, eye_frac) == 12);
 static_assert(offsetof(traverse_ray_t, direction) == 24);
 static_assert(offsetof(traverse_ray_t, t_start) == 36);
+static_assert(offsetof(traverse_ray_t, t_end) == 40);
 
 /* What a ray found, one per pixel. 16 bytes, so a 1080p frame's hits are 33 MiB and shading touches few cache lines. */
 typedef struct traverse_hit_t {
@@ -192,7 +214,7 @@ enum : uint32_t {
     TRAVERSE_COUNT_BANDS = 7u,
     TRAVERSE_COUNT_LEVELS = 8u,   /* the far field's levels, at least LOD_LEVELS_MAX */
     TRAVERSE_COUNT_BUCKETS = 64u, /* of a call's steps in a band: see traverse_count_bucket */
-    /* Per pixel, after the block's traverse_counts_t: primary; the far field (far, its sun rays and the ask past full detail); sun rays;
+    /* Per pixel, after the block's traverse_counts_t: primary; the far field (far, its sun rays and the ask past level 0); sun rays;
      * the rest of shade (AO, alpha holes, reflections). Each saturates at 65535. */
     TRAVERSE_COUNT_PLANES = 4u,
     TRAVERSE_COUNT_NO_LEVEL = 0xFFFFFFFFu,
@@ -200,11 +222,11 @@ enum : uint32_t {
 };
 typedef enum traverse_count_kind_t : uint32_t {
     TRAVERSE_COUNT_PRIMARY = 0, /* traverse_primary's ray of a pixel */
-    TRAVERSE_COUNT_FAR = 1,     /* a far ray through one level of the far field, each pass by full detail a call */
+    TRAVERSE_COUNT_FAR = 1,     /* a far ray through one level of the far field, one call a level */
     TRAVERSE_COUNT_SUN = 2,     /* shade's sun (or moon) ray, each surface it goes on past a call */
     TRAVERSE_COUNT_AO = 3,      /* an AO ray, steady or fresh */
     TRAVERSE_COUNT_ALPHA = 4,   /* shade's own ray going on past an alpha-0 texel or a see-through surface */
-    TRAVERSE_COUNT_PAST = 5,    /* the far field asking whether shade's ray leaves full detail past a leaf or a pane */
+    TRAVERSE_COUNT_PAST = 5,    /* the far field asking whether shade's ray gets past level 0 past a leaf or a pane */
     TRAVERSE_COUNT_FAR_SUN = 6, /* the far field's sun rays */
     TRAVERSE_COUNT_REFLECT = 7, /* water's reflection */
 } traverse_count_kind_t;
@@ -265,6 +287,12 @@ static inline uint32_t traverse_count_bucket_low(uint32_t bucket) {
 
 static inline uint32_t traverse_hit_face(uint16_t info) {
     return (uint32_t)info & TRAVERSE_INFO_FACE_MASK;
+}
+
+/* Plan 009 phase 04: whether a hit is a ray that reached its t_end, at t, with nothing met before it. */
+static inline bool traverse_hit_past(const traverse_hit_t *hit) {
+    return ((uint32_t)hit->info & TRAVERSE_INFO_FACE_MASK) == (uint32_t)TRAVERSE_FACE_MISS &&
+           hit->t < TRAVERSE_COARSE_SKY;
 }
 
 static inline uint32_t traverse_hit_steps(uint16_t info) {

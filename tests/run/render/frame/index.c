@@ -1723,7 +1723,7 @@ static const game_config_t fr_flight_game = {.render_distance = 8u,
                                              .width = FR_WIDTH,
                                              .height = FR_HEIGHT,
                                              .features_off = SHADE_FEATURE_DAY_CYCLE,
-                                             .full_detail = 3u,
+                                             .block_radius_given = 3u,
                                              .show_date = 0u};
 
 /* A world opened, and 60 frames of a flight forward and round, each after the world has settled where the camera now is: so new columns,

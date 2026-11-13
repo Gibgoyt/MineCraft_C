@@ -25,9 +25,6 @@ enum : uint32_t {
     LOD_SHIFT_MIN = 1u,
     /* lod_hit_t.material when a ray found nothing. */
     LOD_NO_MATERIAL = 0xFFFFu,
-    /* How many times one level lets a ray go on past something that lies in a column full detail holds. A ray that met nothing in
-     * full detail meets very little of the coarse ground there, and past this it calls the level empty: compile/config/render/lod/. */
-    LOD_SKIPS_MAX = MC_TUNE_RENDER_LOD_SKIPS_MAX,
     /* lod_hit_t.sun: all of the sun, and none of it. */
     LOD_SUN_SEEN = 255u,
     LOD_SUN_HIDDEN = 0u,
@@ -126,26 +123,26 @@ static inline uint64_t lod_hits_bytes(uint32_t width, uint32_t height) {
     return (uint64_t)width * height * sizeof(lod_hit_t);
 }
 
-/* One lod_hit_t per pixel of this camera, from rays that go on past what full detail shows: those that hit nothing in hits, and those
- * that hit something a ray can see through and, going on through world past all it can see through as shade's own ray does, leave it
- * at last. Any other pixel gets nothing, as shade would never look. world says what full detail holds, and whatever a level has in a column that is there is
- * not looked at, since that column draws itself. Starts a kernel, and returns; it runs in order with any other. Nothing here
- * allocates. On failure error says why, and nothing was started. */
+/* One lod_hit_t per pixel of this camera, from rays that go on past level 0, world: those that hit nothing in hits, and those that hit
+ * something a ray can see through and, going on through world past all it can see through as shade's own ray does, get past it at last.
+ * Any other pixel gets nothing, as shade would never look. Plan 009 phase 04: a pixel's ray leaves level 0 at its d_1, by the camera's bands,
+ * or at level 0's edge if that is nearer, and each level takes over from the last at the next level's d or its own edge: so nothing nearer
+ * is looked at, and nothing is passed by. With no bands in the camera, level 0 goes to its edge and each level to its own. Starts a
+ * kernel, and returns; it runs in order with any other. Nothing here allocates. On failure error says why, and nothing was started. */
 gpu_status_t lod_frame(gpu_error_t *error, const lod_scene_t *scene, const lod_light_t *light,
                        const traverse_world_t *world, const traverse_camera_t *camera, const device_block_t *hits);
 
 /* Plan 009 phase 01: lod_frame with every traversal's steps added into counts (see traverse_counts_t): far rays and the far field's sun
- * rays by level, and the ask past full detail. A second copy of each kernel does it; with counts nullptr this is lod_frame. */
+ * rays by level, and the ask past level 0. A second copy of each kernel does it; with counts nullptr this is lod_frame. */
 gpu_status_t lod_frame_counted(gpu_error_t *error, const lod_scene_t *scene, const lod_light_t *light,
                                const traverse_world_t *world, const traverse_camera_t *camera,
                                const device_block_t *hits, const device_block_t *counts);
 
 /* The same trace over ray_count rays of traverse_ray_t in rays, into as many lod_hit_t in out, for a test and for anything that is not a
- * frame. world may be nullptr, for no full detail at all. t_start in a ray is where it starts looking. With light nullptr no sun ray is
- * sent. Starts a kernel, as above. */
+ * frame, with no bands: each level to its own edge. t_start in a ray is where it starts looking. With light nullptr no sun ray is sent.
+ * Starts a kernel, as above. */
 gpu_status_t lod_rays(gpu_error_t *error, const lod_scene_t *scene, const lod_light_t *light,
-                      const traverse_world_t *world, const device_block_t *rays, const device_block_t *out,
-                      uint32_t ray_count);
+                      const device_block_t *rays, const device_block_t *out, uint32_t ray_count);
 
 #ifdef __cplusplus
 }

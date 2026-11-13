@@ -23,7 +23,7 @@
 - `render_frame_report`, `render_frame_percentiles`: what the frames took.
 
 **May be called by:** `render` (the Owner) and `render/entities`, `game`, `player` and `player/camera` for `render_camera_t` and the exchange, and `ui/screen_inventory` for `render_exchange_t`.
-**Depends on:** `render/lod`, for what a frame draws past full detail, `arena`, `log`, `assert`, `machine`, `texture`, `display/flip` for `display_buffer_t`, `simd/copy`, the generated block tables, `gpu_bridge/device_memory`, `gpu_bridge/world_buffers`, `gpu_bridge/traverse`, `gpu_bridge/shade`, `gpu_bridge/post`, `gpu_bridge/frame`, `render/entities`, whose scene a frame hands its kernels.
+**Depends on:** `render/lod`, for what a frame draws past level 0 and its bands, `arena`, `log`, `assert`, `machine`, `texture`, `display/flip` for `display_buffer_t`, `simd/copy`, the generated block tables, `gpu_bridge/device_memory`, `gpu_bridge/world_buffers`, `gpu_bridge/traverse`, `gpu_bridge/shade`, `gpu_bridge/post`, `gpu_bridge/frame`, `render/entities`, whose scene a frame hands its kernels.
 
 ## How a picture reaches the screen
 

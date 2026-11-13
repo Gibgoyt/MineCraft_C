@@ -35,7 +35,7 @@ typedef enum job_priority_t : uint32_t {
     JOB_PRIORITY_EDIT = 0u,
     /* Columns within GAME_NEAR_CHUNKS of the player: the ground underfoot. */
     JOB_PRIORITY_NEAR = 1u,
-    /* The rest of the columns at full detail. */
+    /* The rest of the columns of level 0, the blocks. */
     JOB_PRIORITY_COLUMN = 2u,
     /* Anything not given one: mob paths, autosave, the map, tests and benches. */
     JOB_PRIORITY_NORMAL = 3u,

@@ -289,16 +289,16 @@ static ui_screen_settings_action_t us_settings_click(us_rig_t *rig, int32_t x, i
 }
 
 TEST(the_volume_slider_changes_that_setting_and_nothing_else) {
-    /* At 320 by 240 the scale is 1: row 7 starts at 60 across and 24 + 7 * 24 down, and is 20 tall. Since plan 004 phase 10 moved
-     * the Date box to the HUD page, the slider has the whole row, from 60 to 260. */
-    enum : int32_t { SLIDER_X = 60, SLIDER_WIDTH = 200, SLIDER_Y = 192 + 10 };
+    /* At 320 by 240 the scale is 1: row 6 (row 7 until plan 009 phase 04 took a slider out) starts at 60 across and 24 + 6 * 24 down, and
+     * is 20 tall. Since plan 004 phase 10 moved the Date box to the HUD page, the slider has the whole row, from 60 to 260. */
+    enum : int32_t { SLIDER_X = 60, SLIDER_WIDTH = 200, SLIDER_Y = 168 + 10 };
     us_rig_t *const rig = test_alloc(t, sizeof(us_rig_t));
     REQUIRE(us_rig_start(t, rig));
     settings_values_t values;
     settings_persist_defaults(&values);
     CHECK_EQ_U64(values.sound_volume_percent, SETTINGS_SOUND_VOLUME_DEFAULT);
     const settings_values_t before = values;
-    ui_screen_settings_open(&rig->ui->settings_screen, &rig->ui->widget, &values, 0u, MC_THREADS_WORKERS, false);
+    ui_screen_settings_open(&rig->ui->settings_screen, &rig->ui->widget, &values, MC_THREADS_WORKERS, false);
     const uint64_t bytes = (uint64_t)US_WIDTH * US_HEIGHT * 4u;
     uint8_t *const pixels = test_alloc(t, bytes);
     const input_frame_t nothing = {0};
@@ -314,11 +314,11 @@ TEST(the_volume_slider_changes_that_setting_and_nothing_else) {
     us_rig_stop(rig);
 }
 
-/* At 320 by 240 the scale is 1 and the screen's top is 0: row r is 24 + 24 r down and 20 tall, from 60 to 260 across. Row 6
- * holds VSync (46), HUD... (82, from 110) and Effects..., with gaps of 4. */
+/* At 320 by 240 the scale is 1 and the screen's top is 0: row r is 24 + 24 r down and 20 tall, from 60 to 260 across. Row 5 (6 until
+ * plan 009 phase 04) holds VSync (46), HUD... (82, from 110) and Effects..., with gaps of 4. */
 enum : int32_t {
     US_HUD_BUTTON_X = 110 + 41,
-    US_ROW_6_Y = 168 + 10,
+    US_ROW_5_Y = 144 + 10,
     US_BOX_X = 64, /* the left of a 200-wide box, on its tick */
     US_HUD_ROW_0_Y = 24 + 10,
     US_HUD_ROW_STEP = 24,
@@ -327,7 +327,7 @@ enum : int32_t {
 
 /* From the main page to the HUD page, by its button. */
 static void us_settings_hud_open(test_context_t *t, us_rig_t *rig, uint8_t *scratch) {
-    CHECK_EQ_U64(us_settings_click(rig, US_HUD_BUTTON_X, US_ROW_6_Y, scratch), UI_SCREEN_SETTINGS_NONE);
+    CHECK_EQ_U64(us_settings_click(rig, US_HUD_BUTTON_X, US_ROW_5_Y, scratch), UI_SCREEN_SETTINGS_NONE);
     CHECK_EQ_U64(rig->ui->settings_screen.page, UI_SCREEN_SETTINGS_PAGE_HUD);
 }
 
@@ -340,7 +340,7 @@ static void us_settings_hud_box(test_context_t *t, uint32_t row, uint64_t at, ui
     uint8_t *const byte = (uint8_t *)&values + at;
     CHECK((*byte & bit) != 0u); /* on, as a new install has it */
     settings_values_t expected = values;
-    ui_screen_settings_open(&rig->ui->settings_screen, &rig->ui->widget, &values, 0u, MC_THREADS_WORKERS, false);
+    ui_screen_settings_open(&rig->ui->settings_screen, &rig->ui->widget, &values, MC_THREADS_WORKERS, false);
     const uint64_t bytes = (uint64_t)US_WIDTH * US_HEIGHT * 4u;
     uint8_t *const on = test_alloc(t, bytes);
     uint8_t *const off = test_alloc(t, bytes);
@@ -365,13 +365,13 @@ static void us_settings_hud_box(test_context_t *t, uint32_t row, uint64_t at, ui
     *expected_byte = (uint8_t)(*expected_byte ^ bit);
     CHECK_MEM_EQ(&values, &expected, sizeof(expected));
     CHECK_MEM_EQ(on, on_again, bytes);
-    /* Back is where Done is, and goes to the main page, where VSync and Effects... have not moved under the pointer. */
+    /* Back, a row under the main page's Done since plan 009 phase 04, goes to the main page. */
     CHECK_EQ_U64(us_settings_click(rig, 160, US_BACK_Y, off), UI_SCREEN_SETTINGS_NONE);
     CHECK_EQ_U64(rig->ui->settings_screen.page, UI_SCREEN_SETTINGS_PAGE_MAIN);
-    CHECK_EQ_U64(us_settings_click(rig, 60 + 4, US_ROW_6_Y, off), UI_SCREEN_SETTINGS_CHANGED);
+    CHECK_EQ_U64(us_settings_click(rig, 60 + 4, US_ROW_5_Y, off), UI_SCREEN_SETTINGS_CHANGED);
     expected.vsync = 0u;
     CHECK_MEM_EQ(&values, &expected, sizeof(expected));
-    (void)us_settings_click(rig, 260 - 4, US_ROW_6_Y, off);
+    (void)us_settings_click(rig, 260 - 4, US_ROW_5_Y, off);
     CHECK_EQ_U64(rig->ui->settings_screen.page, UI_SCREEN_SETTINGS_PAGE_EFFECTS);
     us_rig_stop(rig);
 }
@@ -408,7 +408,7 @@ TEST(the_settings_pages_look_as_they_did) {
     settings_values_t values;
     settings_persist_defaults(&values);
     values.climate_hud = SETTINGS_CLIMATE_HUD_LINE; /* one box of each kind */
-    ui_screen_settings_open(&rig->ui->settings_screen, &rig->ui->widget, &values, 0u, MC_THREADS_WORKERS, false);
+    ui_screen_settings_open(&rig->ui->settings_screen, &rig->ui->widget, &values, MC_THREADS_WORKERS, false);
     const uint64_t bytes = (uint64_t)US_WIDTH * US_HEIGHT * 4u;
     uint8_t *const picture = test_alloc(t, bytes);
     const input_frame_t nothing = {0};

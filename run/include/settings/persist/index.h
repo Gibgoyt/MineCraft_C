@@ -4,7 +4,6 @@
 
 #include "gpu_bridge/shade/index.h"
 #include "machine/index.h"
-#include "render/lod/index.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -14,9 +13,6 @@ enum : uint32_t {
     /* The plan's range. */
     SETTINGS_RENDER_DISTANCE_MIN = 2u,
     SETTINGS_RENDER_DISTANCE_MAX = MC_GAME_RENDER_DISTANCE_MAX,
-    SETTINGS_FULL_DETAIL_MIN = 2u,
-    /* What leaves room on the card for a far field: a table of 101 by 101 gets 3.9 GiB of slabs, and gpu.budget.voxels_mib is 6 GiB. */
-    SETTINGS_FULL_DETAIL_MAX = 48u,
     SETTINGS_FOV_MIN = 30u,
     SETTINGS_FOV_DEFAULT = 70u,
     SETTINGS_FOV_MAX = 110u,
@@ -42,8 +38,9 @@ enum : uint32_t {
 
 /* All of them, in the units a person sees. */
 typedef struct settings_values_t {
-    uint32_t render_distance;      /* 0: chunks, however far off the world goes on */
-    uint32_t full_detail;          /* 4: chunks drawn block by block, and coarse grids past that */
+    uint32_t render_distance; /* 0: chunks, however far off the world goes on */
+    uint32_t
+        _reserved0; /* 4: plan 009 phase 04: no longer a setting, as the game works it out; kept so nothing moves */
     uint32_t fov_degrees;          /* 8: vertical */
     uint32_t sensitivity_percent;  /* 12: of the mouse's usual turn */
     uint32_t render_scale_percent; /* 16: of width and height */

@@ -1,6 +1,6 @@
 # run/src/game/fill
 
-**Purpose:** the fill-in report of plan 005 phase 14: how long the world takes to be drawn around the eye after a world opens, and after each change of render distance or full detail. One log line per ring of chunks as it is first drawn, one for the whole fill, and in the end-of-session report one per fill.
+**Purpose:** the fill-in report of plan 005 phase 14: how long the world takes to be drawn around the eye after a world opens, and after each change of render distance or of the radius the game holds block by block (level 0). One log line per ring of chunks as it is first drawn, one for the whole fill, and in the end-of-session report one per fill.
 **Tier:** Arena by depth (2). It allocates nothing.
 **Owns:** nothing. `game_fill_t` is a part of the game's World arena beside the column jobs (`game_fill_of`, in `game/index.c`), as `game_t` is at its size and `app_t` at main's frame limit.
 **Lifetime:** World. `game_fill_reset` empties it as a world opens.
@@ -22,13 +22,13 @@
 
 ## What it measures
 
-Ring `r` is every column with `(r - 1)^2 < dx^2 + dy^2 <= r^2` from the eye's column, the centre of the table's window, out to full detail: the map loads a circle, so these are the circle's rings. A ring is **drawn** when every one of its columns is `ready` in the host's copy of the table and the upload queue is between views (`render_upload_idle`), which is when every section of the view that put them there has gone to the card. The table is looked at no more than once every 10 ms, and only while a fill goes on. The far field is **done** when `render_lod_idle` says nothing is wanted that is not there.
+Ring `r` is every column with `(r - 1)^2 < dx^2 + dy^2 <= r^2` from the eye's column, the centre of the table's window, out to level 0's radius: the map loads a circle, so these are the circle's rings. A ring is **drawn** when every one of its columns is `ready` in the host's copy of the table and the upload queue is between views (`render_upload_idle`), which is when every section of the view that put them there has gone to the card. The table is looked at no more than once every 10 ms, and only while a fill goes on. The far field is **done** when `render_lod_idle` says nothing is wanted that is not there.
 
 | Time | Means |
 |---|---|
 | first change | the first column come or gone in the table, or the first far column built, since the start: the change starting to show |
 | near rings | rings 0 to 4, the targets' "ground near you" |
-| all rings | every ring out to full detail |
+| all rings | every ring out to level 0's radius |
 | far field | the far field done, or 0 with none |
 | all | both |
 

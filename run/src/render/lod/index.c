@@ -25,8 +25,8 @@ typedef enum render_lod_column_state_t : uint8_t {
     RENDER_LOD_COLUMN_NO_ROOM = 3,
     RENDER_LOD_COLUMN_STALE = 4,      /* built and shown, and wanted again: what is under it has changed */
     RENDER_LOD_COLUMN_REBUILDING = 5, /* built and shown, and being made again */
-    RENDER_LOD_COLUMN_COVERED =
-        6, /* wanted, but full detail is drawn over all of it: asked for after everything else */
+    /* wanted, but level 0 stands for all of it, and no ray of this level goes there: asked for after everything else */
+    RENDER_LOD_COLUMN_COVERED = 6,
 } render_lod_column_state_t;
 
 enum : uint64_t {
@@ -51,36 +51,6 @@ static bool render_lod_state_built(uint8_t state) {
 
 static uint32_t render_lod_side(uint32_t radius) {
     return 2u * radius + 1u;
-}
-
-/* How far from the eye a level's rays are sure to reach, in blocks. */
-static uint32_t render_lod_reach_blocks(uint32_t shift, uint32_t radius) {
-    return ((radius - RENDER_LOD_MARGIN_COLUMNS) * (uint32_t)COLUMN_SIZE) << shift;
-}
-
-render_lod_plan_t render_lod_plan(uint32_t full_detail_chunks, uint32_t render_distance_chunks) {
-    render_lod_plan_t plan;
-    memset(&plan, 0, sizeof(plan));
-    if (render_distance_chunks <= full_detail_chunks) {
-        return plan;
-    }
-    const uint32_t full_blocks = full_detail_chunks * (uint32_t)COLUMN_SIZE;
-    const uint32_t far_blocks = render_distance_chunks * (uint32_t)COLUMN_SIZE;
-    for (uint32_t shift = LOD_SHIFT_MIN; shift < LOD_SHIFT_MIN + LOD_LEVELS_MAX; shift++) {
-        if (render_lod_reach_blocks(shift, RENDER_LOD_RADIUS_COLUMNS) <= full_blocks) {
-            continue; /* it would lie wholly under what is drawn block by block */
-        }
-        /* Only as wide as the distance asks, which is most of what the coarsest level would otherwise cost. */
-        const uint32_t wanted = (far_blocks >> (4u + shift)) + 1u + RENDER_LOD_MARGIN_COLUMNS;
-        const uint32_t radius = wanted < RENDER_LOD_RADIUS_COLUMNS ? wanted : RENDER_LOD_RADIUS_COLUMNS;
-        plan.shifts[plan.level_count] = (uint8_t)shift;
-        plan.radii[plan.level_count] = (uint8_t)radius;
-        plan.level_count++;
-        if (render_lod_reach_blocks(shift, radius) >= far_blocks) {
-            break;
-        }
-    }
-    return plan;
 }
 
 render_lod_bands_t render_lod_bands(float64_t pixel_error, uint32_t near_guarantee, float64_t half_fov_tangent,
@@ -115,6 +85,21 @@ render_lod_plan_t render_lod_plan_by_bands(const render_lod_bands_t *bands, uint
         plan.level_count++;
     }
     return plan;
+}
+
+float32_t render_lod_band_base(float32_t pixel_error, float32_t half_fov_tangent, uint32_t height_pixels) {
+    if (!(pixel_error > 0.0f32) || !(half_fov_tangent > 0.0f32)) {
+        return 0.0f32;
+    }
+    /* s / (2 E theta) with theta = 2 tan / rows is s rows / (4 E tan): this is that for s = 1. */
+    return (float32_t)height_pixels / (4.0f32 * pixel_error * half_fov_tangent);
+}
+
+uint32_t render_lod_block_radius(const render_lod_bands_t *bands, uint32_t render_distance_chunks) {
+    const uint32_t reach = (uint32_t)ceil(bands->from[1] / (float64_t)COLUMN_SIZE) + RENDER_LOD_BLOCK_MARGIN_CHUNKS;
+    uint32_t radius = reach < RENDER_LOD_BLOCK_RADIUS_MIN_CHUNKS ? RENDER_LOD_BLOCK_RADIUS_MIN_CHUNKS : reach;
+    radius = radius > RENDER_LOD_BLOCK_RADIUS_MAX_CHUNKS ? RENDER_LOD_BLOCK_RADIUS_MAX_CHUNKS : radius;
+    return radius > render_distance_chunks ? render_distance_chunks : radius;
 }
 
 uint64_t render_lod_table_bytes(const render_lod_plan_t *plan, uint32_t level) {
@@ -196,7 +181,7 @@ int32_t render_lod_cells_from_column(const uint16_t *column, uint32_t shift, uin
         }
         const uint16_t kept = count * 2u >= size ? highest : (uint16_t)BLOCK_ID_AIR;
         out[voxel * stride] = kept;
-        /* Ice is one block thick, so the half rule takes it: a frozen sea would read as open water until full detail drew it. The ice shows on the water it lay on. */
+        /* Ice is one block thick, so the half rule takes it: a frozen sea would read as open water until level 0 drew it. The ice shows on the water it lay on. */
         if (kept == BLOCK_ID_AIR && holds_ice && voxel > 0u && out[(voxel - 1u) * stride] == BLOCK_ID_WATER) {
             out[(voxel - 1u) * stride] = BLOCK_ID_ICE;
         }
@@ -377,6 +362,8 @@ gpu_status_t render_lod_init(render_lod_t *lod, arena_t *arena, device_memory_t 
     lod->borrowed_hits = hits;
     lod->sample = sample;
     lod->borrowed_sample_context = sample_context;
+    lod->pixel_error = RENDER_LOD_PIXEL_ERROR;
+    lod->band_dither = RENDER_LOD_BAND_DITHER;
     lod->borrowed_jobs = arena_alloc_array(arena, RENDER_LOD_JOBS, sizeof(render_lod_job_t), alignof(render_lod_job_t));
     for (uint32_t i = 0u; i < RENDER_LOD_JOBS; i++) {
         render_lod_job_t *const each = &lod->borrowed_jobs[i];
@@ -612,11 +599,20 @@ static bool render_lod_level_follow(render_lod_t *lod, uint32_t index, const flo
     return true;
 }
 
-/* Whether full detail is drawn over every chunk a level's column stands on, so that nothing of it would be seen yet. */
+/* Whether level 0 holds every chunk a level's column stands on, and the whole column is nearer than any ray of this level starts (plan 009
+ * phase 04): its band's start, by the last frame's bands, less the dither. So nothing of it would be seen yet. */
 static bool render_lod_covered(const render_lod_t *lod, const render_lod_level_t *level, int32_t column_x,
                                int32_t column_y) {
     const world_buffers_t *const fine = lod->borrowed_fine;
-    if (fine == nullptr || fine->borrowed_shadow == nullptr) {
+    if (fine == nullptr || fine->borrowed_shadow == nullptr || !(lod->band_base > 0.0f32)) {
+        return false;
+    }
+    const float32_t starts = lod->band_base * (float32_t)(1u << level->shift) * (1.0f32 - lod->band_dither);
+    const int32_t away_x = abs(column_x - level->center_x), away_y = abs(column_y - level->center_y);
+    /* The column's far corner, with the eye anywhere in its own column. */
+    const float32_t far_corner = (float32_t)((away_x > away_y ? away_x : away_y) + 1) *
+                                 (float32_t)((uint32_t)COLUMN_SIZE << level->shift) * 1.4143f32;
+    if (far_corner >= starts) {
         return false;
     }
     const int32_t chunks = 1 << level->shift;
@@ -652,7 +648,7 @@ static void render_lod_level_show(const render_lod_t *lod, render_lod_level_t *l
             const int32_t step = dy == -ring || dy == ring || ring == 0 ? 1 : 2 * ring;
             for (int32_t dx = -ring; dx <= ring && whole; dx += step) {
                 uint32_t slot = 0u;
-                /* A column put off as covered counts while full detail is still drawn over it: a ray there meets full detail first. */
+                /* A column put off as covered counts while it is still covered: a ray of this level does not go there. */
                 whole = world_buffers_slot_of(window, level->center_x + dx, level->center_y + dy, &slot) &&
                         (render_lod_state_built(level->borrowed_state[slot]) ||
                          (level->borrowed_state[slot] == RENDER_LOD_COLUMN_COVERED &&
@@ -1030,7 +1026,7 @@ static gpu_status_t render_lod_jobs_collect(render_lod_t *lod, uint64_t *budget_
 }
 
 /* Moves a level's cursor past what needs nothing, and returns the slot of the next column it wants, or false if it wants none. On the first
- * pass a column full detail covers is put off, as nothing of it is seen: on the second it is asked for like any other. */
+ * pass a covered column is put off, as nothing of it is seen: on the second it is asked for like any other. */
 static bool render_lod_level_next(render_lod_t *lod, render_lod_level_t *level, uint32_t *out_slot) {
     while (level->request_cursor < level->column_count) {
         const int16_t *const offset = &level->borrowed_offsets[level->request_cursor * 2u];
@@ -1077,7 +1073,7 @@ static bool render_lod_any_covered(const render_lod_t *lod) {
 
 /* The coarsest level first, the nearest column first in it: the coarsest is what reaches the horizon, for the least work per block, and it
  * stands round the eye too, so a new world or a new render distance shows the whole of it in well under a second, coarse, and finer levels
- * sharpen what is already there. A column full detail is already drawn over waits until all the rest are asked for. */
+ * sharpen what is already there. A covered column waits until all the rest are asked for. */
 static void render_lod_jobs_request(render_lod_t *lod) {
     if (lod->jobs_held != 0u) {
         return;
@@ -1096,7 +1092,7 @@ static void render_lod_jobs_request(render_lod_t *lod) {
             break; /* levels go from the coarsest */
         }
         if (best == UINT32_MAX && lod->covered_pass == 0u && render_lod_any_covered(lod)) {
-            /* All that shows is asked for: now what full detail covers, which a change of it may uncover. */
+            /* All that shows is asked for: now what is covered, which a move or a change of level 0 may uncover. */
             lod->covered_pass = 1u;
             for (uint32_t i = 0u; i < lod->level_count; i++) {
                 lod->levels[i].request_cursor = 0u;

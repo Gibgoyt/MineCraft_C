@@ -24,7 +24,6 @@ static const settings_number_t SETTINGS_NUMBERS[] = {
      SETTINGS_RENDER_DISTANCE_MIN,
      SETTINGS_RENDER_DISTANCE_MAX,
      {0}},
-    {"full_detail", offsetof(settings_values_t, full_detail), SETTINGS_FULL_DETAIL_MIN, SETTINGS_FULL_DETAIL_MAX, {0}},
     {"fov_degrees", offsetof(settings_values_t, fov_degrees), SETTINGS_FOV_MIN, SETTINGS_FOV_MAX, {0}},
     {"sensitivity_percent",
      offsetof(settings_values_t, sensitivity_percent),
@@ -69,7 +68,6 @@ const settings_effect_t *settings_persist_effect(uint32_t index) {
 
 void settings_persist_defaults(settings_values_t *out) {
     *out = (settings_values_t){.render_distance = MC_GAME_RENDER_DISTANCE_DEFAULT,
-                               .full_detail = RENDER_LOD_FULL_DETAIL_DEFAULT,
                                .fov_degrees = SETTINGS_FOV_DEFAULT,
                                .sensitivity_percent = SETTINGS_SENSITIVITY_DEFAULT,
                                .render_scale_percent = SETTINGS_RENDER_SCALE_DEFAULT,
@@ -151,6 +149,7 @@ typedef enum settings_line_result_t : uint8_t {
     SETTINGS_LINE_SET = 0,
     SETTINGS_LINE_HELD = 1, /* set, to the nearest it can be */
     SETTINGS_LINE_BAD = 2,
+    SETTINGS_LINE_RETIRED = 3, /* a key this program once wrote, and no longer reads: plan 009 phase 04 */
 } settings_line_result_t;
 
 static settings_line_result_t settings_line_number(const settings_number_t *number, const uint8_t *value,
@@ -168,6 +167,9 @@ static settings_line_result_t settings_line_number(const settings_number_t *numb
 /* One line that has both a key and a value. */
 static settings_line_result_t settings_line_apply(const uint8_t *key, uint64_t key_length, const uint8_t *value,
                                                   uint64_t value_length, settings_values_t *values) {
+    if (settings_key_is(key, key_length, "full_detail")) {
+        return SETTINGS_LINE_RETIRED;
+    }
     for (uint32_t i = 0u; i < SETTINGS_NUMBER_COUNT; i++) {
         if (settings_key_is(key, key_length, SETTINGS_NUMBERS[i].key)) {
             return settings_line_number(&SETTINGS_NUMBERS[i], value, value_length, values);
@@ -306,6 +308,7 @@ void settings_persist_parse(const uint8_t *text, uint64_t length, settings_value
     }
     uint64_t at = 0u;
     uint32_t line_number = 1u;
+    bool retired_said = false;
     while (at < length) {
         const uint8_t *const newline = memchr(text + at, '\n', length - at);
         const uint64_t line_length = newline != nullptr ? (uint64_t)(newline - (text + at)) : length - at;
@@ -321,7 +324,13 @@ void settings_persist_parse(const uint8_t *text, uint64_t length, settings_value
             /* settings_version_good has read the one that counts. */
         } else if (split) {
             const settings_line_result_t result = settings_line_apply(key, key_length, value, value_length, values);
-            if (result == SETTINGS_LINE_BAD) {
+            if (result == SETTINGS_LINE_RETIRED) {
+                /* An old file, with the line the Settings screen once wrote: nothing to do with it, and said once. */
+                if (!retired_said) {
+                    LOG_INFO("settings: full_detail is no longer a setting; the game works it out (plan 009)");
+                    retired_said = true;
+                }
+            } else if (result == SETTINGS_LINE_BAD) {
                 out_report->problems++;
                 LOG_WARN("settings: line %" PRIu32 " is not a setting with a value it can have, so it is ignored",
                          line_number);

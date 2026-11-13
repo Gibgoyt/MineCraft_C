@@ -266,7 +266,7 @@ void game_report(game_t *game) {
             LOG_WARN("game: %" PRIu64 " far columns had no room in their pool", far->stats.columns_no_room);
         }
     }
-    render_pyramid_report(game->borrowed_render);
+    render_lod_report(game->borrowed_render);
     /* The flip rate display_frames_run reports counts a picture shown twice as two. This is the rate of new ones. */
     if (game->pictures_shown != 0u && game->loop_ended_ns > game->loop_started_ns) {
         const float64_t seconds = time_ns_to_seconds(game->loop_ended_ns - game->loop_started_ns);

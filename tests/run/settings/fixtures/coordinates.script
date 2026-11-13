@@ -1,7 +1,7 @@
 # The Coordinates box, in a world that stays open, in the built program, at 640 by 480, scale 2. The settings file it starts from does not mention it, so
 # it starts on. Worked out by hand from the layouts in run/src/ui/menu/index.c and run/src/ui/screen_settings/index.c. The pointer starts at 320, 240 once
 # tick 0 has shown it the canvas, and it moves only on screens. It leaves the setting off, for what again.script finds in the file. Since plan 004
-# phase 10 the box is on the HUD page, behind the HUD... button where it was, and Back on that page is where Done is on the main page.
+# phase 10 the box is on the HUD page, behind the HUD... button where it was; Back on that page is at 452, and since plan 009 phase 04 the main page's Done is a row higher, at 404.
 
 1 move 0 -40                    # 320, 200: Singleplayer
 +1 button left down
@@ -37,17 +37,18 @@
 +1 move 0 46                    # 320, 248: Settings, on the pause screen
 +1 button left down
 +1 button left up
-+1 move -20 108                 # 300, 356: HUD..., the middle of row 6
++1 move -20 60                  # 300, 308: HUD..., the middle of row 5
 +1 button left down
 +1 button left up
-+1 move 20 -288                 # 320, 68: Coordinates, row 0 of the HUD page
++1 move 20 -240                 # 320, 68: Coordinates, row 0 of the HUD page
 +1 button left down
 +1 button left up
 +1 screenshot screen_coordinates.png
 +1 move 0 384                   # 320, 452: Back
 +1 button left down
 +1 button left up
-+1 button left down             # the same place: Done
++1 move 0 -48                   # 320, 404: Done, the main page's, a row up since plan 009 phase 04
++1 button left down             # Done
 +1 button left up
 +1 key escape down
 +1 key escape up
@@ -56,18 +57,19 @@
 # The same, for on.
 +1 key escape down
 +1 key escape up
-+1 move 0 -204                  # 320, 248
++1 move 0 -156                  # 320, 248
 +1 button left down
 +1 button left up
-+1 move -20 108                 # 300, 356: HUD...
++1 move -20 60                  # 300, 308: HUD...
 +1 button left down
 +1 button left up
-+1 move 20 -288                 # 320, 68: Coordinates
++1 move 20 -240                 # 320, 68: Coordinates
 +1 button left down
 +1 button left up
 +1 move 0 384                   # 320, 452: Back
 +1 button left down
 +1 button left up
++1 move 0 -48                   # 320, 404: Done
 +1 button left down             # Done
 +1 button left up
 +1 key escape down
@@ -77,25 +79,26 @@
 # And off, as the file ends up.
 +1 key escape down
 +1 key escape up
-+1 move 0 -204                  # 320, 248
++1 move 0 -156                  # 320, 248
 +1 button left down
 +1 button left up
-+1 move -20 108                 # 300, 356: HUD...
++1 move -20 60                  # 300, 308: HUD...
 +1 button left down
 +1 button left up
-+1 move 20 -288                 # 320, 68: Coordinates
++1 move 20 -240                 # 320, 68: Coordinates
 +1 button left down
 +1 button left up
 +1 move 0 384                   # 320, 452: Back
 +1 button left down
 +1 button left up
++1 move 0 -48                   # 320, 404: Done
 +1 button left down             # Done
 +1 button left up
 +1 key escape down
 +1 key escape up
 +1 key escape down
 +1 key escape up
-+1 move 0 -156                  # 320, 296: Quit to Title
++1 move 0 -108                  # 320, 296: Quit to Title
 +1 button left down
 +1 button left up
 +1 button left down             # the same place: Quit Game

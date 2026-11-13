@@ -54,7 +54,7 @@ A row is not sound, and the exit status says so, if the last picture has fewer t
 - `--god-rays`: every row with god rays too, as only that is all effects. Not with `--record`, as a line would carry another row's name.
 - `--live`: every row but the walk on the game's own threads against the clock, an orbit included. Not with `--record`, for the same reason.
 - `--weather <kind>`: every row in this weather, as the game's `--weather` takes it: `clear`, `rain`, `snow`, `sleet`, `storm`, `thunder`, `fog`, `dust` or `hurricane`. Not with `--record`, for the same reason.
-- `--render-distance <chunks>`: the rows held to the frame target at this render distance, not 32, with full detail still the game's 32, so the rest is the far field. What a raised default costs (plan 005 phase 8). The history's `render_distance` column says which it was.
+- `--render-distance <chunks>`: the rows held to the frame target at this render distance, not 32, with level 0 what the game works out (plan 009 phase 04), so the rest is the far field. What a raised default costs (plan 005 phase 8). The history's `render_distance` column says which it was.
 - `--record <file>`: add a line per row to a history. **`bench/world/history.tsv` is the repository's.** New columns go on the end of its first line, and old lines stay. The last, `tuning`, is the `MC_TUNE_HASH` the row was built with (`compile/config/`, plan 009 phase 02), so a number is read beside the tuning that made it; `--report` lists the values behind a hash.
 - `--label <text>`: says what was measured, in the history, such as the commit.
 - `--shots <dir>`: the last picture of each row as a PNG, to see what a row is looking at.
@@ -160,7 +160,7 @@ God rays cost 0.3 to 0.5 ms on `plains`, and 0.7 to 1.8 ms on a settled row else
 
 ## Plan 005 phase 14: how long the world takes to fill in
 
-Each row now prints `filled in:` and the history has five more columns, `fill_first_s`, `fill_near_s`, `fill_rings_s`, `fill_far_s` and `fill_all_s`: the opening's fill-in report (`run/src/game/fill/`), in seconds from `game_open`. The first column drawn, the rings out to 4 chunks, every ring out to full detail, the far field done (0 with none), and all of it. A settled row settles on one thread, so this is the workers' speed with nothing else in the way.
+Each row now prints `filled in:` and the history has five more columns, `fill_first_s`, `fill_near_s`, `fill_rings_s`, `fill_far_s` and `fill_all_s`: the opening's fill-in report (`run/src/game/fill/`), in seconds from `game_open`. The first column drawn, the rings out to 4 chunks, every ring out to level 0's radius, the far field done (0 with none), and all of it. A settled row settles on one thread, so this is the workers' speed with nothing else in the way.
 
 `eb650bd3: plan 005 phase 14, fill-in times, before the starvation fixes` in `history.tsv`, 2026-11-10, `build/release/bin/bench_world --record bench/world/history.tsv`, exit status 0, on the release preset with other agents' builds queued behind the lock (so the fps are not comparable with the profile rows above). At render distance 32 every row had the rings out to 4 chunks in 0.13 to 0.36 s and all 33 rings in 7.4 to 11.0 s. **With a far field the near rings wait for it:** `plains/flight-live-r128` drew all 33 near rings at 107.8 s and the far field at 145.1 s, and `plains/orbit-r512` at 96.1 s and 149.7 s, against 7.5 s for the same place at 32. That is phase 14's starvation, in the bench.
 

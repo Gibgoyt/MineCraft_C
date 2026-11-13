@@ -9,6 +9,7 @@
 #include "game/view/index.h"
 #include "heap/index.h"
 #include "job/index.h"
+#include "log/index.h"
 #include "png/index.h"
 #include "settings/index.h"
 #include "texture/index.h"
@@ -16,6 +17,7 @@
 #include "time/index.h"
 #include "ui/index.h"
 
+#include <fcntl.h>
 #include <inttypes.h>
 #include <linux/input-event-codes.h>
 #include <stdatomic.h>
@@ -40,8 +42,9 @@ enum : int32_t {
     AT_VSYNC_X = 130,
     AT_HUD_X = 300, /* HUD..., where Coordinates was: 120 + 2 * (46 + 4) is where it starts, and 2 * 82 how wide */
     AT_EFFECTS_X = 420,
-    AT_ROW_6_Y = 356,
-    AT_DONE_Y = 452,
+    AT_BOXES_Y = 308,     /* VSync, HUD... and Effects...: row 5 since plan 009 phase 04 took a slider out */
+    AT_MAIN_DONE_Y = 404, /* the main page's Done, row 7 */
+    AT_DONE_Y = 452,      /* Back, on the HUD and Effects pages, row 8 */
     AT_EFFECT_LEFT_X = 100,
     AT_EFFECT_RIGHT_X = 340,
 };
@@ -111,7 +114,7 @@ static settings_persist_report_t parse_text(const char *text, settings_values_t 
 TEST(the_defaults_are_the_plans_and_every_effect_has_its_own_bit) {
     const settings_values_t values = values_defaults();
     CHECK_EQ_U64(values.render_distance, 32u);
-    CHECK_EQ_U64(values.full_detail, 32u);
+    CHECK_EQ_U64(values._reserved0, 0u); /* plan 009 phase 04: the slot of a setting no longer there */
     CHECK_EQ_U64(values.fov_degrees, 70u);
     CHECK_EQ_U64(values.sensitivity_percent, 100u);
     CHECK_EQ_U64(values.render_scale_percent, 100u);
@@ -138,7 +141,6 @@ TEST(the_file_for_the_defaults_is_exactly_this) {
                                    "# minecraft_c's settings: what the Settings screen wrote. A line that is wrong is\n"
                                    "# told about at the start and ignored.\n"
                                    "render_distance: 32\n"
-                                   "full_detail: 32\n"
                                    "fov_degrees: 70\n"
                                    "sensitivity_percent: 100\n"
                                    "render_scale_percent: 100\n"
@@ -192,7 +194,6 @@ TEST(any_values_written_read_back_the_same) {
             random[i] = (uint32_t)(seed >> 32u);
         }
         settings_values_t values = {.render_distance = random[0],
-                                    .full_detail = random[1],
                                     .fov_degrees = random[2],
                                     .sensitivity_percent = random[3],
                                     .render_scale_percent = random[4],
@@ -222,7 +223,7 @@ TEST(any_values_written_read_back_the_same) {
         settings_persist_report_t report;
         settings_persist_parse(text, bytes, &back, &report);
         CHECK_EQ_U64(report.problems, 0u);
-        CHECK_EQ_U64(report.applied, 7u + 5u + 2u + SETTINGS_EFFECT_COUNT);
+        CHECK_EQ_U64(report.applied, 6u + 5u + 2u + SETTINGS_EFFECT_COUNT);
         CHECK_MEM_EQ(&back, &values, sizeof(values));
     }
 }
@@ -245,7 +246,7 @@ TEST(a_file_is_read_in_any_order_with_comments_and_the_last_line_wins) {
     CHECK_EQ_U64(values.effects & SHADE_FEATURE_SHADOW, 0u);
     CHECK_EQ_U64(values.effects & SHADE_FEATURE_GOD_RAYS, SHADE_FEATURE_GOD_RAYS);
     /* What was not said stays. */
-    CHECK_EQ_U64(values.full_detail, 32u);
+    CHECK_EQ_U64(values.worker_count, MC_THREADS_WORKERS);
     CHECK_EQ_U64(values.effects & SHADE_FEATURE_FOG, SHADE_FEATURE_FOG);
 }
 
@@ -264,28 +265,60 @@ TEST(the_sound_volume_is_kept_held_to_its_range_and_a_file_from_before_it_has_th
     CHECK_EQ_U64(values.sound_volume_percent, SETTINGS_SOUND_VOLUME_MAX);
 }
 
-/* Plan 005 phase 8: a file that says no distance gets the defaults, and Ahmed's file, 32 and 32, loads as it says, whatever
- * the default becomes: a raised default must never change a distance a person has kept. */
-TEST(a_file_without_the_distances_gets_the_defaults_and_one_with_them_keeps_them) {
+/* Plan 005 phase 8: a file that says no distance gets the default, and Ahmed's file, 32, loads as it says, whatever the default becomes: a
+ * raised default must never change a distance a person has kept. */
+TEST(a_file_without_the_distance_gets_the_default_and_one_with_it_keeps_it) {
     settings_values_t values = values_defaults();
     settings_persist_report_t report = parse_text("version: 1\nfov_degrees: 80\n", &values);
     CHECK_EQ_U64(report.problems, 0u);
     CHECK_EQ_U64(report.applied, 1u);
     CHECK_EQ_U64(values.render_distance, MC_GAME_RENDER_DISTANCE_DEFAULT);
-    CHECK_EQ_U64(values.full_detail, RENDER_LOD_FULL_DETAIL_DEFAULT);
     CHECK_EQ_U64(values.fov_degrees, 80u);
     settings_values_t kept = values_defaults();
     kept.render_distance = 7u; /* anything but 32, so that the file is what sets it */
-    kept.full_detail = 5u;
-    report = parse_text("version: 1\nrender_distance: 32\nfull_detail: 32\n", &kept);
+    report = parse_text("version: 1\nrender_distance: 32\n", &kept);
     CHECK_EQ_U64(report.problems, 0u);
-    CHECK_EQ_U64(report.applied, 2u);
-    CHECK_EQ_U64(kept.render_distance, 32u);
-    CHECK_EQ_U64(kept.full_detail, 32u);
+    CHECK_EQ_U64(report.applied, 1u);
     settings_values_t expected = values_defaults();
     expected.render_distance = 32u;
-    expected.full_detail = 32u;
     CHECK_MEM_EQ(&kept, &expected, sizeof(expected));
+}
+
+/* Plan 009 phase 04: Ahmed's own file, from before, has full_detail: 32, a setting there is no more. It loads with every other line as it
+ * says, that one is neither applied nor a problem, nothing of it lands anywhere, and the log says so once however many such lines there are. */
+TEST(an_old_file_with_full_detail_loads_and_says_so_once) {
+    static const char old_file[] = "version: 1\n"
+                                   "render_distance: 64\n"
+                                   "full_detail: 32\n"
+                                   "fov_degrees: 70\n"
+                                   "full_detail: 48\n"
+                                   "vsync: false\n";
+    char path[PATH_BYTES];
+    snprintf(path, sizeof(path), "/tmp/mc_c_settings_log_%d.txt", (int32_t)getpid());
+    const int32_t fd = (int32_t)open(path, O_CREAT | O_TRUNC | O_RDWR, 0600);
+    REQUIRE(fd >= 0);
+    const int32_t was = log_set_fd(fd);
+    settings_values_t values = values_defaults();
+    const settings_persist_report_t report = parse_text(old_file, &values);
+    (void)log_set_fd(was);
+    close(fd);
+    CHECK_EQ_U64(report.problems, 0u);
+    CHECK_EQ_U64(report.applied, 3u);
+    settings_values_t expected = values_defaults();
+    expected.render_distance = 64u;
+    expected.vsync = 0u;
+    CHECK_MEM_EQ(&values, &expected, sizeof(expected));
+    uint64_t bytes = 0u;
+    const char *const said = (const char *)file_slurp(t, path, &bytes);
+    REQUIRE(said != nullptr);
+    CHECK_EQ_U64(count_of(said, "settings: full_detail is no longer a setting; the game works it out (plan 009)"), 1u);
+    CHECK(strstr(said, "is not a setting") == nullptr);
+    unlink(path);
+    /* And it is never written again. */
+    uint8_t text[SETTINGS_TEXT_BYTES];
+    REQUIRE(settings_persist_write(&values, text, sizeof(text), &bytes));
+    text[bytes] = 0u;
+    CHECK(strstr((const char *)text, "full_detail") == nullptr);
 }
 
 TEST(a_file_from_before_show_coordinates_still_loads_and_shows_them) {
@@ -301,7 +334,7 @@ TEST(a_file_from_before_show_coordinates_still_loads_and_shows_them) {
     settings_values_t values = values_defaults();
     const settings_persist_report_t report = parse_text(old_file, &values);
     CHECK_EQ_U64(report.problems, 0u);
-    CHECK_EQ_U64(report.applied, 8u);
+    CHECK_EQ_U64(report.applied, 7u); /* its full_detail line, from before plan 009 phase 04, is not a setting now */
     CHECK_EQ_U64(values.render_distance, 12u);
     CHECK_EQ_U64(values.vsync, 0u);
     CHECK_EQ_U64(values.show_coordinates, 1u);
@@ -429,7 +462,7 @@ TEST(a_file_from_before_the_climate_hud_still_loads_and_shows_it) {
     settings_values_t fresh = values_defaults();
     const settings_persist_report_t report = parse_text(old_file, &fresh);
     CHECK_EQ_U64(report.problems, 0u);
-    CHECK_EQ_U64(report.applied, 9u);
+    CHECK_EQ_U64(report.applied, 8u); /* and here */
     /* ...and a new install's values, read over by such a file, have both on. */
     CHECK_EQ_U64(fresh.climate_hud, SETTINGS_CLIMATE_HUD_ALL);
     CHECK_EQ_U64(parse_text(old_file, &values).problems, 0u);
@@ -483,7 +516,7 @@ TEST(a_line_that_is_wrong_is_ignored_and_the_rest_are_read) {
     };
     for (uint32_t i = 0u; i < sizeof(wrong) / sizeof(wrong[0]); i++) {
         char text[128];
-        snprintf(text, sizeof(text), "version: 1\nfull_detail: 8\n%s\nfov_degrees: 80\n", wrong[i]);
+        snprintf(text, sizeof(text), "version: 1\nworker_count: 8\n%s\nfov_degrees: 80\n", wrong[i]);
         settings_values_t values = values_defaults();
         const settings_persist_report_t report = parse_text(text, &values);
         if (!CHECK_EQ_U64(report.problems, 1u)) {
@@ -493,27 +526,27 @@ TEST(a_line_that_is_wrong_is_ignored_and_the_rest_are_read) {
         CHECK_EQ_U64(values.render_distance, 32u);
         CHECK_EQ_U64(values.vsync, 1u);
         CHECK_EQ_U64(values.show_coordinates, 1u);
-        CHECK_EQ_U64(values.full_detail, 8u);
+        CHECK_EQ_U64(values.worker_count, 8u);
         CHECK_EQ_U64(values.fov_degrees, 80u);
     }
     /* A NUL in a line, and a line too long. */
-    static const uint8_t with_nul[] = "version: 1\nfov_degrees: 8\0000\nfull_detail: 8\n";
+    static const uint8_t with_nul[] = "version: 1\nfov_degrees: 8\0000\nworker_count: 8\n";
     settings_values_t values = values_defaults();
     settings_persist_report_t report;
     settings_persist_parse(with_nul, sizeof(with_nul) - 1u, &values, &report);
     CHECK_EQ_U64(report.problems, 1u);
     CHECK_EQ_U64(values.fov_degrees, 70u);
-    CHECK_EQ_U64(values.full_detail, 8u);
+    CHECK_EQ_U64(values.worker_count, 8u);
     char long_line[256];
     char padding[120];
     memset(padding, ' ', sizeof(padding) - 1u);
     padding[sizeof(padding) - 1u] = '\0';
-    snprintf(long_line, sizeof(long_line), "version: 1\nfov_degrees: 90%s\nfull_detail: 8\n", padding);
+    snprintf(long_line, sizeof(long_line), "version: 1\nfov_degrees: 90%s\nworker_count: 8\n", padding);
     values = values_defaults();
     report = parse_text(long_line, &values);
     CHECK_EQ_U64(report.problems, 1u);
     CHECK_EQ_U64(values.fov_degrees, 70u);
-    CHECK_EQ_U64(values.full_detail, 8u);
+    CHECK_EQ_U64(values.worker_count, 8u);
 }
 
 TEST(a_number_past_its_range_is_held_to_it_and_said) {
@@ -526,8 +559,6 @@ TEST(a_number_past_its_range_is_held_to_it_and_said) {
     static const range_case_t cases[] = {
         {"render_distance: 1", offsetof(settings_values_t, render_distance), 2u},
         {"render_distance: 513", offsetof(settings_values_t, render_distance), 512u},
-        {"full_detail: 0", offsetof(settings_values_t, full_detail), 2u},
-        {"full_detail: 49", offsetof(settings_values_t, full_detail), 48u},
         {"fov_degrees: 29", offsetof(settings_values_t, fov_degrees), 30u},
         {"fov_degrees: 111", offsetof(settings_values_t, fov_degrees), 110u},
         {"sensitivity_percent: 9", offsetof(settings_values_t, sensitivity_percent), 10u},
@@ -584,7 +615,6 @@ TEST(settings_are_kept_and_found_again_and_a_failed_save_leaves_what_was_there) 
     CHECK(file_path_size(path, &size) == FILE_ERROR_NOT_FOUND);
 
     settings->values.render_distance = 317u;
-    settings->values.full_detail = 7u;
     settings->values.fov_degrees = 103u;
     settings->values.sensitivity_percent = 55u;
     settings->values.render_scale_percent = 75u;
@@ -674,7 +704,7 @@ static bool rig_begin(test_context_t *t, screen_rig_t *rig, uint32_t width, uint
         texture_deinit(rig->texture);
         return false;
     }
-    ui_screen_settings_open(&rig->ui->settings_screen, &rig->ui->widget, &rig->values, 0u, MC_THREADS_WORKERS, false);
+    ui_screen_settings_open(&rig->ui->settings_screen, &rig->ui->widget, &rig->values, MC_THREADS_WORKERS, false);
     /* A first frame, so that the widgets know the canvas and the pointer is in its middle. */
     const input_frame_t nothing = {0};
     (void)rig_frame(rig, &nothing, false);
@@ -771,12 +801,12 @@ static void slider_check(test_context_t *t, screen_rig_t *rig, int32_t row, uint
 TEST(each_slider_goes_through_every_value_its_setting_has) {
     screen_rig_t *const rig = aligned_alloc_64(t, sizeof(screen_rig_t));
     REQUIRE(rig_begin(t, rig, SHEET_WIDTH, SHEET_HEIGHT));
+    /* Five sliders: plan 009 phase 04 took the second out, and the rest moved up a row. */
     slider_check(t, rig, 0, &rig->values.render_distance, 2u, 512u);
-    slider_check(t, rig, 1, &rig->values.full_detail, 2u, 48u);
-    slider_check(t, rig, 2, &rig->values.fov_degrees, 30u, 110u);
-    slider_check(t, rig, 3, &rig->values.sensitivity_percent, 10u, 400u);
-    slider_check(t, rig, 4, &rig->values.render_scale_percent, 25u, 100u);
-    slider_check(t, rig, 5, &rig->values.worker_count, 1u, MC_THREADS_WORKERS);
+    slider_check(t, rig, 1, &rig->values.fov_degrees, 30u, 110u);
+    slider_check(t, rig, 2, &rig->values.sensitivity_percent, 10u, 400u);
+    slider_check(t, rig, 3, &rig->values.render_scale_percent, 25u, 100u);
+    slider_check(t, rig, 4, &rig->values.worker_count, 1u, MC_THREADS_WORKERS);
     rig_end(rig);
 }
 
@@ -799,15 +829,15 @@ TEST(vsync_coordinates_and_each_effect_flip_alone_and_done_and_esc_go_where_they
     screen_rig_t *const rig = aligned_alloc_64(t, sizeof(screen_rig_t));
     REQUIRE(rig_begin(t, rig, SHEET_WIDTH, SHEET_HEIGHT));
     settings_values_t expected = rig->values;
-    CHECK_EQ_U64(rig_click(rig, AT_VSYNC_X, AT_ROW_6_Y), UI_SCREEN_SETTINGS_CHANGED);
+    CHECK_EQ_U64(rig_click(rig, AT_VSYNC_X, AT_BOXES_Y), UI_SCREEN_SETTINGS_CHANGED);
     expected.vsync = 0u;
     CHECK_MEM_EQ(&rig->values, &expected, sizeof(expected));
-    (void)rig_click(rig, AT_VSYNC_X, AT_ROW_6_Y);
+    (void)rig_click(rig, AT_VSYNC_X, AT_BOXES_Y);
     expected.vsync = 1u;
     CHECK_MEM_EQ(&rig->values, &expected, sizeof(expected));
     /* Plan 004 phase 10: HUD... opens the HUD page, where Coordinates, Date, Temperature and wind and Storm warnings each flip
      * only themselves. */
-    CHECK_EQ_U64(rig_click(rig, AT_HUD_X, AT_ROW_6_Y), UI_SCREEN_SETTINGS_NONE);
+    CHECK_EQ_U64(rig_click(rig, AT_HUD_X, AT_BOXES_Y), UI_SCREEN_SETTINGS_NONE);
     CHECK_EQ_U64(rig->ui->settings_screen.page, UI_SCREEN_SETTINGS_PAGE_HUD);
     CHECK_MEM_EQ(&rig->values, &expected, sizeof(expected));
     for (uint32_t row = 0u; row < 6u; row++) {
@@ -837,13 +867,13 @@ TEST(vsync_coordinates_and_each_effect_flip_alone_and_done_and_esc_go_where_they
     /* Esc goes back to the main page and is not done; Back does the same. */
     CHECK_EQ_U64(rig_escape(rig), UI_SCREEN_SETTINGS_NONE);
     CHECK_EQ_U64(rig->ui->settings_screen.page, UI_SCREEN_SETTINGS_PAGE_MAIN);
-    (void)rig_click(rig, AT_HUD_X, AT_ROW_6_Y);
+    (void)rig_click(rig, AT_HUD_X, AT_BOXES_Y);
     CHECK_EQ_U64(rig->ui->settings_screen.page, UI_SCREEN_SETTINGS_PAGE_HUD);
     CHECK_EQ_U64(rig_click(rig, AT_MIDDLE_X, AT_DONE_Y), UI_SCREEN_SETTINGS_NONE);
     CHECK_EQ_U64(rig->ui->settings_screen.page, UI_SCREEN_SETTINGS_PAGE_MAIN);
     CHECK_MEM_EQ(&rig->values, &expected, sizeof(expected));
 
-    CHECK_EQ_U64(rig_click(rig, AT_EFFECTS_X, AT_ROW_6_Y), UI_SCREEN_SETTINGS_NONE);
+    CHECK_EQ_U64(rig_click(rig, AT_EFFECTS_X, AT_BOXES_Y), UI_SCREEN_SETTINGS_NONE);
     CHECK_EQ_U64(rig->ui->settings_screen.page, UI_SCREEN_SETTINGS_PAGE_EFFECTS);
     for (uint32_t i = 0u; i < SETTINGS_EFFECT_ON_SCREEN; i++) {
         /* Two columns of eight, and the one past them on the left of Back's row. */
@@ -859,12 +889,13 @@ TEST(vsync_coordinates_and_each_effect_flip_alone_and_done_and_esc_go_where_they
     /* Esc from this page goes back one, and is not done; Back does the same. */
     CHECK_EQ_U64(rig_escape(rig), UI_SCREEN_SETTINGS_NONE);
     CHECK_EQ_U64(rig->ui->settings_screen.page, UI_SCREEN_SETTINGS_PAGE_MAIN);
-    (void)rig_click(rig, AT_EFFECTS_X, AT_ROW_6_Y);
+    (void)rig_click(rig, AT_EFFECTS_X, AT_BOXES_Y);
     CHECK_EQ_U64(rig->ui->settings_screen.page, UI_SCREEN_SETTINGS_PAGE_EFFECTS);
     CHECK_EQ_U64(rig_click(rig, AT_EFFECT_RIGHT_X, AT_DONE_Y), UI_SCREEN_SETTINGS_NONE);
     CHECK_EQ_U64(rig->ui->settings_screen.page, UI_SCREEN_SETTINGS_PAGE_MAIN);
-    /* Back there was not Done here. */
-    CHECK_EQ_U64(rig_click(rig, AT_MIDDLE_X, AT_DONE_Y), UI_SCREEN_SETTINGS_DONE);
+    /* Back there was not Done here, which is a row higher. */
+    CHECK_EQ_U64(rig_click(rig, AT_MIDDLE_X, AT_DONE_Y), UI_SCREEN_SETTINGS_NONE);
+    CHECK_EQ_U64(rig_click(rig, AT_MIDDLE_X, AT_MAIN_DONE_Y), UI_SCREEN_SETTINGS_DONE);
     CHECK_EQ_U64(rig_escape(rig), UI_SCREEN_SETTINGS_DONE);
     rig_end(rig);
 }
@@ -907,7 +938,7 @@ TEST(no_heap_in_200_frames_of_either_page_and_it_fits_every_size) {
     }
 }
 
-/* The label says so: a worker count of another run, and full detail past what a world's table holds, by looking at what is drawn. */
+/* The label says so: a worker count of another run, by looking at what is drawn. */
 TEST(what_takes_more_than_this_screen_says_so) {
     screen_rig_t *const rig = aligned_alloc_64(t, sizeof(screen_rig_t));
     REQUIRE(rig_begin(t, rig, SHEET_WIDTH, SHEET_HEIGHT));
@@ -916,36 +947,29 @@ TEST(what_takes_more_than_this_screen_says_so) {
     const uint64_t pixels = (uint64_t)SHEET_WIDTH * SHEET_HEIGHT * 4u;
     uint8_t *const plain = test_alloc(t, pixels);
     memcpy(plain, rig->ui->canvas.borrowed_pixels, pixels);
-    /* Nothing is past anything with no world, and a world of 32 holds all of 32. */
-    ui_screen_settings_open(&rig->ui->settings_screen, &rig->ui->widget, &rig->values, 32u, MC_THREADS_WORKERS, false);
+    /* The workers running are the ones asked for. */
+    ui_screen_settings_open(&rig->ui->settings_screen, &rig->ui->widget, &rig->values, MC_THREADS_WORKERS, false);
     (void)rig_frame(rig, &nothing, false);
     CHECK_MEM_EQ(rig->ui->canvas.borrowed_pixels, plain, pixels);
-    ui_screen_settings_open(&rig->ui->settings_screen, &rig->ui->widget, &rig->values, 31u, MC_THREADS_WORKERS, false);
-    (void)rig_frame(rig, &nothing, false);
-    CHECK(memcmp(rig->ui->canvas.borrowed_pixels, plain, pixels) != 0);
-    ui_screen_settings_open(&rig->ui->settings_screen, &rig->ui->widget, &rig->values, 32u, 3u, false);
+    ui_screen_settings_open(&rig->ui->settings_screen, &rig->ui->widget, &rig->values, 3u, false);
     (void)rig_frame(rig, &nothing, false);
     CHECK(memcmp(rig->ui->canvas.borrowed_pixels, plain, pixels) != 0);
     /* And what went wrong with keeping them, under everything else. */
-    ui_screen_settings_open(&rig->ui->settings_screen, &rig->ui->widget, &rig->values, 32u, MC_THREADS_WORKERS, false);
+    ui_screen_settings_open(&rig->ui->settings_screen, &rig->ui->widget, &rig->values, MC_THREADS_WORKERS, false);
     ui_screen_settings_message_set(&rig->ui->settings_screen, "Could not keep them: disk full");
     (void)rig_frame(rig, &nothing, false);
     CHECK(memcmp(rig->ui->canvas.borrowed_pixels, plain, pixels) != 0);
     rig_end(rig);
 }
 
-/* Plan 005 phase 8: the distance sliders say blocks as well as chunks, every value fits on its 200-wide track, each one's line of
- * what it means fits the smallest screen, and that line shows only while the pointer is over its slider. */
-TEST(the_distance_labels_say_blocks_and_fit_and_say_what_they_mean) {
+/* Plan 005 phase 8: the distance slider says blocks as well as chunks, every value fits on its 200-wide track, its line of what it means fits
+ * the smallest screen, and that line shows only while the pointer is over it. Plan 009 phase 04 left one distance slider. */
+TEST(the_distance_label_says_blocks_and_fits_and_says_what_it_means) {
     char label[48];
-    ui_screen_settings_distance_label(label, sizeof(label), "Render distance", 32u, false);
+    ui_screen_settings_distance_label(label, sizeof(label), "Render distance", 32u);
     CHECK_STR_EQ(label, "Render distance: 32 (512 blocks)");
-    ui_screen_settings_distance_label(label, sizeof(label), "Render distance", 512u, false);
+    ui_screen_settings_distance_label(label, sizeof(label), "Render distance", 512u);
     CHECK_STR_EQ(label, "Render distance: 512 (8192 blocks)");
-    ui_screen_settings_distance_label(label, sizeof(label), "Full detail", 2u, false);
-    CHECK_STR_EQ(label, "Full detail: 2 (32 blocks)");
-    ui_screen_settings_distance_label(label, sizeof(label), "Full detail", 40u, true);
-    CHECK_STR_EQ(label, "Full detail: 40 (new world)");
 
     screen_rig_t *const rig = aligned_alloc_64(t, sizeof(screen_rig_t));
     REQUIRE(rig_begin(t, rig, SHEET_WIDTH, SHEET_HEIGHT));
@@ -953,25 +977,15 @@ TEST(the_distance_labels_say_blocks_and_fit_and_say_what_they_mean) {
     /* At scale 1 the track is 200 wide, and each label, at every value, leaves at least 2 either side. */
     uint32_t widest = 0u;
     for (uint32_t chunks = SETTINGS_RENDER_DISTANCE_MIN; chunks <= SETTINGS_RENDER_DISTANCE_MAX; chunks++) {
-        ui_screen_settings_distance_label(label, sizeof(label), "Render distance", chunks, false);
+        ui_screen_settings_distance_label(label, sizeof(label), "Render distance", chunks);
         const uint32_t width = ui_font_measure(font, label, 1u).width;
         widest = width > widest ? width : widest;
     }
-    for (uint32_t chunks = SETTINGS_FULL_DETAIL_MIN; chunks <= SETTINGS_FULL_DETAIL_MAX; chunks++) {
-        for (uint32_t past = 0u; past < 2u; past++) {
-            ui_screen_settings_distance_label(label, sizeof(label), "Full detail", chunks, past != 0u);
-            const uint32_t width = ui_font_measure(font, label, 1u).width;
-            widest = width > widest ? width : widest;
-        }
-    }
     const uint32_t line_render = ui_font_measure(font, UI_SCREEN_SETTINGS_EXPLAIN_RENDER_DISTANCE, 1u).width;
-    const uint32_t line_detail = ui_font_measure(font, UI_SCREEN_SETTINGS_EXPLAIN_FULL_DETAIL, 1u).width;
-    printf("widest label %" PRIu32 " of 200, lines %" PRIu32 " and %" PRIu32 " of 312\n", widest, line_render,
-           line_detail);
+    printf("widest label %" PRIu32 " of 200, line %" PRIu32 " of 312\n", widest, line_render);
     CHECK(widest <= 196u);
     /* A tooltip has 4 either side of its text, on a canvas 320 wide at scale 1. */
     CHECK(line_render + 8u <= 320u);
-    CHECK(line_detail + 8u <= 320u);
 
     /* The line goes 16 below the pointer, and as far left as it must to fit, over the gap of 8 under that slider's row, where
      * nothing else draws: so the gap's left part, clear of the pointer, changes over each distance slider, and not over field
@@ -987,7 +1001,7 @@ TEST(the_distance_labels_say_blocks_and_fit_and_say_what_they_mean) {
             const uint64_t at = ((uint64_t)y * SHEET_WIDTH + 140u) * 4u;
             same = same && memcmp(rig->ui->canvas.borrowed_pixels + at, away + at, (300u - 140u) * 4u) == 0;
         }
-        CHECK_EQ_U64(same ? 1u : 0u, row == 2u ? 1u : 0u);
+        CHECK_EQ_U64(same ? 1u : 0u, row == 0u ? 0u : 1u);
     }
     rig_end(rig);
 }
@@ -997,44 +1011,57 @@ TEST(the_distance_labels_say_blocks_and_fit_and_say_what_they_mean) {
 TEST(a_config_comes_to_this_by_hand) {
     game_config_t config = {.render_distance = 32u, .width = 1920u, .height = 1080u, .show_date = 0u};
     game_view_t view;
-    /* All at full detail, by default: no far field, and fog a chunk short of it. */
+    /* Plan 009 phase 04, at E 2, 70 degrees and 1080 rows: d_1 is 385.6 blocks, so level 0 is 25 chunks and 2 more, 27, and the far field is
+     * level 1 from there. The table is what 30 degrees would want, 65 chunks held to 48, and to the render distance. */
     CHECK_EQ_U64(game_view_table_chunks(&config), 32u);
     game_view_work_out(&config, 32u, &view);
-    CHECK_EQ_U64(view.full_detail, 32u);
-    CHECK_EQ_U64(view.lod.level_count, 0u);
+    CHECK_EQ_U64(view.block_radius, 27u);
+    CHECK_EQ_U64(view.lod.level_count, 1u);
+    CHECK_EQ_U64(view.lod.shifts[0], 1u);
     CHECK_EQ_U64((uint64_t)view.fog_end, 31u * 16u);
     CHECK_EQ_U64(view.width, 1920u);
     CHECK_EQ_U64(view.height, 1080u);
     CHECK_EQ_U64(view.features, SHADE_FEATURES_PLAY);
-    /* Nearer than the table. The table stays for what the world opened with. */
+    /* Nearer than level 0 would be: all of it block by block, no far field. The table stays for what the world opened with. */
     config.render_distance = 2u;
     config.table_chunks = 32u;
     CHECK_EQ_U64(game_view_table_chunks(&config), 32u);
     game_view_work_out(&config, 32u, &view);
-    CHECK_EQ_U64(view.full_detail, 2u);
+    CHECK_EQ_U64(view.block_radius, 2u);
     CHECK_EQ_U64(view.lod.level_count, 0u);
     CHECK_EQ_U64((uint64_t)view.fog_end, 16u);
-    /* Further: the far field, and fog at what it reaches. */
+    /* Further: the far field by the bands, and fog at what it reaches. */
     config.render_distance = 512u;
     game_view_work_out(&config, 32u, &view);
-    CHECK_EQ_U64(view.full_detail, 32u);
+    CHECK_EQ_U64(view.block_radius, 27u);
     CHECK(view.lod.level_count != 0u);
     CHECK_EQ_U64((uint64_t)view.fog_end, 511u * 16u);
-    const render_lod_plan_t plan = render_lod_plan(32u, 512u);
+    const render_lod_bands_t bands = render_lod_bands((float64_t)RENDER_LOD_PIXEL_ERROR, RENDER_LOD_NEAR_GUARANTEE,
+                                                      (float64_t)RENDER_CAMERA_HALF_FOV_TANGENT_DEFAULT, 1080u);
+    const render_lod_plan_t plan = render_lod_plan_by_bands(&bands, 512u);
     CHECK_MEM_EQ(&view.lod, &plan, sizeof(plan));
-    /* With the far field off it stops at full detail, and the fog comes in. */
+    /* With the far field off it stops at level 0, and the fog comes in. */
     config.features_off = SHADE_FEATURE_LOD;
     game_view_work_out(&config, 32u, &view);
     CHECK_EQ_U64(view.lod.level_count, 0u);
-    CHECK_EQ_U64((uint64_t)view.fog_end, 31u * 16u);
+    CHECK_EQ_U64((uint64_t)view.fog_end, 26u * 16u);
     CHECK_EQ_U64(view.features, SHADE_FEATURES_PLAY & ~(uint32_t)SHADE_FEATURE_LOD);
-    /* Full detail past the table is held to it, and the far field starts there. */
+    /* A narrower field of view wants more of level 0, up to the table; the table at open is sized for the narrowest, held to 48. */
     config.features_off = 0u;
-    config.full_detail = 48u;
-    config.table_chunks = 32u;
+    config.table_chunks = 0u;
+    CHECK_EQ_U64(game_view_table_chunks(&config), 48u);
+    config.fov_degrees = 30u;
+    game_view_work_out(&config, 32u, &view);
+    CHECK_EQ_U64(view.block_radius, 32u);
+    game_view_work_out(&config, 48u, &view);
+    CHECK_EQ_U64(view.block_radius, 48u);
+    config.fov_degrees = 0u;
+    /* A reference's level 0, as a bench asks for it, held to the table. */
+    config.block_radius_given = 40u;
     CHECK_EQ_U64(game_view_table_chunks(&config), 48u);
     game_view_work_out(&config, 32u, &view);
-    CHECK_EQ_U64(view.full_detail, 32u);
+    CHECK_EQ_U64(view.block_radius, 32u);
+    config.block_radius_given = 0u;
     /* Size, and what cannot be nothing. */
     config.render_scale_percent = 50u;
     game_view_work_out(&config, 32u, &view);
@@ -1299,7 +1326,7 @@ static void run_program(test_context_t *t, char *const *argv, test_process_t *ou
 /* The weather is off: since the final check of plan 004 a new world's weather falls from its first tick, and rain at two
  * moments would make the same place two pictures. */
 static const char PROGRAM_START[] =
-    "version: 1\nrender_distance: 8\nfull_detail: 8\neffect_day_cycle: false\n"
+    "version: 1\nrender_distance: 8\neffect_day_cycle: false\n"
     "effect_ao: false\neffect_taa: false\neffect_shadows: false\neffect_weather: false\n"
     "worker_count: 5\n";
 
@@ -1353,7 +1380,7 @@ TEST(render_distance_changes_live_in_the_built_program_and_is_kept_and_the_pictu
     snprintf(line, sizeof(line),
              "game: settled on %" PRIu32 " columns, with the map's view at 8 chunks and 0 far levels", disc_columns(8));
     CHECK_CONTAINS(process.output, line);
-    CHECK_CONTAINS(process.output, "render distance 8, full detail 8, 5 workers");
+    CHECK_CONTAINS(process.output, "render distance 8, 5 workers");
     CHECK_CONTAINS(process.output, "settings: kept in ");
     CHECK_CONTAINS(process.output, " 0 bytes live");
 
@@ -1362,7 +1389,7 @@ TEST(render_distance_changes_live_in_the_built_program_and_is_kept_and_the_pictu
     const uint8_t *const kept = file_slurp(t, file, &bytes);
     REQUIRE(kept != nullptr);
     CHECK_CONTAINS((const char *)kept, "render_distance: 4\n");
-    CHECK_CONTAINS((const char *)kept, "full_detail: 8\n");
+    CHECK(strstr((const char *)kept, "full_detail") == nullptr);
     CHECK_CONTAINS((const char *)kept, "worker_count: 5\n");
     CHECK_CONTAINS((const char *)kept, "effect_taa: false\n");
 
@@ -1405,7 +1432,7 @@ TEST(render_distance_changes_live_in_the_built_program_and_is_kept_and_the_pictu
                                 (char *)"480",
                                 nullptr};
     run_program(t, argv_again, &process);
-    CHECK_CONTAINS(process.output, "render distance 4, full detail 8");
+    CHECK_CONTAINS(process.output, "render distance 4, 5 workers");
     CHECK_CONTAINS(process.output, "session: world 'live' is open");
     CHECK(strstr(process.output, "game: now drawing") == nullptr); /* nothing needed changing */
     picture_t opened_4;
@@ -1416,7 +1443,7 @@ TEST(render_distance_changes_live_in_the_built_program_and_is_kept_and_the_pictu
 
     /* And what is 2 live is what 2 is from the start, in a new program. */
     settings_write(t, file,
-                   "version: 1\nrender_distance: 2\nfull_detail: 8\neffect_day_cycle: false\n"
+                   "version: 1\nrender_distance: 2\neffect_day_cycle: false\n"
                    "effect_ao: false\neffect_taa: false\neffect_shadows: false\neffect_weather: false\n");
     char *const argv_2[] = {t->borrowed_args[0],
                             (char *)"--headless",
@@ -1456,9 +1483,9 @@ TEST(render_distance_changes_live_in_the_built_program_and_is_kept_and_the_pictu
     temp_directory_remove(t, root);
 }
 
-/* Past full detail in the built program, on request and on an optimized build: at -O0 a far field takes minutes to settle. From a run of the release
+/* Past level 0 in the built program, on request and on an optimized build: at -O0 a far field takes minutes to settle. From a run of the release
  * preset: SETTINGS_FAR=1 build/release/bin/tests/run_settings build/release/bin/minecraft_c. */
-TEST(render_distance_past_full_detail_in_the_built_program_on_request) {
+TEST(render_distance_past_level_0_in_the_built_program_on_request) {
     if (getenv("SETTINGS_FAR") == nullptr) {
         printf(
             "not run, and so proves nothing here: it needs SETTINGS_FAR=1 and a release build, as the README says\n");
@@ -1491,8 +1518,9 @@ TEST(render_distance_past_full_detail_in_the_built_program_on_request) {
     test_process_t process;
     run_program(t, argv, &process);
     CHECK_EQ_U64(count_of(process.output, "session: world 'live' is open"), 1u);
-    CHECK_CONTAINS(process.output, "game: now drawing 14 chunks, 8 of them block by block, 1 far levels");
-    CHECK_CONTAINS(process.output, "game: now drawing 12 chunks, 8 of them block by block, 1 far levels");
+    /* Plan 009 phase 04: at 640 x 480 and 70 degrees, d_1 is 171 blocks, so level 0 is 13 chunks, and at 12 it is all of them. */
+    CHECK_CONTAINS(process.output, "game: now drawing 14 chunks, 13 of them block by block, 1 far levels");
+    CHECK_CONTAINS(process.output, "game: now drawing 12 chunks, 12 of them block by block, 0 far levels");
     picture_t at_8, at_14, at_12;
     REQUIRE(picture_load(t, path_join(t, shots, "at_8.png"), &at_8));
     REQUIRE(picture_load(t, path_join(t, shots, "at_14.png"), &at_14));
@@ -1514,7 +1542,7 @@ TEST(render_distance_past_full_detail_in_the_built_program_on_request) {
                                 (char *)"480",
                                 nullptr};
     run_program(t, argv_again, &process);
-    CHECK_CONTAINS(process.output, "render distance 12, full detail 8");
+    CHECK_CONTAINS(process.output, "render distance 12, 5 workers");
     picture_t opened;
     REQUIRE(picture_load(t, path_join(t, again, "opened.png"), &opened));
     const uint32_t far_from_8 = picture_different(&at_14, &at_8);
@@ -1730,8 +1758,6 @@ TEST(a_flag_past_what_settings_can_hold_is_held_to_it) {
                           (char *)"--menu",
                           (char *)"--render-distance",
                           (char *)"1",
-                          (char *)"--full-detail",
-                          (char *)"99",
                           (char *)"--saves",
                           saves,
                           (char *)"--settings",
@@ -1752,7 +1778,6 @@ TEST(a_flag_past_what_settings_can_hold_is_held_to_it) {
     REQUIRE(kept != nullptr);
     /* 2, the least a slider has, and the script's 5. */
     CHECK_CONTAINS((const char *)kept, "render_distance: 7\n");
-    CHECK_CONTAINS((const char *)kept, "full_detail: 48\n");
     temp_directory_remove(t, root);
 }
 

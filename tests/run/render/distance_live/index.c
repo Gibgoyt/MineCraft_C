@@ -363,14 +363,13 @@ static int64_t dl_env_seconds(const char *name, int64_t fallback_ns) {
 typedef struct dl_change_t {
     const char *name;         /* 0 */
     uint32_t render_distance; /* 8 */
-    uint32_t full_detail;     /* 12 */
+    uint8_t _pad0[4];         /* 12 */
 } dl_change_t;
 static_assert(sizeof(dl_change_t) == 16);
 
 static bool dl_change(test_context_t *t, dl_rig_t *rig, game_config_t *config, uint32_t render_distance,
-                      uint32_t full_detail, uint32_t *sequence) {
+                      uint32_t *sequence) {
     config->render_distance = render_distance;
-    config->full_detail = full_detail;
     if (!CHECK(game_reconfigure(rig->game, config))) {
         return false;
     }
@@ -379,8 +378,8 @@ static bool dl_change(test_context_t *t, dl_rig_t *rig, game_config_t *config, u
 }
 
 /* A lit log near the eye, looked at square on for 2 s, then mined as the hands would: through world/edit, with the threads stopped for the
- * moment it takes. With busy, full detail goes to 32 at render distance 64 first, and the log is mined a second into that change, while
- * workers are busiest. The eye goes back to where it was after. */
+ * moment it takes. With busy, render distance goes from 64 to 48 first, and the log is
+ * mined a second into that change, while workers are busiest. The eye goes back to where it was after. */
 static bool dl_mine(test_context_t *t, dl_rig_t *rig, dl_watch_t *watch, game_config_t *config, const char *name,
                     bool busy, uint32_t *sequence) {
     game_t *const game = rig->game;
@@ -422,7 +421,7 @@ static bool dl_mine(test_context_t *t, dl_rig_t *rig, dl_watch_t *watch, game_co
     memcpy(reference, watch->screen, watch->bytes);
     dl_step_t change = {0};
     if (busy) {
-        if (!dl_change(t, rig, config, 64u, 32u, sequence)) {
+        if (!dl_change(t, rig, config, 48u, sequence)) {
             return false;
         }
         snprintf(label, sizeof(label), "%s_change", name);
@@ -464,7 +463,7 @@ static bool dl_mine(test_context_t *t, dl_rig_t *rig, dl_watch_t *watch, game_co
     if (busy) {
         /* The change the log was mined in, from its start: its fill went on through the mining. */
         step.fill.first_ns = change.fill.first_ns >= 0 ? change.fill.first_ns : step.fill.first_ns;
-        dl_hold_change(t, watch, "fd_32_busy", &step);
+        dl_hold_change(t, watch, "rd_48_busy", &step);
     }
     if (!CHECK(game_loop_stop(game))) {
         return false;
@@ -480,7 +479,7 @@ static bool dl_mine(test_context_t *t, dl_rig_t *rig, dl_watch_t *watch, game_co
 
 /* Ahmed's words: "agents need to, during a live game, please change render distance and see a very very quick update in less than 1
  * second please!!", and "i mine a tree and after it has all settled 5 minutes later then the tree shows as disappeared". */
-TEST(render_distance_and_full_detail_changes_show_within_a_second_and_a_mined_log_goes_at_once) {
+TEST(render_distance_changes_show_within_a_second_and_a_mined_log_goes_at_once) {
     dl_rig_t rig;
     REQUIRE(dl_rig_begin(t, &rig));
     game_t *const game = rig.game;
@@ -513,8 +512,8 @@ TEST(render_distance_and_full_detail_changes_show_within_a_second_and_a_mined_lo
         (void)mkdir(watch.shots, 0755);
     }
 
-    /* Ahmed's settings.yaml: render distance 32, full detail 32, room for 32. The day stands still and each frame stands alone, so the
-     * picture changes only with the world. */
+    /* Ahmed's settings.yaml: render distance 32, and level 0 as the game works it out (plan 009 phase 04). The day stands still and each
+     * frame stands alone, so the picture changes only with the world. */
     /* MC_DISTANCE_LIVE_OPEN measures a new world at another render distance, as a raised default would open it (plan 005 phase 8). */
     const char *const open_text = getenv("MC_DISTANCE_LIVE_OPEN");
     const uint64_t open_asked = open_text != nullptr && open_text[0] != '\0' ? strtoull(open_text, nullptr, 10) : 32u;
@@ -523,8 +522,6 @@ TEST(render_distance_and_full_detail_changes_show_within_a_second_and_a_mined_lo
     char open_name[16];
     (void)snprintf(open_name, sizeof(open_name), "open_%" PRIu32, open_distance);
     game_config_t config = {.render_distance = open_distance,
-                            .full_detail = 32u,
-                            .table_chunks = 32u,
                             .width = DL_WIDTH,
                             .height = DL_HEIGHT,
                             .features_off = SHADE_FEATURE_DAY_CYCLE | SHADE_FEATURE_AO | SHADE_FEATURE_TAA,
@@ -561,16 +558,15 @@ TEST(render_distance_and_full_detail_changes_show_within_a_second_and_a_mined_lo
     /* A lit log mined at render distance 32 with nothing else going on. */
     REQUIRE(dl_mine(t, &rig, &watch, &config, "log_32", false, &sequence));
 
-    /* Render distance 32 to 64 and back down to 16, then full detail 32 to 16 at 64, as the Settings screen does them. */
-    static const dl_change_t changes[] = {
-        {"rd_64", 64u, 32u}, {"rd_16", 16u, 32u}, {"rd_64_again", 64u, 32u}, {"fd_16", 64u, 16u}};
+    /* Render distance 32 to 64 and back down to 16, and to 64 again, as the Settings screen does them. */
+    static const dl_change_t changes[] = {{"rd_64", 64u, {0}}, {"rd_16", 16u, {0}}, {"rd_64_again", 64u, {0}}};
     for (uint32_t i = 0u; i < sizeof(changes) / sizeof(changes[0]); i++) {
-        REQUIRE(dl_change(t, &rig, &config, changes[i].render_distance, changes[i].full_detail, &sequence));
+        REQUIRE(dl_change(t, &rig, &config, changes[i].render_distance, &sequence));
         REQUIRE(dl_watch(t, &rig, &watch, changes[i].name, sequence, 0, &step));
         dl_hold_change(t, &watch, changes[i].name, &step);
     }
 
-    /* Full detail back up to 32 at 64, the busiest change, and a second into it a lit log mined. */
+    /* Render distance down to 48 from 64, a far field planned again, and a second into it a lit log mined. */
     REQUIRE(dl_mine(t, &rig, &watch, &config, "log_64_busy", true, &sequence));
 
     REQUIRE(game_loop_stop(game));
@@ -579,15 +575,17 @@ TEST(render_distance_and_full_detail_changes_show_within_a_second_and_a_mined_lo
     dl_rig_end(t, &rig);
 }
 
-/* ---- The pyramid follows an edit (plan 009 phase 03) ------------------------------------------------------------------ */
+/* ---- The far field follows an edit (plan 009 phases 03 and 04) ----------------------------------------------------------- */
 
 enum : int32_t {
-    DL_EDIT_DISTANCE = 400, /* blocks east of the eye: inside full detail 32, inside the pyramid's level 1 */
-    DL_EDIT_CUBE = 4,       /* a level 2 voxel's side, so levels 1 and 2 both change */
-    DL_EDIT_ABOVE = 8,      /* blocks above the ground, in the open air */
+    /* Blocks east of the eye: well inside level 0's 27 chunks, so that the level 2 column over it, 4 chunks wide, stands wholly on loaded
+     * blocks and is made from them as level 1's are. At 400 it reached chunk 27, past the loaded circle, and came from terrain. */
+    DL_EDIT_DISTANCE = 320,
+    DL_EDIT_CUBE = 4,  /* a level 2 voxel's side, so levels 1 and 2 both change */
+    DL_EDIT_ABOVE = 8, /* blocks above the ground, in the open air */
 };
 enum : uint32_t {
-    /* Ahmed's picture: the pyramid's bands follow the rows, and at 1080 level 1 reaches 771 blocks; at 360 it would stop at 257. */
+    /* Ahmed's picture: the bands follow the rows, and at 1080 level 1 reaches 771 blocks; at 360 it would stop at 257. */
     DL_EDIT_WIDTH = 1920u,
     DL_EDIT_HEIGHT = 1080u,
 };
@@ -596,7 +594,7 @@ enum : int64_t {
     DL_EDIT_WAIT_NS = 3000000000,
 };
 
-/* A 4 x 4 x 4 cube of stone put in the open air 400 blocks from the eye, through world/edit with the threads stopped, as the hands would. The
+/* A 4 x 4 x 4 cube of stone put in the open air 320 blocks from the eye, through world/edit with the threads stopped, as the hands would. The
  * store's watch says when the level 1 and level 2 columns holding it were sent with it, and what their voxel there was. */
 TEST(an_edit_reaches_level_1_and_level_2_within_100_ms) {
     dl_rig_t rig;
@@ -610,24 +608,21 @@ TEST(an_edit_reaches_level_1_and_level_2_within_100_ms) {
                                .width = DL_EDIT_WIDTH,
                                .height = DL_EDIT_HEIGHT};
     game_config_t config = {.render_distance = 64u,
-                            .full_detail = 32u,
-                            .table_chunks = 32u,
                             .width = DL_EDIT_WIDTH,
                             .height = DL_EDIT_HEIGHT,
                             .features_off = SHADE_FEATURE_DAY_CYCLE | SHADE_FEATURE_AO | SHADE_FEATURE_TAA,
                             .show_date = 0u};
     REQUIRE(game_open(game, &config));
-    /* Everything the eye's place wants, the pyramid included, on the card before anything is changed. */
+    /* Everything the eye's place wants, the far field included, on the card before anything is changed. */
     const int64_t settle_started_ns = time_now_ns();
     REQUIRE(game_settle(game));
     render_t *const render = rig.render;
-    const render_lod_t *const pyramid = render_pyramid_lod(render);
-    REQUIRE(pyramid != nullptr);
-    printf("  settled in %.2f s; the pyramid has %" PRIu32 " levels, %" PRIu64 " columns built, %" PRIu64
+    const render_lod_t *const far = render->borrowed_lod;
+    REQUIRE(far != nullptr);
+    printf("  settled in %.2f s; the far field has %" PRIu32 " levels, %" PRIu64 " columns built, %" PRIu64
            " of level 1 and %" PRIu64 " of level 2 from octants\n",
-           (libc_double_t)dl_seconds(time_now_ns() - settle_started_ns), pyramid->level_count,
-           pyramid->stats.columns_built, render->borrowed_octants->stats.columns_assembled[0],
-           render->borrowed_octants->stats.columns_assembled[1]);
+           (libc_double_t)dl_seconds(time_now_ns() - settle_started_ns), far->level_count, far->stats.columns_built,
+           render->borrowed_octants->stats.columns_assembled[0], render->borrowed_octants->stats.columns_assembled[1]);
     CHECK(render->borrowed_octants->stats.columns_assembled[0] > 0u);
     CHECK(render->borrowed_octants->stats.columns_assembled[1] > 0u);
 

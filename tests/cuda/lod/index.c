@@ -116,6 +116,32 @@ static uint16_t ld_voxel(const ld_source_t *source, uint32_t shift, int32_t x, i
 
 /* ---- A world with a far field ------------------------------------------------------------------------------------------------- */
 
+/* The far field's levels as they were planned before plan 009 phase 04, past blocks held full chunks each way: each level whose rays reach past
+ * them, 16 columns each way at most, the last cut to what far needs. The game plans by bands now (render_lod_plan_by_bands, tested in
+ * run_render_lod); these tests want levels they can count on paper, and the far field draws whatever plan it is given. */
+static render_lod_plan_t ld_plan(uint32_t full, uint32_t far) {
+    enum : uint32_t { LD_PLAN_RADIUS = 16u };
+    render_lod_plan_t plan;
+    memset(&plan, 0, sizeof(plan));
+    if (far <= full) {
+        return plan;
+    }
+    for (uint32_t shift = LOD_SHIFT_MIN; shift < LOD_SHIFT_MIN + LOD_LEVELS_MAX; shift++) {
+        if ((((LD_PLAN_RADIUS - RENDER_LOD_MARGIN_COLUMNS) * 16u) << shift) <= full * 16u) {
+            continue;
+        }
+        const uint32_t wanted = ((far * 16u) >> (4u + shift)) + 1u + RENDER_LOD_MARGIN_COLUMNS;
+        const uint32_t radius = wanted < LD_PLAN_RADIUS ? wanted : LD_PLAN_RADIUS;
+        plan.shifts[plan.level_count] = (uint8_t)shift;
+        plan.radii[plan.level_count] = (uint8_t)radius;
+        plan.level_count++;
+        if ((((radius - RENDER_LOD_MARGIN_COLUMNS) * 16u) << shift) >= far * 16u) {
+            break;
+        }
+    }
+    return plan;
+}
+
 /* Pumps until every column wanted is on the card. */
 static bool ld_settle(test_context_t *t, sk_rig_t *rig, const float64_t position[3]) {
     render_lod_t *const lod = rig->render->borrowed_lod;
@@ -139,9 +165,9 @@ static bool ld_begin(test_context_t *t, sk_rig_t *rig, const ld_source_t *source
         return false;
     }
     render_frame_features_set(&rig->render->frame, features);
-    const render_lod_plan_t plan = render_lod_plan(full, far);
+    const render_lod_plan_t plan = ld_plan(full, far);
     if (!CHECK(plan.level_count > 0u) ||
-        !CHECK_EQ_U64(render_open_lod(rig->render, &plan, ld_sample, source), GPU_STATUS_OK)) {
+        !CHECK_EQ_U64(render_open_lod(rig->render, &plan, 0u, ld_sample, source), GPU_STATUS_OK)) {
         return false;
     }
     return ld_settle(t, rig, position);
@@ -202,7 +228,7 @@ typedef struct ld_marched_t {
 } ld_marched_t;
 static_assert(sizeof(ld_marched_t) == 16);
 
-/* Whether full detail has a column at this cell. */
+/* Whether level 0 has a column at this cell. */
 static bool ld_fine_ready(const world_buffers_t *fine, int32_t x, int32_t y) {
     const int32_t column_x = x >> 4, column_y = y >> 4;
     uint32_t slot = 0u;
@@ -214,12 +240,37 @@ static bool ld_fine_ready(const world_buffers_t *fine, int32_t x, int32_t y) {
 }
 
 /* One level, as the far field's own rule has it: from t_from to t_exit, one voxel at a time, taking only what the ray enters after t_from.
- * A ray going on past a column full detail holds starts again from where it leaves that column. */
-static bool ld_march_level(const ld_source_t *source, const lod_level_t *level, const world_buffers_t *fine,
-                           const float64_t eye[3], const float64_t direction[3], float64_t *t_from, float64_t t_exit,
+ * Plan 009 phase 04: nothing is passed by; a level is only ever entered past where the last stopped. */
+static bool ld_march_level(const ld_source_t *source, const lod_level_t *level, const float64_t eye[3],
+                           const float64_t direction[3], float64_t *t_from, float64_t t_exit, bool met_at_handover,
                            ld_marched_t *out) {
     const float64_t size = (float64_t)(1u << level->shift);
-    while (*t_from < t_exit) {
+    if (met_at_handover) {
+        /* A frame's far ray that comes into a level inside one of its voxels meets it there: its top going down, else the face it came in by. */
+        int32_t inside[3];
+        for (uint32_t i = 0u; i < 3u; i++) {
+            inside[i] = (int32_t)floor((eye[i] + direction[i] * *t_from) / size);
+        }
+        const uint16_t block = ld_voxel(source, level->shift, inside[0], inside[1], inside[2]);
+        if (block != BLOCK_ID_AIR) {
+            float64_t latest = -1e30f64;
+            uint32_t axis = 0u;
+            for (uint32_t i = 0u; i < 3u; i++) {
+                const float64_t plane = (float64_t)(direction[i] > 0.0f64 ? inside[i] : inside[i] + 1) * size;
+                const float64_t t_near = (plane - eye[i]) / direction[i];
+                if (t_near > latest) {
+                    latest = t_near;
+                    axis = i;
+                }
+            }
+            out->t = *t_from;
+            out->material = block;
+            out->face = direction[2] < 0.0f64 ? (uint32_t)TRAVERSE_FACE_POS_Z
+                                              : axis * 2u + (direction[axis] > 0.0f64 ? 0u : 1u);
+            return true;
+        }
+    }
+    {
         int32_t voxel[3];
         float64_t step_t[3], delta[3];
         int32_t step[3];
@@ -231,7 +282,6 @@ static bool ld_march_level(const ld_source_t *source, const lod_level_t *level, 
             step_t[i] = (plane - eye[i]) / direction[i];
             delta[i] = size / fabs(direction[i]);
         }
-        bool went_on = false;
         for (;;) {
             uint32_t axis = 0u;
             axis = step_t[1] < step_t[axis] ? 1u : axis;
@@ -246,31 +296,18 @@ static bool ld_march_level(const ld_source_t *source, const lod_level_t *level, 
             if (block == BLOCK_ID_AIR) {
                 continue;
             }
-            const int32_t cell_x = (int32_t)floor(eye[0] + direction[0] * (t + 1e-3f64));
-            const int32_t cell_y = (int32_t)floor(eye[1] + direction[1] * (t + 1e-3f64));
-            if (fine != nullptr && ld_fine_ready(fine, cell_x, cell_y)) {
-                const float64_t plane_x = (float64_t)((cell_x & ~15) + (direction[0] > 0.0f64 ? 16 : 0));
-                const float64_t plane_y = (float64_t)((cell_y & ~15) + (direction[1] > 0.0f64 ? 16 : 0));
-                const float64_t past = fmin((plane_x - eye[0]) / direction[0], (plane_y - eye[1]) / direction[1]);
-                *t_from = fmax(past, t + 1e-3f64);
-                went_on = true;
-                break;
-            }
             out->t = t;
             out->material = block;
             out->face = axis * 2u + (direction[axis] > 0.0f64 ? 0u : 1u);
             return true;
         }
-        if (!went_on) {
-            break;
-        }
     }
-    return false;
 }
 
-/* eye has a storage height on z. */
-static void ld_march(const ld_source_t *source, const lod_scene_t *scene, const world_buffers_t *fine,
-                     const float64_t eye[3], const float64_t direction[3], float64_t t_start, ld_marched_t *out) {
+/* eye has a storage height on z. From t_start on, through the levels; with band_base (traverse_world_t's, and no dither) each level stops at
+ * the next shown level's d as well as its square's edge. */
+static void ld_march(const ld_source_t *source, const lod_scene_t *scene, float32_t band_base, const float64_t eye[3],
+                     const float64_t direction[3], float64_t t_start, bool met_at_handover, ld_marched_t *out) {
     out->t = (float64_t)TRAVERSE_COARSE_SKY;
     out->material = LOD_NO_MATERIAL;
     out->face = TRAVERSE_FACE_MISS;
@@ -288,8 +325,16 @@ static void ld_march(const ld_source_t *source, const lod_scene_t *scene, const 
             const float64_t plane = direction[a] > 0.0f64 ? low[a] + (float64_t)level->shown_side * scale : low[a];
             t_exit = fmin(t_exit, (plane - eye[a]) / direction[a]);
         }
+        for (uint32_t next = i + 1u; band_base > 0.0f32 && next < scene->level_count; next++) {
+            if (scene->levels[next].shown_side != 0u) {
+                /* As the card works it out, in float32_t. */
+                const float32_t from = band_base * (float32_t)(1u << scene->levels[next].shift);
+                t_exit = fmin(t_exit, (float64_t)fmaxf(from, (float32_t)RENDER_LOD_NEAR_GUARANTEE));
+                break;
+            }
+        }
         if (t_exit > t_from) {
-            if (ld_march_level(source, level, fine, eye, direction, &t_from, t_exit, out)) {
+            if (ld_march_level(source, level, eye, direction, &t_from, t_exit, met_at_handover, out)) {
                 return;
             }
             t_from = fmax(t_from, t_exit - 0.01f64);
@@ -300,8 +345,26 @@ static void ld_march(const ld_source_t *source, const lod_scene_t *scene, const 
 /* ---- By hand ---------------------------------------------------------------------------------------------------------------- */
 
 TEST(the_levels_are_as_on_paper) {
-    /* Default full detail to the largest distance: 896, 1792, 3584 and 7168 blocks, and then what is left in voxels of 64. */
-    const render_lod_plan_t most = render_lod_plan(32u, 512u);
+    /* Plan 009 phase 04: the game's levels by bands, at the pictures these tests draw and at Ahmed's, reach every distance there can be. */
+    const float64_t half = (float64_t)RENDER_CAMERA_HALF_FOV_TANGENT_DEFAULT;
+    const uint32_t heights[] = {LD_HEIGHT, 1080u};
+    for (uint32_t h = 0u; h < 2u; h++) {
+        const render_lod_bands_t bands = render_lod_bands(2.0f64, RENDER_LOD_NEAR_GUARANTEE, half, heights[h]);
+        for (uint32_t far = 2u; far <= 512u; far += 3u) {
+            const render_lod_plan_t plan = render_lod_plan_by_bands(&bands, far);
+            if (plan.level_count == 0u) {
+                CHECK(bands.from[1] >= (float64_t)far * 16.0f64);
+                continue;
+            }
+            const uint32_t last = plan.level_count - 1u;
+            CHECK_EQ_U64(plan.shifts[0], 1u);
+            /* Short of it only where the coarsest level there is, or the widest, cannot reach it. */
+            CHECK(((uint32_t)(plan.radii[last] - RENDER_LOD_MARGIN_COLUMNS) * 16u << plan.shifts[last]) >= far * 16u ||
+                  plan.radii[last] == RENDER_LOD_RADIUS_COLUMNS_MAX || plan.level_count == LOD_LEVELS_MAX);
+        }
+    }
+    /* What the far field these tests draw is planned as, by hand: 896, 1792, 3584 and 7168 blocks, and then voxels of 64. */
+    const render_lod_plan_t most = ld_plan(32u, 512u);
     REQUIRE(CHECK_EQ_U64(most.level_count, 5u));
     const uint32_t shifts[] = {2u, 3u, 4u, 5u, 6u};
     const uint32_t radii[] = {16u, 16u, 16u, 16u, 11u};
@@ -312,22 +375,22 @@ TEST(the_levels_are_as_on_paper) {
     /* Reach and nothing over: the last one's rays go at least the distance, and the one before does not. */
     CHECK(((most.radii[4] - RENDER_LOD_MARGIN_COLUMNS) * 16u << most.shifts[4]) >= 512u * 16u);
     CHECK(((most.radii[3] - RENDER_LOD_MARGIN_COLUMNS) * 16u << most.shifts[3]) < 512u * 16u);
-    /* Full detail reaching all of it wants none. */
-    CHECK_EQ_U64(render_lod_plan(32u, 32u).level_count, 0u);
-    CHECK_EQ_U64(render_lod_plan(32u, 10u).level_count, 0u);
+    /* Level 0 reaching all of it wants none. */
+    CHECK_EQ_U64(ld_plan(32u, 32u).level_count, 0u);
+    CHECK_EQ_U64(ld_plan(32u, 10u).level_count, 0u);
     /* Small distances stop early. */
-    const render_lod_plan_t small = render_lod_plan(8u, 64u);
+    const render_lod_plan_t small = ld_plan(8u, 64u);
     CHECK_EQ_U64(small.level_count, 3u);
     CHECK_EQ_U64(small.shifts[0], 1u);
     CHECK_EQ_U64(small.shifts[2], 3u);
     CHECK_EQ_U64(small.radii[2], 11u);
     /* The finest of all is one block per 8 cubic metres. */
-    CHECK_EQ_U64(render_lod_plan(1u, 512u).level_count, LOD_LEVELS_MAX);
-    CHECK_EQ_U64(render_lod_plan(1u, 512u).shifts[0], 1u);
+    CHECK_EQ_U64(ld_plan(1u, 512u).level_count, LOD_LEVELS_MAX);
+    CHECK_EQ_U64(ld_plan(1u, 512u).shifts[0], 1u);
     /* Every distance there can be is reached. */
     for (uint32_t full = 1u; full <= 64u; full++) {
         for (uint32_t far = full + 1u; far <= 512u; far += 7u) {
-            const render_lod_plan_t plan = render_lod_plan(full, far);
+            const render_lod_plan_t plan = ld_plan(full, far);
             REQUIRE(plan.level_count > 0u);
             const uint32_t last = plan.level_count - 1u;
             CHECK(((plan.radii[last] - RENDER_LOD_MARGIN_COLUMNS) * 16u << plan.shifts[last]) >= far * 16u);
@@ -571,7 +634,7 @@ static uint64_t ld_blocks2(const render_lod_level_t *level, int32_t chunk_x, int
 }
 
 /* Plan 005 phase 14. A far field that has just opened asks first for the coarsest level, nearest the eye first, as it reaches the horizon and
- * stands round the eye too; a column full detail is drawn over waits. A plan that changes keeps each level that stays the same: what it
+ * stands round the eye too; a column level 0 is drawn over waits. A plan that changes keeps each level that stays the same: what it
  * shows is there on the very next frame, on the card as it was, and nothing of it is built again. */
 TEST(the_coarsest_level_comes_first_nearest_first_and_a_level_that_stays_is_kept) {
     sk_rig_t rig;
@@ -580,11 +643,11 @@ TEST(the_coarsest_level_comes_first_nearest_first_and_a_level_that_stays_is_kept
     REQUIRE(sk_rig_begin(t, &rig) && sk_hand_world_open(t, &rig, LD_HAND_RADIUS, LD_WIDTH, LD_HEIGHT, LD_FOG_FAR) &&
             sk_hand_world_sync(t, &rig));
     render_frame_features_set(&rig.render->frame, LD_PLAIN);
-    const render_lod_plan_t both = render_lod_plan(LD_HAND_RADIUS, 40u);
-    const render_lod_plan_t coarse = render_lod_plan(30u, 40u);
+    const render_lod_plan_t both = ld_plan(LD_HAND_RADIUS, 40u);
+    const render_lod_plan_t coarse = ld_plan(30u, 40u);
     REQUIRE(both.level_count == 2u && coarse.level_count == 1u && coarse.shifts[0] == both.shifts[1] &&
             coarse.radii[0] == both.radii[1]);
-    REQUIRE(render_open_lod(rig.render, &both, ld_sample, &source) == GPU_STATUS_OK);
+    REQUIRE(render_open_lod(rig.render, &both, 0u, ld_sample, &source) == GPU_STATUS_OK);
     render_lod_t *lod = rig.render->borrowed_lod;
     REQUIRE(render_lod_frame(lod, eye) == GPU_STATUS_OK);
     /* Every column asked for is of the coarsest level, and at least as near as every one of it still waiting to be. */
@@ -619,7 +682,7 @@ TEST(the_coarsest_level_comes_first_nearest_first_and_a_level_that_stays_is_kept
     /* To the coarse level alone: it is kept, shown at once and whole, and nothing is built. */
     const uint32_t shown = lod->levels[1].shown_side;
     const uint64_t slabs = lod->levels[1].buffers.slab_bytes;
-    REQUIRE(render_replan_lod(rig.render, &coarse, ld_sample, &source) == GPU_STATUS_OK);
+    REQUIRE(render_replan_lod(rig.render, &coarse, 0u, ld_sample, &source) == GPU_STATUS_OK);
     lod = rig.render->borrowed_lod;
     REQUIRE(lod != nullptr && lod->level_count == 1u);
     REQUIRE(render_lod_frame(lod, eye) == GPU_STATUS_OK);
@@ -632,7 +695,7 @@ TEST(the_coarsest_level_comes_first_nearest_first_and_a_level_that_stays_is_kept
     CHECK(voxels > 0u);
 
     /* And back: the fine level starts empty, so rays go on to the coarse one, which is still whole, while the fine one fills. */
-    REQUIRE(render_replan_lod(rig.render, &both, ld_sample, &source) == GPU_STATUS_OK);
+    REQUIRE(render_replan_lod(rig.render, &both, 0u, ld_sample, &source) == GPU_STATUS_OK);
     lod = rig.render->borrowed_lod;
     REQUIRE(lod != nullptr && lod->level_count == 2u);
     CHECK_EQ_U64(lod->levels[0].shown_side, 0u);
@@ -684,7 +747,7 @@ TEST(rays_agree_with_a_march_through_every_level) {
     render_lod_scene(rig.render->borrowed_lod, &scene);
     gpu_error_t error;
     memset(&error, 0, sizeof(error));
-    REQUIRE(lod_rays(&error, &scene, nullptr, nullptr, &ray_block, &hit_block, LD_RANDOM_RAYS) == GPU_STATUS_OK);
+    REQUIRE(lod_rays(&error, &scene, nullptr, &ray_block, &hit_block, LD_RANDOM_RAYS) == GPU_STATUS_OK);
     REQUIRE(traverse_wait(&error) == GPU_STATUS_OK);
     REQUIRE(device_memory_read(memory, &hit_block, 0u, hits, LD_RANDOM_RAYS * sizeof(lod_hit_t)) == GPU_STATUS_OK);
     const float64_t eye[3] = {place[0], place[1], place[2] + 256.0f64};
@@ -699,7 +762,7 @@ TEST(rays_agree_with_a_march_through_every_level) {
             direction[a] /= sqrt(length);
         }
         ld_marched_t marched;
-        ld_march(&source, &scene, nullptr, eye, direction, 0.0f64, &marched);
+        ld_march(&source, &scene, 0.0f32, eye, direction, 0.0f64, false, &marched);
         met += marched.material != LOD_NO_MATERIAL ? 1u : 0u;
         const bool same = marched.material == hits[i].material && marched.face == hits[i].face &&
                           fabs(marched.t - (float64_t)hits[i].t) < 0.01f64 + marched.t * 1e-5f64;
@@ -759,7 +822,7 @@ TEST(the_sun_is_stopped_by_what_stands_in_its_way) {
                          .shadows = 1u};
     gpu_error_t error;
     memset(&error, 0, sizeof(error));
-    REQUIRE(lod_rays(&error, &scene, &light, nullptr, &ray_block, &hit_block, RAYS) == GPU_STATUS_OK);
+    REQUIRE(lod_rays(&error, &scene, &light, &ray_block, &hit_block, RAYS) == GPU_STATUS_OK);
     REQUIRE(traverse_wait(&error) == GPU_STATUS_OK);
     REQUIRE(device_memory_read(memory, &hit_block, 0u, hits, RAYS * sizeof(lod_hit_t)) == GPU_STATUS_OK);
     uint64_t lit = 0u, shadowed = 0u, wrong = 0u;
@@ -782,7 +845,7 @@ TEST(the_sun_is_stopped_by_what_stands_in_its_way) {
     CHECK(shadowed > 0u);
     /* The sun behind the ground: a top gets none of it, and no ray has to say so. */
     light.sun_direction[2] = -0.70710678f32;
-    REQUIRE(lod_rays(&error, &scene, &light, nullptr, &ray_block, &hit_block, RAYS) == GPU_STATUS_OK);
+    REQUIRE(lod_rays(&error, &scene, &light, &ray_block, &hit_block, RAYS) == GPU_STATUS_OK);
     REQUIRE(traverse_wait(&error) == GPU_STATUS_OK);
     REQUIRE(device_memory_read(memory, &hit_block, 0u, hits, RAYS * sizeof(lod_hit_t)) == GPU_STATUS_OK);
     for (uint32_t i = 0u; i < RAYS; i++) {
@@ -807,22 +870,45 @@ static const uint8_t *ld_mean_of(const sk_rig_t *rig, uint32_t material, uint32_
     return info.borrowed_entry->mean_rgba;
 }
 
-TEST(what_full_detail_misses_goes_on_to_the_far_field_and_shows_its_colour) {
+/* Plan 009 phase 04: where a primary ray left level 0, as the card has it: a miss's t, short of the edge (at d_1, or a column not there), or
+ * where it leaves level 0's square, or d_1, whichever is nearest. */
+static float64_t ld_left_level_0(const world_buffers_t *fine, const traverse_hit_t *hit, float32_t band_base,
+                                 const float64_t eye[3], const float64_t direction[3]) {
+    float64_t t = traverse_hit_face(hit->info) == TRAVERSE_FACE_MISS ? (float64_t)hit->t : 1e30f64;
+    if (band_base > 0.0f32) {
+        t = fmin(t, (float64_t)fmaxf(band_base * 2.0f32, (float32_t)RENDER_LOD_NEAR_GUARANTEE));
+    }
+    for (uint32_t a = 0u; a < 2u; a++) {
+        const float64_t low = (float64_t)((a == 0u ? fine->window.min_x : fine->window.min_y) * 16);
+        const float64_t plane = direction[a] > 0.0f64 ? low + (float64_t)(fine->window.side * 16u) : low;
+        t = fmin(t, (plane - eye[a]) / direction[a]);
+    }
+    return t;
+}
+
+TEST(what_level_0_leaves_goes_on_to_the_far_field_and_shows_its_colour) {
     sk_rig_t rig;
     const ld_source_t source = {LD_GROUND_HILLS, {0}};
     render_camera_t eye;
     render_camera_start(&eye, 8.5f64, 8.5f64, 220.5f64, 0.3f32, -0.25f32);
     REQUIRE(ld_begin(t, &rig, &source, LD_HAND_RADIUS, 64u, LD_FOG_FAR, LD_PLAIN, eye.position));
+    /* The bands as the frame works them out, with no dither, so that a march on the host can follow them. */
+    rig.render->borrowed_lod->band_dither = 0.0f32;
     const render_frame_t *const frame = &rig.render->frame;
     const uint8_t *const with = ld_picture(t, &rig, &eye);
     const shade_pixel_t *const shaded = ld_shaded(t, &rig);
     const lod_hit_t *const hits = ld_hits(t, &rig);
+    traverse_hit_t *const primary = test_alloc(t, traverse_hits_bytes(LD_WIDTH, LD_HEIGHT));
+    REQUIRE(device_memory_read(&rig.bridge->device_memory, &rig.render->owned_hits, 0u, primary,
+                               traverse_hits_bytes(LD_WIDTH, LD_HEIGHT)) == GPU_STATUS_OK);
+    const float32_t band_base = rig.render->borrowed_lod->band_base;
+    CHECK(band_base > 0.0f32);
     traverse_camera_t view;
     render_camera_to_traverse(&eye, LD_WIDTH, LD_HEIGHT, &view);
     lod_scene_t scene;
     render_lod_scene(rig.render->borrowed_lod, &scene);
     const float64_t origin[3] = {eye.position[0], eye.position[1], eye.position[2] + 256.0f64};
-    uint64_t far = 0u, sky = 0u, wrong_colour = 0u, wrong_ray = 0u, in_full_detail = 0u;
+    uint64_t far = 0u, sky = 0u, wrong_colour = 0u, wrong_ray = 0u, too_near = 0u;
     for (uint32_t y = 0u; y < LD_HEIGHT; y++) {
         for (uint32_t x = 0u; x < LD_WIDTH; x++) {
             const uint64_t i = (uint64_t)y * LD_WIDTH + x;
@@ -839,7 +925,8 @@ TEST(what_full_detail_misses_goes_on_to_the_far_field_and_shows_its_colour) {
                 direction[a] = (float32_t)way[a];
             }
             ld_marched_t marched;
-            ld_march(&source, &scene, &rig.render->buffers, origin, way, 0.0f64, &marched);
+            const float64_t left = ld_left_level_0(&rig.render->buffers, &primary[i], band_base, origin, way);
+            ld_march(&source, &scene, band_base, origin, way, left, true, &marched);
             const bool same = marched.material == hits[i].material &&
                               (marched.material == LOD_NO_MATERIAL ||
                                (marched.face == hits[i].face &&
@@ -851,10 +938,8 @@ TEST(what_full_detail_misses_goes_on_to_the_far_field_and_shows_its_colour) {
                 continue;
             }
             far++;
-            /* Nothing of the far field is drawn in what full detail holds. */
-            const float64_t at_x = origin[0] + way[0] * ((float64_t)hits[i].t + 1e-3f64);
-            const float64_t at_y = origin[1] + way[1] * ((float64_t)hits[i].t + 1e-3f64);
-            in_full_detail += ld_fine_ready(&rig.render->buffers, (int32_t)floor(at_x), (int32_t)floor(at_y)) ? 1u : 0u;
+            /* Nothing of the far field is drawn nearer than where level 0 let its ray go. */
+            too_near += (float64_t)hits[i].t < left - 0.02f64 ? 1u : 0u;
             float32_t sky_colour[3], colour[3];
             post_sky(&frame->post, direction, sky_colour);
             const uint8_t *const mean = ld_mean_of(&rig, hits[i].material, hits[i].face);
@@ -874,7 +959,7 @@ TEST(what_full_detail_misses_goes_on_to_the_far_field_and_shows_its_colour) {
     CHECK(sky > LD_PIXELS / 10u);
     CHECK(wrong_ray * 200u <= LD_PIXELS);
     CHECK_EQ_U64(wrong_colour, 0u);
-    CHECK_EQ_U64(in_full_detail, 0u);
+    CHECK_EQ_U64(too_near, 0u);
 
     /* The setting off, and only then, and the world's own pixels as they were. */
     render_frame_features_set(&rig.render->frame, LD_PLAIN & ~(uint32_t)SHADE_FEATURE_LOD);
@@ -898,7 +983,7 @@ TEST(what_full_detail_misses_goes_on_to_the_far_field_and_shows_its_colour) {
     ld_end(t, &rig);
 }
 
-/* How many far hits lie in a column full detail holds, or with in_that with that one column, which it may not. */
+/* How many far hits lie in a column level 0 holds, or with in_that with that one column, which it may not. */
 static uint64_t ld_far_in_columns(test_context_t *t, sk_rig_t *rig, const render_camera_t *eye, const lod_hit_t *hits,
                                   int32_t column_x, int32_t column_y, bool in_that) {
     (void)t;
@@ -932,8 +1017,8 @@ static uint64_t ld_far_in_columns(test_context_t *t, sk_rig_t *rig, const render
     return count;
 }
 
-/* Full detail in front of the far field, and a gap in it, and things to see through. */
-TEST(full_detail_stands_in_front_and_a_column_missing_from_it_shows_the_far_field) {
+/* Level 0 in front of the far field, and a gap in it, and things to see through. */
+TEST(level_0_stands_in_front_and_a_column_missing_from_it_shows_the_far_field) {
     sk_rig_t rig;
     const ld_source_t source = {LD_GROUND_FLAT, {0}};
     render_camera_t eye;
@@ -942,7 +1027,7 @@ TEST(full_detail_stands_in_front_and_a_column_missing_from_it_shows_the_far_fiel
     render_frame_features_set(&rig.render->frame, LD_PLAIN & ~(uint32_t)SHADE_FEATURE_LOD);
     const uint8_t *const bare = ld_picture(t, &rig, &eye);
     render_frame_features_set(&rig.render->frame, LD_PLAIN);
-    /* Looking down at what full detail holds, empty and all there: the ray goes through it, and the coarse ground that lies under it is not
+    /* Looking down at what level 0 holds, empty and all there: the ray goes through it, and the coarse ground that lies under it is not
      * looked at, so nothing but what is past the columns can change. */
     const uint8_t *const open = ld_picture(t, &rig, &eye);
     const lod_hit_t *const open_hits = ld_hits(t, &rig);
@@ -950,14 +1035,14 @@ TEST(full_detail_stands_in_front_and_a_column_missing_from_it_shows_the_far_fiel
     for (uint64_t i = 0u; i < LD_PIXELS; i++) {
         if (open_hits[i].material != LOD_NO_MATERIAL) {
             seen++;
-            CHECK(open_hits[i].t > 8.0f64);
+            /* Plan 009 phase 04: past d_1 a level draws over columns level 0 holds too, never within the near guarantee. */
+            CHECK(open_hits[i].t >= (float32_t)RENDER_LOD_NEAR_GUARANTEE);
         }
     }
     CHECK(seen > 0u);
     CHECK(memcmp(open, bare, post_xrgb_bytes(LD_WIDTH, LD_HEIGHT)) != 0);
-    CHECK_EQ_U64(ld_far_in_columns(t, &rig, &eye, open_hits, 0, 0, false), 0u);
 
-    /* One column gone from full detail, as one not yet streamed in is: the far field shows there, and nowhere else that holds a column. */
+    /* One column gone from level 0, as one not yet streamed in is: the far field shows there, and nowhere else that holds a column. */
     world_buffers_t *const fine = &rig.render->buffers;
     uint32_t gone_slot = 0u;
     REQUIRE(world_buffers_slot_of(&fine->window, 2, 0, &gone_slot));
@@ -966,7 +1051,7 @@ TEST(full_detail_stands_in_front_and_a_column_missing_from_it_shows_the_far_fiel
     (void)ld_picture(t, &rig, &eye);
     const lod_hit_t *const gone_hits = ld_hits(t, &rig);
     const uint64_t in_gap = ld_far_in_columns(t, &rig, &eye, gone_hits, 2, 0, true);
-    printf("  %" PRIu64 " far pixels in a column gone from full detail\n", in_gap);
+    printf("  %" PRIu64 " far pixels in a column gone from level 0\n", in_gap);
     CHECK(in_gap > 0u);
     CHECK_EQ_U64(ld_far_in_columns(t, &rig, &eye, gone_hits, 0, 0, false), 0u);
 
@@ -1041,7 +1126,7 @@ static uint64_t ld_far_count(const lod_hit_t *hits) {
     return count;
 }
 
-/* A far ray is followed only where shade's own ray, past all it can see through, really leaves full detail: so far hills still show
+/* A far ray is followed only where shade's own ray, past all it can see through, really leaves level 0: so far hills still show
  * through glass and water, one behind the other, and a ray that comes to something opaque behind them, or behind leaves, sends none
  * at all. That is what keeps a far field cheap where most of a picture is water, leaves or plants. */
 TEST(far_hills_show_through_glass_and_water_and_nothing_opaque_behind_them_sends_a_far_ray) {
@@ -1138,10 +1223,10 @@ static void ld_sea_sides(const uint8_t *picture, const lod_hit_t *hits, const sh
     }
 }
 
-/* Where a sea crosses from full detail to the far field there is no edge to see. Found by looking at a real run, which showed a dashed dark
+/* Where a sea crosses from level 0 to the far field there is no edge to see. Found by looking at a real run, which showed a dashed dark
  * line there and a sea of another colour past it. A far surface is what a near one that deep comes to, and a coarse voxel's side, from the
  * air or from under near water, is only more water. */
-TEST(a_sea_goes_on_past_full_detail_with_no_edge) {
+TEST(a_sea_goes_on_past_level_0_with_no_edge) {
     sk_rig_t rig;
     const ld_source_t source = {LD_GROUND_LAKE, {0}};
     render_camera_t eye;
@@ -1226,7 +1311,7 @@ TEST(the_far_field_stands_for_real_terrain) {
                                   .features_off = 0u,
                                   .god_rays = 0u,
                                   .show_date = 0u,
-                                  .full_detail = 2u};
+                                  .block_radius_given = 2u};
     REQUIRE(game_open(game, &config));
     REQUIRE(game_settle(game));
     render_lod_t *const lod = rig.render->borrowed_lod;
@@ -1256,6 +1341,11 @@ TEST(the_far_field_stands_for_real_terrain) {
         state = state * 6364136223846793005ull + 1442695040888963407ull;
         const int32_t x = level->shown_min_x * 16 + (int32_t)((state >> 20) % (uint64_t)(level->shown_side * 16u));
         const int32_t y = level->shown_min_y * 16 + (int32_t)((state >> 36) % (uint64_t)(level->shown_side * 16u));
+        /* Plan 009 phase 04: near the eye a level is made from the blocks the game holds (render_octant_t), caves and all; past them, from
+         * the samples this checks against. Its columns over the blocks are 2 x 2 chunks, so two of them from the eye's is clear of them. */
+        if (abs(x - level->center_x * 16) < 2 * 16 + 16 && abs(y - level->center_y * 16) < 2 * 16 + 16) {
+            continue;
+        }
         const int32_t size = 1 << level->shift;
         memset(sample_scratch, 0, RENDER_LOD_SAMPLE_SCRATCH_BYTES);
         render_lod_sample_terrain(rig.terrain, x * size + size / 2, y * size + size / 2, level->shift, column,
@@ -1283,7 +1373,7 @@ TEST(the_far_field_stands_for_real_terrain) {
     CHECK(surface > 0u);
     REQUIRE(device_memory_free(&rig.bridge->device_memory, &scratch) == GPU_STATUS_OK);
     game_close(game);
-    /* The setting off: the world stops where full detail does, and nothing of the far field is taken. */
+    /* The setting off: the world stops where level 0 does, and nothing of the far field is taken. */
     game_config_t off = config;
     off.features_off = (uint16_t)SHADE_FEATURE_LOD;
     REQUIRE(game_open(game, &off));
@@ -1291,9 +1381,9 @@ TEST(the_far_field_stands_for_real_terrain) {
     CHECK_EQ_U64(rig.world->map.view_radius, 2u);
     CHECK_NEAR(rig.render->frame.fog_end, 16.0f32, 1e-3f32);
     game_close(game);
-    /* Full detail reaching all of it: none, whatever the setting. */
+    /* Level 0 reaching all of it: none, whatever the setting. */
     game_config_t near = config;
-    near.full_detail = 0u;
+    near.block_radius_given = 0u;
     REQUIRE(game_open(game, &near));
     CHECK(rig.render->borrowed_lod == nullptr);
     CHECK_EQ_U64(rig.world->map.view_radius, 5u);
@@ -1375,7 +1465,7 @@ TEST(a_pool_with_no_room_says_so_and_shows_what_it_has) {
     /* The Owner's work, by hand, for a small pool of the finest level's hills. */
     device_memory_t *const memory = &rig.bridge->device_memory;
     const ld_source_t source = {LD_GROUND_HILLS, {0}};
-    const render_lod_plan_t plan = render_lod_plan(LD_HAND_RADIUS, 16u);
+    const render_lod_plan_t plan = ld_plan(LD_HAND_RADIUS, 16u);
     device_block_t table = {0}, pool = {0};
     REQUIRE(device_memory_alloc(memory, DEVICE_POOL_VOXELS, render_lod_table_bytes(&plan, 0u), "table", &table) ==
             GPU_STATUS_OK);

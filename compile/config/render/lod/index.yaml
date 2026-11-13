@@ -1,11 +1,4 @@
 # The far field's levels. See compile/config/README.md for the fields; compile/config/render/budget/ has its jobs and bytes.
-radius_columns:
-  value: 16
-  type: u32
-  unit: count
-  min: 4
-  max: 64
-  why: "Each way from the eye's column, in a level's own columns of 16 voxels: a level is at most 2 * this + 1 columns wide. Held in uint8_t radii. RENDER_LOD_RADIUS_COLUMNS."
 margin_columns:
   value: 2
   type: u32
@@ -20,13 +13,6 @@ features_shift_max:
   min: 0
   max: 6
   why: "The coarsest voxel, as a shift, that a world's ground grows trees and the like for: 2 is voxels of 4 blocks. Growing is nearly all of what a column costs (59 ms against 8 ms at voxels of 8, plan 005 phase 14), and past 900 blocks a tree is a few pixels. RENDER_LOD_FEATURES_SHIFT_MAX."
-skips_max:
-  value: 32
-  type: u32
-  unit: count
-  min: 1
-  max: 256
-  why: "How many times one level lets a ray go on past something in a column full detail holds, before it calls the level empty there. LOD_SKIPS_MAX."
 pixel_error:
   value: 2.0
   type: f32
@@ -62,3 +48,31 @@ octant_levels:
   min: 0
   max: 3
   why: "How many levels above the blocks are made from the blocks where they are loaded, each from the one below, so an edit reaches them at once: 2 is levels 1 and 2. Past them, and where blocks are not loaded, levels are sampled from terrain."
+band_dither:
+  value: 0.08
+  type: f32
+  unit: ratio
+  min: 0.0
+  max: 0.25
+  why: "A band edge moves by up to this share of its distance per pixel, and per frame with TAA on, so TAA blends two levels across a band and no ring is drawn (plan 009 phase 04). Never under near_guarantee."
+block_margin_chunks:
+  value: 2
+  type: u32
+  unit: chunks
+  min: 1
+  max: 8
+  why: "What the game holds block by block (level 0) is d_1 plus this, so that a pixel's dithered d_1 and an eye moving inside its chunk stay inside it (plan 009 phase 04)."
+block_radius_min_chunks:
+  value: 12
+  type: u32
+  unit: chunks
+  min: 4
+  max: 64
+  why: "Level 0 is never held narrower than this, as the sim, mining and mobs need real blocks about the player whatever the pixel error (master section 9). Never more than the render distance."
+block_radius_max_chunks:
+  value: 48
+  type: u32
+  unit: chunks
+  min: 8
+  max: 64
+  why: "Level 0 is never held wider than this: the table is sized at world open for the narrowest field of view, up to here (master Q4). A narrower view past it gets the coarser level sooner."

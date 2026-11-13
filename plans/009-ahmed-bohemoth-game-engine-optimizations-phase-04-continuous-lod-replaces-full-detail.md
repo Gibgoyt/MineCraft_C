@@ -1,6 +1,6 @@
 # 009-ahmed-bohemoth-game-engine-optimizations — phase 4: Continuous LOD replaces Full detail
 
-**Status:** not started   (updated 2026-11-12)
+**Status:** built and tested; measured below; the gate (Ahmed plays E 2, 4 and 8 and chooses) is his   (updated 2026-11-13)
 
 Read first: the phase 00 file, then the master: sections 0, 2.2 to 2.5, 4.4, 5, 7 and 8. Then:
 
@@ -182,18 +182,18 @@ New keys:
 
 ## Todo
 
-- [ ] `t_end` and `TRAVERSE_FACE_PAST`; `traverse_trace_ray_t` 48 bytes with its asserts; `cuda_traverse` tests
-- [ ] Primary rays hand over at d<sub>1</sub>..d<sub>K</sub>; `lod_full_detail_at` and the skip loop deleted
-- [ ] Shade's continuing rays and the water walk hand over the same way
-- [ ] Dither per pixel and frame, never under `near_guarantee`; deterministic with TAA off
-- [ ] `render_feature_lod`: near guarantee at E = 2 and 8, FOV 70 and 30, render scale 100 and 50, on six places
-- [ ] `render_feature_lod`: error share ≤ 1 % at E = 2 on the settled rows' places
-- [ ] `render_feature_lod`: the seam on a plain and a 45° slope
-- [ ] r<sub>0</sub> drives the map; table sized at open for FOV 30, capped at 48
-- [ ] `settings_values_t.full_detail` reserved; old files load with one log line; the defaults file has no `full_detail`
-- [ ] Settings screen: five sliders, README click points, golden pictures regenerated after looking
-- [ ] `--full-detail` and `RENDER_LOD_FULL_DETAIL_DEFAULT` deleted; `grep -rni "full.detail" run cuda compile bench` finds nothing but this plan's history notes
-- [ ] Every existing test that named full detail updated (`run_settings`, `run_settings_session`, `run_game_focus`, `run_save_state_game`, `run_render_distance_live`, `render_feature_lod`)
+- [x] `t_end` and `TRAVERSE_FACE_PAST`; `traverse_trace_ray_t` 48 bytes with its asserts; `cuda_traverse` tests
+- [x] Primary rays hand over at d<sub>1</sub>..d<sub>K</sub>; `lod_full_detail_at` and the skip loop deleted
+- [x] Shade's continuing rays and the water walk hand over the same way
+- [x] Dither per pixel and frame, never under `near_guarantee`; deterministic with TAA off
+- [x] `render_feature_lod`: near guarantee at E = 2 and 8, FOV 70 and 30, render scale 100 and 50, on six places
+- [ ] `render_feature_lod`: error share ≤ 1 % at E = 2 on the settled rows' places (measured, not met: Issues found 2; the test holds 2 % past 2 E)
+- [x] `render_feature_lod`: the seam on a plain and a 45° slope
+- [x] r<sub>0</sub> drives the map; table sized at open for FOV 30, capped at 48
+- [x] `settings_values_t.full_detail` reserved; old files load with one log line; the defaults file has no `full_detail`
+- [x] Settings screen: five sliders, README click points, golden pictures regenerated after looking
+- [x] `--full-detail` and `RENDER_LOD_FULL_DETAIL_DEFAULT` deleted; `grep -rni "full.detail" run cuda compile bench` finds nothing but this plan's history notes
+- [x] Every existing test that named full detail updated (`run_settings`, `run_settings_session`, `run_game_focus`, `run_save_state_game`, `run_render_distance_live`, `render_feature_lod`)
 - [ ] His spot and the bench rows at E = 2 / 4 / 8 measured; Results filled
 - [ ] Ahmed has played and chosen E
 
@@ -284,6 +284,30 @@ His answers are recorded below.
 
 Appended as they land:
 
+- this commit: continuous LOD replaces Full detail: `t_end` in the ray loop, primary and shade rays end at each pixel's dithered d_1, the far field (now the pyramid) takes over from there level by level with no pass-by, r_0 worked out from the bands drives the map, Full detail gone from settings, the screen, the command line and the code; the band tests (`render_feature_lod_bands`) and every test that named it; golden pictures moved after looking.
+
 ## Issues found
 
-None.
+### 1. Changed from the plan, and why
+
+- **The bands travel in `traverse_world_t`, not `traverse_camera_t`.** `band_base` (1 / (2 E theta)), `band_dither` and `band_seed` are 16 bytes more of `traverse_world_t` (56 to 72) and of `traverse_view_t` (64 to 80; `lod_view_level_t` 72 to 88, `lod_view_t` 440 to 536). The camera sits inside `post_temporal_t` inside `render_frame_t` inside `render_t` inside `app_t`, which is at main's frame limit (16192 of 16384): growing it would have moved all of them. Every kernel that needs a pixel's band edges has level 0's view already. `render_frame_queue` works `band_base` out each frame from the camera's field of view, the frame's rows and the far field's `pixel_error` (`render_lod_band_base`), so the bands follow FOV, render scale and resolution by themselves; with no far field it is 0 and level 0 goes to its edge.
+- **`TRAVERSE_FACE_PAST` is a miss whose `t` is the ray's `t_end`** (`traverse_hit_past`, `traverse_past` on the card), not an eighth face value: the face is three bits and all eight values are taken. So every reader that goes on past a miss (shade, `lod_past_kernel`) goes on past it with no change.
+- **A ray with an end also stops where it enters a column level 0 does not hold** (not loaded yet, or no room in the pool), with `t` where it came in: the old ring's pass-by drew the far field in such columns, and without it they would have been holes during a fill. A ray with no end (sun, AO, reflections) is unchanged.
+- **A far ray starts where level 0 stopped for it**: the primary miss's `t` (its `t_end` or a hole), else the pixel's `d_1`, or where it leaves level 0's square if nearer (`lod_frame_kernel_body`). Each level is walked to the next shown level's `d` (same dither factor) or its own square, and `lod_rays` (tests) has no bands.
+- **The seam, found by looking, and the fix.** The first seam picture (`tests/cuda/lod/bands`, plain at E 4) showed a dark brown ring at d_1: a coarse voxel rounds ground up by up to half its side (the half rule), so a grazing ray handed over just above level 0's grass was inside a level 1 voxel, took (with `resume`) the next one along, and drew its side. A frame's far ray that comes into a level inside one of its voxels now meets it there, as its top when going down, else by the face it came in by (`lod_entered_face`); sun rays and `lod_rays` keep `resume`. The ring is gone: the plain's row means step 0.08 at the band edges against 6.01 elsewhere (2.73 before).
+- **Pass-by and `LOD_SKIPS_MAX` are deleted**, and the tuning keys `skips_max` and `radius_columns` (the old far field's 16-column cap) with them.
+- **The far field is the pyramid.** Phase 03's separate `render_pyramid_t` is gone; `render_open_lod`/`render_replan_lod` take `block_radius` and, with it, make levels 1 and 2 from the blocks through the octant store and size their pools for it (with 0, as `render_feature_lod` opens it, every column is sampled). The pyramid's copies go through the frame's staging (plan 008 phase 03, on main since this branch was cut). `render_t.owned_pyramid` is padding again. A "covered" column (asked for last) is now one over loaded blocks that lies wholly nearer than any ray of its level starts, by the last frame's `band_base` less the dither (`render_lod_t.band_base`, `pixel_error`, `band_dither`: `render_lod_t` stays 2048 bytes).
+- **No temporary switch keeping the old ring (step 2).** The comparisons are against level 0 everywhere with the far field off, in the same world (`game_config_t.block_radius_given`, the old `full_detail` slot, set only by benches and tests; `bench_world_slope --block-radius`, `--lod-reference`).
+- **r_0 and the table.** `game_view_work_out` takes `render_lod_block_radius`: `ceil(d_1 / 16) + block_margin_chunks` (2), at least `block_radius_min_chunks` (12), at most `block_radius_max_chunks` (48), the render distance and the table. The table is sized at open for the narrowest field of view (30 degrees) at the config's rows and render distance, held to 48 (`game_view_table_chunks`). The level 0 slab pool is sized for the radius held at open, not the whole table (VRAM: a table of 48 chunks would have asked for about 5 GiB of pool); a narrower view later finds columns with no room, where the far field shows through. **A field of view change alone keeps level 0's radius and the levels' squares** (the bands move at once, every frame) until the next change that stops the threads anyway: `run_settings_session` holds a FOV change to never stop them, as phase 03 found.
+- **With no far field (`--no-lod`) the world stops where level 0 does**, and render distances of 12 and under have no far field at all (level 0 is never under 12 chunks); before, with full detail 32, it was 32 and under.
+- **The Settings screen's tooltip** is "How far you see. Near blocks exact, far coarser." The plan's line is 420 pixels at scale 1 and the canvas is 320.
+- **Settings.** `settings_values_t.full_detail` is `_reserved0`; a `full_detail:` line is neither applied nor a problem, and logs `settings: full_detail is no longer a setting; the game works it out (plan 009)` once a file. `ui_screen_settings_t.full_detail_live_max` is `_reserved0` too, and `ui_screen_settings_open` lost that argument. The main page's rows from the second moved up one (Done from 452 to 404 at 640x480); the HUD and Effects pages' Back stay at 452. The scripts that click it (`tests/run/settings/fixtures/*.script`) were worked out again.
+- **The band tests are their own ctest, `render_feature_lod_bands` (`tests/cuda/lod/bands/`)**: `render_feature_lod`'s file is at 1490 lines. Six eyes about the default world's start (four ways, straight down, in the rock), not six biomes; E 2 and 8 and FOV 70 and 30; render scale 50 is not drawn separately, as the bands see only rows, E and FOV through `band_base` (E 8 at 180 rows puts d_1 on the 16-block floor itself). `render_feature_lod` keeps a local `ld_plan` standing in for the deleted `render_lod_plan`, so its levels can still be counted on paper.
+- **`cuda_traverse`** is at 1564 lines, past the 1500 where the standard asks for a split (the 2000 limit holds).
+
+### 2. Found
+
+- **The near guarantee holds:** 1 030 558 pixels with a surface under 16 blocks over the 24 picture pairs, 0 hits and 0 colours different from level 0 everywhere.
+- **The error bound as written (1 % past E at E 2) does not hold, and cannot by construction.** A level-k surface is up to half its voxel off, which is exactly E at the band's own start, and the dither moves the start 8 % nearer. So flat ground and water just past d_1 sit at E and over (seen as a band of "wrong" right past d_1 on the sea, `place_0_wrong.png`). Measured at E 2, 70 degrees, 320 x 180: past E x 1.08, 0.0 % (looking down), 0.4 %, 0.4 %, 2.5 %, 2.7 % (over water) and 0 % (in the rock); past 2 E, 0.0 to 1.6 %. The test holds 2 % past 2 E and prints both. Master Q6 (a smaller E for grazing pixels) or a margin under E (`d_k` from `s_k / (2 E theta) x (1 + band_dither)`) would close it; not done here.
+- **E 8 at 180 rows** moves 6 to 28 % of pixels past 16 blocks by more than 8 pixels: it is a coarse picture, as the master's section 2.2 said.
+- **Coarse surfaces round up** (the half rule keeps a voxel half full): far water is a block high at level 1. That is phase 03's rule, and what the seam fix above works around at hand-overs.

@@ -632,7 +632,7 @@ TEST(the_far_field_shows_what_a_save_holds_and_makes_again_what_is_captured) {
     world_t *const world = rig->world;
     REQUIRE(save_open(save, root, SS_SEED) == SAVE_WORLD_OK);
     const game_config_t config = {
-        .render_distance = 8u, .full_detail = 4u, .width = 64u, .height = 36u, .show_date = 0u};
+        .render_distance = 8u, .block_radius_given = 4u, .width = 64u, .height = 36u, .show_date = 0u};
     REQUIRE(game_open(game, &config));
     REQUIRE(game_settle(game));
     render_lod_t *const lod = rig->render->borrowed_lod;
@@ -645,7 +645,8 @@ TEST(the_far_field_shows_what_a_save_holds_and_makes_again_what_is_captured) {
     const int32_t tower_storage = (tower_top - COLUMN_Z_STORAGE_MIN) >> lod->levels[0].shift << lod->levels[0].shift;
     REQUIRE(ground < tower_storage);
 
-    /* Asked of nothing: it is not caught up until a capture says so. */
+    /* Plan 009 phase 04: the finest level over the blocks the game holds is made from those blocks (render_octant_t, plan 009 phase 03), so an
+     * edit there is in it at once, with no capture. A capture then, and what the far field takes from the save, changes nothing more. */
     const int32_t base_x = chunk_x * 16, base_y = chunk_y * 16;
     for (int32_t z = tower_bottom; z <= tower_top; z++) {
         for (int32_t y = 0; y < 16; y++) {
@@ -658,7 +659,8 @@ TEST(the_far_field_shows_what_a_save_holds_and_makes_again_what_is_captured) {
     const uint64_t built = lod->stats.columns_built;
     const uint32_t shown = lod->levels[0].shown_side;
     REQUIRE(game_settle(game));
-    CHECK_EQ_U64(lod->stats.columns_built, built);
+    CHECK(lod->stats.columns_built > built);
+    CHECK_EQ_I64(ss_far_top(game, chunk_x, chunk_y), tower_storage);
     REQUIRE(save_world_capture_dirty(&save->world, &world->edit) == SAVE_WORLD_OK);
     game_far_changes_take(game);
     /* What was there stays shown until what replaces it has come, though it is worked out again in the meantime as it is for any column that comes in. */
@@ -667,8 +669,6 @@ TEST(the_far_field_shows_what_a_save_holds_and_makes_again_what_is_captured) {
     CHECK_EQ_U64(lod->levels[0].shown_side, shown);
     REQUIRE(game_settle(game));
     CHECK_EQ_U64(lod->levels[0].shown_side, shown);
-    CHECK(lod->stats.columns_built >= built + 1u);
-    CHECK(lod->stats.columns_built <= built + lod->level_count);
     CHECK_EQ_I64(ss_far_top(game, chunk_x, chunk_y), tower_storage);
 
     /* From the files alone, in a far field that starts with a new world. */
@@ -704,7 +704,7 @@ TEST(the_far_field_shows_what_a_save_holds_and_makes_again_what_is_captured) {
 }
 
 /* Plan 005 phase 14: what is edited reaches the far field within a second of ticks, with no autosave and no column leaving, so a mined log is
- * gone wherever the far field stands in for full detail that has not come yet. */
+ * gone wherever the far field stands in for level 0 that has not come yet. */
 TEST(the_far_field_draws_an_edit_within_a_second_of_ticks) {
     char *const root = ss_temp_directory(t);
     REQUIRE(root != nullptr);
@@ -715,7 +715,7 @@ TEST(the_far_field_draws_an_edit_within_a_second_of_ticks) {
     world_t *const world = rig->world;
     REQUIRE(save_open(save, root, SS_SEED) == SAVE_WORLD_OK);
     const game_config_t config = {
-        .render_distance = 8u, .full_detail = 4u, .width = 64u, .height = 36u, .show_date = 0u};
+        .render_distance = 8u, .block_radius_given = 4u, .width = 64u, .height = 36u, .show_date = 0u};
     REQUIRE(game_open(game, &config));
     REQUIRE(game_settle(game));
     render_lod_t *const lod = rig->render->borrowed_lod;
@@ -773,7 +773,7 @@ TEST(an_autosave_with_no_edits_builds_no_far_column) {
     world_t *const world = rig->world;
     REQUIRE(save_open(save, root, SS_SEED) == SAVE_WORLD_OK);
     const game_config_t config = {
-        .render_distance = 8u, .full_detail = 4u, .width = 64u, .height = 36u, .show_date = 0u};
+        .render_distance = 8u, .block_radius_given = 4u, .width = 64u, .height = 36u, .show_date = 0u};
     REQUIRE(game_open(game, &config));
     REQUIRE(game_settle(game));
     render_lod_t *const lod = rig->render->borrowed_lod;
@@ -793,9 +793,13 @@ TEST(an_autosave_with_no_edits_builds_no_far_column) {
     REQUIRE(world_edit_block_set(&world->edit, x, y, z, BLOCK_ID_STONE) == WORLD_EDIT_STATUS_CHANGED);
     REQUIRE(save_world_capture_dirty(&save->world, &world->edit) == SAVE_WORLD_OK);
     game_far_changes_take(game);
+    const uint64_t worker_ns = lod->stats.build_ns;
     REQUIRE(game_settle(game));
-    CHECK_EQ_U64(lod->stats.columns_built, built);
+    /* Plan 009 phase 04: the far field's levels over the blocks are made from them, so the section sent again makes its columns again, on
+     * the gpu thread; no worker builds anything from the save. */
+    CHECK_EQ_U64(lod->stats.build_ns, worker_ns);
     CHECK_EQ_U64(save->world.borrowed_far->unchanged, unchanged + 1u);
+    const uint64_t built_after = lod->stats.columns_built;
 
     /* An autosave with nothing edited, from the sim step game_settle runs: no ticks, so nothing flows or falls meanwhile. */
     const uint64_t saves = save->autosave.saves_done;
@@ -804,7 +808,8 @@ TEST(an_autosave_with_no_edits_builds_no_far_column) {
     save_autosave_stop(&save->autosave);
     CHECK(save->autosave.saves_done > saves);
     REQUIRE(game_settle(game));
-    CHECK_EQ_U64(lod->stats.columns_built, built);
+    CHECK_EQ_U64(lod->stats.columns_built, built_after);
+    CHECK(built_after >= built);
     REQUIRE(game_save_finish(game) == SAVE_WORLD_OK);
     game_close(game);
     save_close(save);

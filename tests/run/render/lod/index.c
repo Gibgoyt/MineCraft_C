@@ -235,7 +235,7 @@ TEST(the_plan_keeps_every_level_inside_the_render_distance) {
     CHECK_EQ_U64(at_128.shifts[2], 3u);
     CHECK_EQ_U64(at_128.radii[1], 25u + RENDER_LOD_MARGIN_COLUMNS);
     CHECK_EQ_U64(at_128.radii[2], 16u + RENDER_LOD_MARGIN_COLUMNS);
-    /* Level 1 is there under today's full detail too: at render distance 32 its band starts at 386, inside 512. */
+    /* At render distance 32 level 1's band starts at 386, inside 512. */
     const render_lod_plan_t at_32 = render_lod_plan_by_bands(&two, 32u);
     CHECK_EQ_U64(at_32.level_count, 1u);
     CHECK_EQ_U64(at_32.radii[0], 16u + RENDER_LOD_MARGIN_COLUMNS);
@@ -255,6 +255,27 @@ TEST(the_plan_keeps_every_level_inside_the_render_distance) {
         CHECK(capped.radii[i] <= RENDER_LOD_RADIUS_COLUMNS_MAX);
         CHECK(capped.radii[i] > RENDER_LOD_MARGIN_COLUMNS);
     }
+}
+
+/* Plan 009 phase 04: what the game holds block by block is d_1 and two chunks, at least 12 and never past the render distance; and the band
+ * base the frame works out is the bands' own, before their floor. */
+TEST(the_block_radius_follows_the_bands) {
+    const float64_t half = lod_test_half_fov(70.0f64);
+    const render_lod_bands_t two = render_lod_bands(2.0f64, 16u, half, 1080u);
+    CHECK_EQ_U64(render_lod_block_radius(&two, 64u), 27u);
+    CHECK_EQ_U64(render_lod_block_radius(&two, 20u), 20u);
+    const render_lod_bands_t eight = render_lod_bands(8.0f64, 16u, half, 1080u);
+    CHECK_EQ_U64(render_lod_block_radius(&eight, 64u), 12u); /* 96 blocks and 2 chunks is 9: the floor */
+    CHECK_EQ_U64(render_lod_block_radius(&eight, 8u), 8u);
+    const render_lod_bands_t four = render_lod_bands(4.0f64, 16u, half, 1080u);
+    CHECK_EQ_U64(render_lod_block_radius(&four, 64u), 15u);
+    /* 30 degrees wants 65 chunks at E 2: held to 48. */
+    const render_lod_bands_t narrow = render_lod_bands(2.0f64, 16u, lod_test_half_fov(30.0f64), 1080u);
+    CHECK_EQ_U64(render_lod_block_radius(&narrow, 512u), RENDER_LOD_BLOCK_RADIUS_MAX_CHUNKS);
+    const float32_t base = render_lod_band_base(2.0f32, (float32_t)half, 1080u);
+    CHECK(lod_test_near((float64_t)base * 2.0f64, two.from[1], 0.01f64));
+    CHECK(lod_test_near((float64_t)base * 4.0f64, two.from[2], 0.02f64));
+    CHECK(render_lod_band_base(0.0f32, (float32_t)half, 1080u) == 0.0f32);
 }
 
 /* ---- The octant store: assembled is direct (plan 009 phase 03) ------------------------------------------------------- */

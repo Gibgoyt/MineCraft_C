@@ -53,10 +53,9 @@ void settings_load(settings_t *settings, const char *path) {
     }
     settings_persist_report_t report;
     settings_persist_parse(settings_text(settings), bytes, &settings->values, &report);
-    LOG_INFO("settings: %s set %" PRIu32 " things, with %" PRIu32 " problems: render distance %" PRIu32
-             ", full detail %" PRIu32 ", %" PRIu32 " workers",
-             path, report.applied, report.problems, settings->values.render_distance, settings->values.full_detail,
-             settings->values.worker_count);
+    LOG_INFO("settings: %s set %" PRIu32 " things, with %" PRIu32 " problems: render distance %" PRIu32 ", %" PRIu32
+             " workers",
+             path, report.applied, report.problems, settings->values.render_distance, settings->values.worker_count);
 }
 
 file_status_t settings_save(settings_t *settings) {

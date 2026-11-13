@@ -46,6 +46,7 @@ static __device__ __forceinline__ bool entity_rays_only_water(const traverse_vie
     ray.eye_cell[2] -= TRAVERSE_Z_BASE;
     ray.t_start = 0.0F;
     ray.resume = 0u;
+    ray.t_end = TRAVERSE_T_END_NONE;
     for (uint32_t layer = 0u; layer < ENTITY_RAYS_OUTLINE_WATER_LAYERS; layer += 1u) {
         traverse_hit_t hit;
         traverse_trace(view, &ray, &hit);

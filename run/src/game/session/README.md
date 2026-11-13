@@ -51,7 +51,7 @@ The Settings button, on the main screen or a pause, brings up `run/src/ui/screen
 - A change waits `GAME_SESSION_APPLY_FRAMES` frames with no other change and no hand on a slider, then becomes a `game_config_t` and goes to `game_reconfigure`, in the frame's end, between frames. That is what makes render distance live: the same world goes on, with its player, its edits within reach and its time.
 - Behind this screen, in a pause, each frame takes the newest picture with `game_view_refresh`, so a person sees what a change has done and the gpu thread keeps uploading. With no threads that is a whole settle and a draw, once for each change. Behind any other screen a pause stays as it was: one picture, costing nothing.
 - Done or Esc applies what is still waiting and keeps them with `settings_save`. If that fails it stays up and says why, and a second Done leaves anyway: the values are still in force for this run, and no one should be held on a screen by a full disk.
-- A world that opens later opens from the values, with a table sized for its full detail.
+- A world that opens later opens from the values, with a table sized for the most level 0 the narrowest field of view would want (plan 009 phase 04).
 
 `tests/run/ui/menu/` runs the whole round on fake kernels with a real guardian forked. Only Ahmed can run it on a real console.
 

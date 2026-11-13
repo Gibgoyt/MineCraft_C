@@ -265,7 +265,7 @@ typedef struct bench_result_t {
     uint8_t met_fps;       /* 310 */
     uint8_t met_tick;      /* 311 */
     /* 312: plan 005 phase 14's fill-in report of the opening, in seconds from game_open, -1 for never: the first column drawn, the rings
-     * out to 4 chunks, every ring out to full detail, the far field (0 with none), and all of it. */
+     * out to 4 chunks, every ring out to level 0's radius, the far field (0 with none), and all of it. */
     float64_t fill_s[5];
 } bench_result_t;
 static_assert(sizeof(bench_result_t) == 352);
@@ -283,7 +283,7 @@ typedef struct bench_options_t {
     uint8_t weather;       /* 46: --weather: every row with this game_weather_kind_t, 0 for each row's own */
     uint8_t _pad0[1];      /* 47 */
     /* 48: --render-distance: the rows held to the frame target at this many chunks, not BENCH_DISTANCE_TARGET; 0 for
-     * that. Full detail stays the game's default, so what is past it is the far field (plan 005 phase 8). */
+     * that. Level 0 stays what the game works out (plan 009 phase 04), so what is past it is the far field (plan 005 phase 8). */
     uint32_t render_distance;
     uint8_t _pad1[4]; /* 52 */
 } bench_options_t;

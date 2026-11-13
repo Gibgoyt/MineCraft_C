@@ -14,14 +14,13 @@
 - `settings_persist_write`: values to text.
 
 **May be called by:** `run/src/settings/`, and `run/src/ui/screen_settings/` for the effects' names and the ranges.
-**Depends on:** `log`, `assert`, `machine` for the worker and distance limits, `gpu_bridge/shade` for the effects' bits, `render/lod` for the default full detail.
+**Depends on:** `log`, `assert`, `machine` for the worker and distance limits, `gpu_bridge/shade` for the effects' bits.
 
 ## The file
 
     version: 1
     # A comment. So is the rest of a line after a hash.
     render_distance: 32
-    full_detail: 32
     fov_degrees: 70
     sensitivity_percent: 100
     render_scale_percent: 100
@@ -40,6 +39,8 @@
 It is the flat part of YAML and nothing more, so a person can read and change it, and any YAML tool agrees.
 
 A line a file does not have leaves that setting at its default, with no warning. So a file from before `show_coordinates` was added needs no new version: it loads, and shows them. The same for `show_date`, the HUD's date line from plan 004 phase 01: a file without it shows the date. And for plan 004 phase 10's `show_climate` (the temperature and wind line) and `storm_warnings`, each `true` or `false`: two lines kept as two bits of one byte, `climate_hud` (`SETTINGS_CLIMATE_HUD_LINE`, `SETTINGS_CLIMATE_HUD_WARNINGS`), so that neither `settings_values_t` nor what holds it grew past what `app_t` has room for; a file without them has both on, and `settings_persist_clamp` clears any other bit. And for plan 005 phase 7's `pause_on_focus_loss`: a window that loses the focus opens the pause screen, and a file without it has it on, as Minecraft does. And for plan 005 phase 10's `place_preview`: a see-through copy of the block in hand where the right button would put it, blue, or red where it would not go; a file without it has it on. `SETTINGS_VERSION` stays 1.
+
+Plan 009 phase 04 took a setting out: how far the world is held block by block is now worked out by the game from the pixel error, the field of view and the picture (`run/src/game/README.md`), and never set. A file written before it still has that line, `full_detail:`; it loads, the line is ignored, and the first such line says so once, with `settings: full_detail is no longer a setting; the game works it out (plan 009)`. It is not counted as a problem. Its slot in `settings_values_t` is `_reserved0`, so that nothing that holds the values moves.
 
 - The first line that says anything says which version this is. Any other version sets nothing, since its lines may mean something else.
 - Lines come in any order, and the last of two for one key wins. What is missing stays what it was.

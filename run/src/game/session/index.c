@@ -43,8 +43,6 @@ static void game_session_config_from_settings(game_session_t *session) {
     const settings_values_t *const values = &session->borrowed_settings->values;
     game_config_t *const config = &session->config;
     config->render_distance = values->render_distance;
-    config->full_detail = values->full_detail;
-    config->table_chunks = values->full_detail;
     config->features_off = SHADE_FEATURES_PLAY & ~values->effects;
     config->god_rays = (values->effects & SHADE_FEATURE_GOD_RAYS) != 0u ? 1u : 0u;
     config->fov_degrees = values->fov_degrees;
@@ -301,9 +299,7 @@ static void game_session_settings_answer(game_session_t *session, ui_screen_sett
 
 static void game_session_settings_open(game_session_t *session) {
     ui_t *const ui = session->borrowed_ui;
-    const game_t *const game = session->borrowed_game;
-    const uint32_t live_max = game->open != 0u ? game->borrowed_world->map.table_radius - WORLD_MAP_KEEP_EXTRA : 0u;
-    ui_screen_settings_open(&ui->settings_screen, &ui->widget, &session->borrowed_settings->values, live_max,
+    ui_screen_settings_open(&ui->settings_screen, &ui->widget, &session->borrowed_settings->values,
                             session->borrowed_game->borrowed_job->worker_count, session->state == GAME_SESSION_PAUSED);
     session->settings_up = 1u;
     session->save_failed = 0u;

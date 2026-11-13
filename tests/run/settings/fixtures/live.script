@@ -41,7 +41,7 @@
 +1 move 0 -180                  # 320, 68: the first slider
 +1 wheel -6
 +17 screenshot behind_2.png     # what the change waits for is over
-+1 move 0 384                   # 320, 452: Done
++1 move 0 336                   # 320, 404: Done
 +1 button left down
 +1 button left up
 +1 screenshot pause_after_2.png
@@ -52,12 +52,12 @@
 # The same to 8 again: what was there comes back.
 +1 key escape down
 +1 key escape up
-+1 move 0 -204                  # 320, 248
++1 move 0 -156                  # 320, 248
 +1 button left down
 +1 button left up
 +1 move 0 -180                  # 320, 68
 +1 wheel 6
-+17 move 0 384                  # 320, 452
++17 move 0 336                  # 320, 404: Done
 +1 button left down
 +1 button left up
 +1 key escape down
@@ -67,12 +67,12 @@
 # Down to 4: what the file ends up holding, and Done does not wait for the change.
 +1 key escape down
 +1 key escape up
-+1 move 0 -204                  # 320, 248
++1 move 0 -156                  # 320, 248
 +1 button left down
 +1 button left up
 +1 move 0 -180                  # 320, 68
 +1 wheel -4
-+1 move 0 384                   # 320, 452: Done
++1 move 0 336                   # 320, 404: Done
 +1 button left down
 +1 button left up
 +1 key escape down
@@ -80,7 +80,7 @@
 +3 screenshot at_4.png
 +1 key escape down
 +1 key escape up
-+1 move 0 -156                  # 320, 296: Quit to Title
++1 move 0 -108                  # 320, 296: Quit to Title
 +1 button left down
 +1 button left up
 +1 button left down             # the same place: Quit Game

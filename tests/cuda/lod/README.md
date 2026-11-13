@@ -19,7 +19,7 @@ What it checks:
 - **Following the eye:** a level moved one column shows no less on the very frame it moved, builds exactly one new row, holds no more after going there and back, and after a long jump shows nothing old. A pool with no room says so, and shows only what is whole.
 - **Rays:** random rays on the card through every level, against a march in `float64_t` voxel by voxel, from the same samples.
 - **The sun:** a wall's shadow on the ground where it must fall, and no ray for a surface that faces away.
-- **The picture:** every pixel's far ray against the march, every far pixel's colour against the host's, and no far ground drawn in a column full detail holds. A wall hides it, and glass lets it through. The setting off is the same bytes as no far field at all. Fog takes it as it takes anything.
+- **The picture:** every pixel's far ray against the march, every far pixel's colour against the host's, and no far ground drawn nearer than where level 0 let its ray go (plan 009 phase 04: its `t_end`, its square's edge, or a column it does not hold); `ld_plan` stands in for the planner the far field had before, so that the levels can be counted on paper. The band tests, near guarantee and seam, are `tests/cuda/lod/bands/`. A wall hides it, and glass lets it through. The setting off is the same bytes as no far field at all. Fog takes it as it takes anything.
 - **The machine:** no heap in a frame, moving, with columns on their way, and a kernel asked for what is too small says so and starts nothing.
 - **Golden pictures:** `fixtures/*.png`, at most 2 out of 255 apart on any channel. Ahmed's card and driver made them. To make them again, after looking at them:
 

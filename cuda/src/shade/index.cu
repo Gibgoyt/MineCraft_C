@@ -41,6 +41,7 @@ static __device__ __forceinline__ float32_t shade_sun_seen(const shade_context_t
     ray.eye_frac[surface->face >> 1] += (surface->face & 1u) != 0u ? bias : -bias;
     ray.t_start = 0.0F;
     ray.resume = 1u;
+    ray.t_end = TRAVERSE_T_END_NONE;
     float32_t seen = 1.0F;
     uint32_t last_material = SHADE_NO_MATERIAL;
     int16_t last_offset[3] = {0, 0, 0};
@@ -138,6 +139,7 @@ static __device__ __forceinline__ float32_t shade_ao_ray(const shade_context_t *
     ray.eye_frac[surface->face >> 1] += (surface->face & 1u) != 0u ? bias : -bias;
     ray.t_start = 0.0F;
     ray.resume = 1u;
+    ray.t_end = TRAVERSE_T_END_NONE;
     float32_t visible = 1.0F;
     uint32_t last_material = SHADE_NO_MATERIAL;
     int16_t last_offset[3] = {0, 0, 0};
@@ -435,6 +437,7 @@ static __device__ __forceinline__ void shade_reflection(const shade_context_t *c
     ray.eye_frac[axis] += (surface->face & 1u) != 0u ? bias : -bias;
     ray.t_start = 0.0F;
     ray.resume = 1u;
+    ray.t_end = TRAVERSE_T_END_NONE;
     float32_t sky[3];
     post_sky(context->post, mirrored, sky);
     uint32_t last_material = SHADE_NO_MATERIAL;
@@ -936,6 +939,7 @@ static __device__ __forceinline__ void shade_water_kernel_body(
     }
     ray.resume = 1u;
     ray.t_start = hit.t;
+    ray.t_end = TRAVERSE_T_END_NONE;
     shade_cell_cursor_t cursor;
     cursor.section[0] = INT32_MAX;
     cursor.section[1] = 0;
@@ -1046,6 +1050,9 @@ shade_kernel_body(const traverse_view_t *view, const traverse_camera_t *camera, 
         ray.direction[i] = traverse_guard(direction[i]);
     }
     ray.resume = 1u;
+    /* Plan 009 phase 04: on past what it can see through, as the primary ray went: to this pixel's d_1, and past it the far field's hit,
+     * which lod_frame followed from there. */
+    ray.t_end = traverse_band_from(view, traverse_band_factor(view, pixel_x, pixel_y), 1u);
     const entity_rays_hit_t entity =
         entity_hits != nullptr
             ? entity_hits[index]
@@ -1081,7 +1088,7 @@ shade_kernel_body(const traverse_view_t *view, const traverse_camera_t *camera, 
             break;
         }
         if (face == TRAVERSE_FACE_MISS && lod_hits != nullptr && lod_hits[index].material != LOD_NO_MATERIAL) {
-            /* Out of what full detail holds, and on to the far field: the same ray, which lod_frame has already followed. */
+            /* Past level 0, at its edge or at this pixel's d_1, and on to the far field: the same ray, which lod_frame has already followed. */
             const lod_hit_t far = lod_hits[index];
             first_t = drawn ? first_t : far.t;
             float32_t colour[3] = {SHADE_MISSING_R, SHADE_MISSING_G, SHADE_MISSING_B};

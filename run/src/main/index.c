@@ -58,7 +58,7 @@ typedef struct main_options_t {
     uint8_t has_time_of_day;    /* --time-of-day */
     uint32_t features_off;      /* --no-shapes, --no-alpha, --no-sky and on: SHADE_FEATURE_* */
     float32_t time_of_day;      /* --time-of-day */
-    uint32_t full_detail;       /* --full-detail, or 0 for RENDER_LOD_FULL_DETAIL_DEFAULT */
+    uint8_t _reserved0[4];      /* plan 009 phase 04: a flag no longer there; kept so nothing moves */
     const char *saves;          /* --saves, or nullptr for MAIN_SAVES_DEFAULT */
     const char *settings;       /* --settings, or nullptr for MAIN_SETTINGS_DEFAULT */
     const char *profile;        /* --profile, or nullptr for none */
@@ -101,7 +101,7 @@ static void main_print_usage(const char *program) {
         "           [--no-shapes] [--no-alpha] [--no-sky] [--no-day-cycle] [--no-fog]\n"
         "           [--no-shadows] [--no-stored-light] [--no-transparency] [--no-water-reflection]\n"
         "           [--no-water-tint] [--no-under-water] [--no-ao] [--no-taa] [--god-rays] [--no-entities]\n"
-        "           [--no-outline] [--full-detail <chunks>] [--no-lod] [--headless ...]\n"
+        "           [--no-outline] [--no-lod] [--headless ...]\n"
         "       %s --menu [--saves <dir>] [--settings <file>] [--render-distance <chunks>] [--climate-jump <days>]\n"
         "           [--headless ...]\n"
         "  --report                 print the build's defines and CPU features, then exit\n"
@@ -128,9 +128,8 @@ static void main_print_usage(const char *program) {
         "  --no-ao, --no-taa        with --test-world: no short rays to darken corners, or each frame stands alone\n"
         "  --no-entities            with --test-world: mobs and items are not drawn\n"
         "  --no-outline             with --test-world: no outline on what is aimed at, and no crack on what is mined\n"
-        "  --full-detail <chunks>   with --test-world: how far the world is drawn block by block. Past it, up to\n"
-        "                           --render-distance, coarse grids take over. Default 32\n"
-        "  --no-lod                 with --test-world: the world stops where full detail does\n"
+        "  --no-lod                 with --test-world: the world stops where level 0 does, the blocks the game\n"
+        "                           holds near the eye\n"
         "  --god-rays               with --test-world: the air shows the sun's light where it reaches\n"
         "  --test-world             fly through a generated world: in a window on a desktop, or through KMS from a "
         "text console,\n"
@@ -302,11 +301,6 @@ static bool main_parse_arguments(int32_t argc, char **argv, main_options_t *out)
             out->features_off |= (uint32_t)SHADE_FEATURE_TAA;
         } else if (strcmp(argv[i], "--no-lod") == 0) {
             out->features_off |= (uint32_t)SHADE_FEATURE_LOD;
-        } else if (strcmp(argv[i], "--full-detail") == 0 && i + 1 < argc) {
-            i++;
-            if (!main_parse_count("--full-detail", argv[i], &out->full_detail)) {
-                return false;
-            }
         } else if (strcmp(argv[i], "--god-rays") == 0) {
             out->god_rays = 1u;
         } else if (strcmp(argv[i], "--no-fog") == 0) {
@@ -450,10 +444,6 @@ static bool main_parse_arguments(int32_t argc, char **argv, main_options_t *out)
         fprintf(stderr, "%s: --render-distance only means something with --test-world or --menu\n", argv[0]);
         return false;
     }
-    if (out->full_detail != 0u && out->test_world == 0 && out->menu == 0u) {
-        fprintf(stderr, "%s: --full-detail only means something with --test-world or --menu\n", argv[0]);
-        return false;
-    }
     if ((out->features_off != 0u || out->god_rays != 0u) && out->test_world == 0 && out->menu == 0u) {
         fprintf(stderr,
                 "%s: --no-shapes and the other effects' flags only mean something with --test-world or --menu\n",
@@ -520,10 +510,9 @@ static void main_settings_read(app_t *app, const main_options_t *options) {
     settings_load(&app->settings, options->settings != nullptr ? options->settings : MAIN_SETTINGS_DEFAULT);
     settings_values_t *const values = &app->settings.values;
     values->render_distance = options->render_distance != 0u ? options->render_distance : values->render_distance;
-    values->full_detail = options->full_detail != 0u ? options->full_detail : values->full_detail;
     values->effects &= ~(uint32_t)options->features_off;
     values->effects |= options->god_rays != 0u ? (uint32_t)SHADE_FEATURE_GOD_RAYS : 0u;
-    /* A flag can say what the file cannot: a full detail too big for the card, or a distance no slider has. */
+    /* A flag can say what the file cannot: a distance no slider has. */
     settings_persist_clamp(values);
 }
 
@@ -1009,7 +998,6 @@ static main_exit_t main_run_test_world_headless(app_t *app, const main_options_t
         .height = config.height,
         .features_off = options->features_off,
         .god_rays = options->god_rays,
-        .full_detail = options->full_detail,
         /* The date only when a day was asked for, so other test worlds' pictures stay as they were. */
         .show_date = options->has_day_of_year};
     if (!game_open(&app->game, &game)) {
@@ -1054,7 +1042,6 @@ static main_exit_t main_run_test_world(app_t *app, const main_options_t *options
                                 .height = buffer->height,
                                 .features_off = options->features_off,
                                 .god_rays = options->god_rays,
-                                .full_detail = options->full_detail,
                                 .show_date = options->has_day_of_year};
     if (!game_open(&app->game, &game)) {
         return MAIN_EXIT_RUNTIME;
@@ -1086,7 +1073,6 @@ static game_config_t main_menu_game_config(const main_options_t *options, uint32
                            .height = height,
                            .features_off = options->features_off,
                            .god_rays = options->god_rays,
-                           .full_detail = options->full_detail,
                            .show_date = 0u};
 }
 

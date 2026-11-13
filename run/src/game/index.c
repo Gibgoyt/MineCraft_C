@@ -381,10 +381,11 @@ static const render_lod_world_t *game_lod_world(game_t *game) {
     return world;
 }
 
-/* The far field, which shows what a save holds over what generates. */
-static gpu_status_t game_lod_open(game_t *game, const render_lod_plan_t *plan) {
+/* The far field, which shows what a save holds over what generates, and near the eye what the blocks hold (plan 009 phase 04). */
+static gpu_status_t game_lod_open(game_t *game, const render_lod_plan_t *plan, uint32_t block_radius) {
     render_t *const render = game->borrowed_render;
-    const gpu_status_t status = render_open_lod(render, plan, render_lod_sample_world, game_lod_world(game));
+    const gpu_status_t status =
+        render_open_lod(render, plan, block_radius, render_lod_sample_world, game_lod_world(game));
     save_t *const save = game->borrowed_save;
     if (status == GPU_STATUS_OK && save != nullptr && save->world.open != 0u) {
         render_lod_overlay_set(render->borrowed_lod, save_world_far_line, &save->world, SAVE_WORLD_FAR_SCRATCH_BYTES);
@@ -403,9 +404,10 @@ void game_far_capture_tick(game_t *game) {
 }
 
 /* The same, keeping what the far field has of each level that stays the same. */
-static gpu_status_t game_lod_replan(game_t *game, const render_lod_plan_t *plan) {
+static gpu_status_t game_lod_replan(game_t *game, const render_lod_plan_t *plan, uint32_t block_radius) {
     render_t *const render = game->borrowed_render;
-    const gpu_status_t status = render_replan_lod(render, plan, render_lod_sample_world, game_lod_world(game));
+    const gpu_status_t status =
+        render_replan_lod(render, plan, block_radius, render_lod_sample_world, game_lod_world(game));
     save_t *const save = game->borrowed_save;
     if (status == GPU_STATUS_OK && render->borrowed_lod != nullptr && save != nullptr && save->world.open != 0u) {
         render_lod_overlay_set(render->borrowed_lod, save_world_far_line, &save->world, SAVE_WORLD_FAR_SCRATCH_BYTES);
@@ -413,66 +415,51 @@ static gpu_status_t game_lod_replan(game_t *game, const render_lod_plan_t *plan)
     return status;
 }
 
-/* Plan 009 phase 03: the pyramid's levels for this config and view, not drawn yet. With no room for them the world goes on as it was. */
 /* What a frame is drawn with, past what the view says: a last surface's sun ray apart, and AO's first guess for newly seen pixels (plan 008
  * phase 04) unless features_off has it, which no setting does: bench_world_shake's --features-off is how it is turned off. */
 static uint32_t game_frame_features(uint32_t view_features, uint32_t features_off) {
     return view_features | (uint32_t)SHADE_FEATURE_SUN_APART | ((uint32_t)SHADE_FEATURE_AO_FIRST_GUESS & ~features_off);
 }
 
-static void game_pyramid_apply(game_t *game, const game_config_t *config, const game_view_t *view) {
-    render_t *const render = game->borrowed_render;
-    const render_lod_plan_t plan = game_view_pyramid(config, view);
-    if (render_pyramid_apply(render, &plan, render_lod_sample_world, game_lod_world(game)) != GPU_STATUS_OK) {
-        LOG_WARN("game: no room for the pyramid's levels; nothing draws them yet, so the picture is the same");
-        return;
-    }
-    render_lod_t *const lod = render_pyramid_lod(render);
-    save_t *const save = game->borrowed_save;
-    if (lod != nullptr && lod->overlay == nullptr && save != nullptr && save->world.open != 0u) {
-        render_lod_overlay_set(lod, save_world_far_line, &save->world, SAVE_WORLD_FAR_SCRATCH_BYTES);
-    }
-}
-
 void game_far_changes_take(game_t *game) {
-    render_lod_t *const lods[2] = {game->borrowed_render->borrowed_lod, render_pyramid_lod(game->borrowed_render)};
+    render_lod_t *const lod = game->borrowed_render->borrowed_lod;
     save_t *const save = game->borrowed_save;
-    if ((lods[0] == nullptr && lods[1] == nullptr) || save == nullptr || save->world.open == 0u) {
+    if (lod == nullptr || save == nullptr || save->world.open == 0u) {
         return;
     }
     int32_t chunk_x = 0, chunk_y = 0;
     while (save_world_far_next(&save->world, &chunk_x, &chunk_y)) {
-        for (uint32_t i = 0u; i < 2u; i++) {
-            if (lods[i] != nullptr) {
-                render_lod_column_changed(lods[i], chunk_x, chunk_y);
-            }
-        }
+        render_lod_column_changed(lod, chunk_x, chunk_y);
     }
     if (save_world_far_lost_take(&save->world)) {
         /* Only a column in the map is ever captured, so what was lost is in the map's square: not the whole far field. */
         const world_map_t *const map = &game->borrowed_world->map;
         const int32_t radius = (int32_t)map->table_radius;
-        for (uint32_t i = 0u; i < 2u; i++) {
-            if (lods[i] != nullptr) {
-                render_lod_area_changed(lods[i], map->center_x - radius, map->center_y - radius, map->center_x + radius,
-                                        map->center_y + radius);
-            }
-        }
+        render_lod_area_changed(lod, map->center_x - radius, map->center_y - radius, map->center_x + radius,
+                                map->center_y + radius);
     }
+}
+
+/* The level 0 pool for a view: plan 009 phase 04 sizes it for the radius the game holds now, with the map's margin, and not for the whole
+ * table, which is as wide as the narrowest field of view could want. A view that later wants more than this has columns with no room, and
+ * there the far field shows through. */
+static uint64_t game_level0_pool_bytes(const render_t *render, const game_view_t *view) {
+    const uint32_t side = 2u * (view->block_radius + WORLD_MAP_KEEP_EXTRA) + 1u;
+    return render_pool_bytes_for(render, side * side);
 }
 
 /* The map, and what the card holds of it. Each says why if it cannot, and whatever came before it is given back. */
 static bool game_open_parts(game_t *game, const game_config_t *config, int32_t chunk_x, int32_t chunk_y) {
     world_t *const world = game->borrowed_world;
     render_t *const render = game->borrowed_render;
-    /* What the map loads is what is drawn block by block. The far field never touches it. */
+    /* What the map loads is what is drawn block by block, level 0. The far field reads it, near the eye, and never writes it. */
     const uint32_t table_chunks = game_view_table_chunks(config);
     game_view_work_out(config, table_chunks, &game->view);
     const game_view_t *const view = &game->view;
     if (!world_open(world, table_chunks + WORLD_MAP_KEEP_EXTRA, chunk_x, chunk_y)) {
         return false;
     }
-    world_map_set_view_radius(&world->map, view->full_detail);
+    world_map_set_view_radius(&world->map, view->block_radius);
     world_tick_seed_set(&world->tick, game->borrowed_terrain->seed);
     const render_upload_budget_t budget = {
         .bytes = RENDER_UPLOAD_BUDGET_BYTES_DEFAULT,
@@ -480,8 +467,7 @@ static bool game_open_parts(game_t *game, const game_config_t *config, int32_t c
         ._pad0 = {0},
     };
     game_open_alive_tell(game);
-    if (render_open(render, &world->snapshot, render_pool_bytes_for(render, world->map.slot_count), budget) !=
-        GPU_STATUS_OK) {
+    if (render_open(render, &world->snapshot, game_level0_pool_bytes(render, view), budget) != GPU_STATUS_OK) {
         world_close(world);
         return false;
     }
@@ -493,14 +479,13 @@ static bool game_open_parts(game_t *game, const game_config_t *config, int32_t c
     }
     game_open_alive_tell(game);
     if (view->lod.level_count != 0u) {
-        const gpu_status_t status = game_lod_open(game, &view->lod);
+        const gpu_status_t status = game_lod_open(game, &view->lod, view->block_radius);
         if (status != GPU_STATUS_OK) {
             render_close(render);
             world_close(world);
             return false;
         }
     }
-    game_pyramid_apply(game, config, view);
     render_frame_features_set(&render->frame, game_frame_features(view->features, config->features_off));
     if ((view->width != config->width || view->height != config->height) && !game_picture_full_room(game)) {
         render_close(render);
@@ -776,7 +761,7 @@ bool game_open(game_t *game, const game_config_t *config) {
     }
     game_preview_show(game, config);
     game_open_alive_tell(game);
-    game_fill_start(&world_parts->fill, GAME_FILL_OPEN, config->render_distance, game->view.full_detail,
+    game_fill_start(&world_parts->fill, GAME_FILL_OPEN, config->render_distance, game->view.block_radius,
                     game->borrowed_render);
     game_open_climate(game, start_x, start_y);
     /* A new world's calendar: Year 1, Day 80, week 11, with no census owed. A saved one replaces it below. */
@@ -927,21 +912,21 @@ static bool game_view_change(game_t *game, game_view_t *now) {
     /* A level that stays the same keeps what it has built, so a far column at the old setting goes only when its own replacement has come. */
     gpu_status_t far = GPU_STATUS_OK;
     if (render->borrowed_lod != nullptr && memcmp(&now->lod, &was->lod, sizeof(now->lod)) != 0) {
-        far = now->lod.level_count != 0u ? game_lod_replan(game, &now->lod) : GPU_STATUS_OK;
+        far = now->lod.level_count != 0u ? game_lod_replan(game, &now->lod, now->block_radius) : GPU_STATUS_OK;
         if (now->lod.level_count == 0u) {
             render_close_lod(render);
         }
     }
-    world_map_set_view_radius(&game->borrowed_world->map, now->full_detail);
+    world_map_set_view_radius(&game->borrowed_world->map, now->block_radius);
     if (far == GPU_STATUS_OK && now->lod.level_count != 0u && render->borrowed_lod == nullptr) {
-        far = game_lod_open(game, &now->lod);
+        far = game_lod_open(game, &now->lod, now->block_radius);
     }
     if (far != GPU_STATUS_OK) {
-        /* The world still works, to where full detail goes, and the fog comes in to meet it. */
+        /* The world still works, to where level 0 goes, and the fog comes in to meet it. */
         LOG_WARN("game: no room on the card for a far field, so the world stops at %" PRIu32 " chunks",
-                 now->full_detail);
+                 now->block_radius);
         now->lod = (render_lod_plan_t){0};
-        now->fog_end = game_view_fog_end(now->full_detail);
+        now->fog_end = game_view_fog_end(now->block_radius);
     }
     render_frame_fog_set(&render->frame, now->fog_end);
     render_frame_features_set(&render->frame, game_frame_features(now->features, game->config.features_off));
@@ -959,6 +944,14 @@ bool game_reconfigure(game_t *game, const game_config_t *config) {
     game_view_t now;
     const uint32_t table_chunks = game->borrowed_world->map.table_radius - WORLD_MAP_KEEP_EXTRA;
     game_view_work_out(config, table_chunks, &now);
+    if (fov_changed && config->render_distance == game->config.render_distance &&
+        config->render_scale_percent == game->config.render_scale_percent && now.features == game->view.features) {
+        /* Plan 009 phase 04: a field of view alone moves the bands at once, as each frame works them out from the camera, but keeps the
+         * levels' squares and level 0's radius, which only a change that stops the threads anyway works out again: a narrower view meanwhile
+         * reaches a level's edge sooner, and goes on to the next. */
+        now.lod = game->view.lod;
+        now.block_radius = game->view.block_radius;
+    }
     if (memcmp(&now, &game->view, sizeof(now)) == 0) {
         game->config = *config;
         game_preview_show(game, config);
@@ -977,9 +970,6 @@ bool game_reconfigure(game_t *game, const game_config_t *config) {
     }
     game_open_alive_tell(game);
     const bool changed = game_view_change(game, &now);
-    if (changed) {
-        game_pyramid_apply(game, config, &now);
-    }
     game_open_alive_tell(game);
     game->config = *config;
     game->view = now;
@@ -990,8 +980,8 @@ bool game_reconfigure(game_t *game, const game_config_t *config) {
     }
     LOG_INFO("game: now drawing %" PRIu32 " chunks, %" PRIu32 " of them block by block, %" PRIu32
              " far levels, at %" PRIu32 " by %" PRIu32 ", with effects %#" PRIx32,
-             config->render_distance, now.full_detail, now.lod.level_count, now.width, now.height, now.features);
-    game_fill_start(game_fill_of(game), GAME_FILL_CHANGE, config->render_distance, now.full_detail,
+             config->render_distance, now.block_radius, now.lod.level_count, now.width, now.height, now.features);
+    game_fill_start(game_fill_of(game), GAME_FILL_CHANGE, config->render_distance, now.block_radius,
                     game->borrowed_render);
     game_preview_show(game, config);
     if (running && !game_threads_start(game)) {
@@ -1706,15 +1696,6 @@ static void game_gpu_thread(void *borrowed_argument) {
                 atomic_store_explicit(&game->failed, 1u, memory_order_release);
                 return; /* it has said why */
             }
-        }
-        /* Plan 009 phase 03: the pyramid, drawn by nothing yet: what the blocks make of it, and its workers once the far field is done. */
-        PROFILER_BEGIN(game->borrowed_lane_gpu, "pyramid_frame");
-        status = render_pyramid_frame(render, camera->position);
-        PROFILER_END(game->borrowed_lane_gpu);
-        if (status != GPU_STATUS_OK) {
-            game_gpu_failed_note(game, status);
-            atomic_store_explicit(&game->failed, 1u, memory_order_release);
-            return; /* it has said why */
         }
         game_watch_stamp(picture, GAME_WATCH_STAMP_LOD);
         game_fill_step(game_fill_of(game), render);

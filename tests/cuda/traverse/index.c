@@ -1349,6 +1349,93 @@ TEST(a_ray_at_300_blocks_counts_into_the_bands_it_crossed) {
     CHECK_EQ_U64(device_memory_free(&memory, &counts), GPU_STATUS_OK);
     tw_close(t, &memory);
 }
+/* ---- Plan 009 phase 04: t_end --------------------------------------------------------------------------------------------- */
+
+/* A ray with an end it never reaches finds what one with none finds, to the bit, on every path of both stress worlds: so the check the loop
+ * does each step, and on each column it enters, changes nothing until it fires. The world's bands set a primary ray's end at d_1, here past
+ * any distance in the window. */
+TEST(an_endless_t_end_changes_nothing) {
+    device_memory_t memory;
+    REQUIRE(tw_open(t, &memory));
+    for (uint32_t lattice = 0u; lattice < 2u; lattice += 1u) {
+        tw_paths_t paths;
+        tw_world_t *const world = tw_stress_world(t, TW_TERRAIN_COLUMNS, lattice != 0u, &paths);
+        REQUIRE(tw_world_upload(t, &memory, world));
+        tw_targets_t targets;
+        REQUIRE(tw_targets_make(t, &memory, 640u, 360u, &targets));
+        const uint64_t hit_bytes = traverse_hits_bytes(640u, 360u);
+        traverse_hit_t *const endless = test_alloc(t, hit_bytes);
+        uint64_t differ = 0u, rays = 0u;
+        for (uint32_t path = 0u; path < TW_PATH_COUNT; path += 1u) {
+            const traverse_camera_t camera = tw_path_camera(world, &paths, path, 0.5f32, 640u, 360u);
+            for (uint32_t coarse = 0u; coarse < 2u; coarse += 1u) {
+                world->view.band_base = 0.0f32;
+                REQUIRE(tw_frame_run(t, &memory, world, &camera, &targets, coarse != 0u));
+                memcpy(endless, targets.host_hits, hit_bytes);
+                /* d_1 is 2 million blocks: an end, and never reached. */
+                world->view.band_base = 1.0e6f32;
+                REQUIRE(tw_frame_run(t, &memory, world, &camera, &targets, coarse != 0u));
+                for (uint64_t k = 0u; k < hit_bytes / sizeof(traverse_hit_t); k += 1u) {
+                    differ += memcmp(&endless[k], &targets.host_hits[k], sizeof(traverse_hit_t)) != 0 ? 1u : 0u;
+                }
+                rays += hit_bytes / sizeof(traverse_hit_t);
+            }
+        }
+        world->view.band_base = 0.0f32;
+        printf("  %s: %" PRIu64 " of %" PRIu64 " hits differ with an end never reached\n",
+               lattice != 0u ? "lattice" : "terrain", differ, rays);
+        CHECK_EQ_U64(differ, 0u);
+        tw_targets_free(t, &memory, &targets);
+        CHECK_EQ_U64(device_memory_free(&memory, &world->table), GPU_STATUS_OK);
+        CHECK_EQ_U64(device_memory_free(&memory, &world->pool), GPU_STATUS_OK);
+    }
+    tw_close(t, &memory);
+}
+
+/* An empty world and a wall at 50: an end at 30 stops the ray there and says so (TRAVERSE_FACE_PAST: a miss whose t is the end); an end at 60
+ * finds the wall as no end does. A ray with an end entering a column the world does not hold stops where it came in. */
+TEST(a_ray_stops_at_its_t_end_and_says_past) {
+    device_memory_t memory;
+    REQUIRE(tw_open(t, &memory));
+    tw_world_t *const world = tw_world_begin(t, 8u, 0, 0);
+    for (int32_t z = 30; z < 50; z += 1) {
+        for (int32_t y = 30; y < 50; y += 1) {
+            tw_set(world, 60, y, z, 7u);
+        }
+    }
+    REQUIRE(tw_world_upload(t, &memory, world));
+    traverse_ray_t rays[3] = {tw_ray(10, 40, 40, 1.0f32, 0.0f32, 0.0f32), tw_ray(10, 40, 40, 1.0f32, 0.0f32, 0.0f32),
+                              tw_ray(10, 40, 40, 1.0f32, 0.0f32, 0.0f32)};
+    rays[0].t_end = 30.0f32;
+    rays[1].t_end = 60.0f32;
+    traverse_hit_t hits[3];
+    REQUIRE(tw_cast(t, &memory, world, rays, 3u, hits));
+    CHECK_EQ_U64(traverse_hit_face(hits[0].info), TRAVERSE_FACE_PAST);
+    CHECK(traverse_hit_past(&hits[0]));
+    CHECK_EQ_U64(*(const uint32_t *)(const void *)&hits[0].t, *(const uint32_t *)(const void *)&rays[0].t_end);
+    tw_check_hit(t, &hits[1], TRAVERSE_FACE_NEG_X, 49.5f32, 50, 0, 0, 7u);
+    CHECK(memcmp(&hits[1], &hits[2], sizeof(traverse_hit_t)) == 0);
+    CHECK(!traverse_hit_past(&hits[1]));
+    /* A miss with no end is no PAST. */
+    const traverse_ray_t up = tw_ray(10, 40, 40, 0.0f32, 0.0f32, 1.0f32);
+    traverse_hit_t sky;
+    REQUIRE(tw_cast(t, &memory, world, &up, 1u, &sky));
+    CHECK_EQ_U64(traverse_hit_face(sky.info), TRAVERSE_FACE_MISS);
+    CHECK(!traverse_hit_past(&sky));
+    /* Column 3, 2 (x 48 to 63, the wall's) taken out of its slot: with an end the ray stops at x = 48, 37.5 along; with none it passes. */
+    const int32_t elsewhere = 3 + 8;
+    const uint64_t slot = 2u * 8u + 3u;
+    REQUIRE(device_memory_write(&memory, &world->table,
+                                slot * sizeof(world_buffers_column_t) + offsetof(world_buffers_column_t, chunk_x),
+                                &elsewhere, sizeof(elsewhere)) == GPU_STATUS_OK);
+    REQUIRE(tw_cast(t, &memory, world, rays, 3u, hits));
+    CHECK(traverse_hit_past(&hits[1]));
+    CHECK_NEAR(hits[1].t, 37.5f32, 1e-4f32);
+    CHECK_EQ_U64(traverse_hit_face(hits[2].info), TRAVERSE_FACE_MISS);
+    CHECK(!traverse_hit_past(&hits[2]));
+    tw_close(t, &memory);
+}
+
 /* ---- Timing, on request. A number on a shared card proves nothing in a test, so it is printed and not compared. ----------- */
 
 static int32_t tw_compare_i64(const void *a, const void *b) {

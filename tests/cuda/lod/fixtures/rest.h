@@ -78,7 +78,7 @@ TEST(golden_pictures_match) {
                                   .features_off = 0u,
                                   .god_rays = 0u,
                                   .show_date = 0u,
-                                  .full_detail = 2u};
+                                  .block_radius_given = 2u};
     REQUIRE(game_open(real.game, &config));
     REQUIRE(game_settle(real.game));
     render_camera_t real_eye = real.game->camera;
@@ -100,7 +100,7 @@ TEST(golden_pictures_match) {
     REQUIRE(sk_hand_world_open(t, &distant, LD_HAND_RADIUS, LD_WIDTH, LD_HEIGHT, 8176.0f32));
     REQUIRE(sk_hand_world_sync(t, &distant));
     const render_lod_plan_t plan = {.shifts = {4u, 5u, 6u}, .radii = {16u, 16u, 11u}, .level_count = 3u};
-    REQUIRE(render_open_lod(distant.render, &plan, render_lod_sample_terrain, distant.terrain) == GPU_STATUS_OK);
+    REQUIRE(render_open_lod(distant.render, &plan, 0u, render_lod_sample_terrain, distant.terrain) == GPU_STATUS_OK);
     render_frame_features_set(&distant.render->frame, SHADE_FEATURES_PLAY);
     render_frame_time_set(&distant.render->frame, 0.38f32);
     render_camera_t distant_eye;
@@ -156,7 +156,7 @@ TEST(the_cost_at_a_render_distance_of_512_is_measured_on_real_terrain) {
     printf("  cost: not on a build with no optimisation: see tests/cuda/lod/README.md\n");
     return;
 #endif
-    const uint32_t render_distance = MC_GAME_RENDER_DISTANCE_MAX, full_detail = RENDER_LOD_FULL_DETAIL_DEFAULT;
+    const uint32_t render_distance = MC_GAME_RENDER_DISTANCE_MAX;
     sk_rig_t rig;
     REQUIRE(sk_rig_begin(t, &rig));
     game_t *const game = rig.game;
@@ -165,8 +165,7 @@ TEST(the_cost_at_a_render_distance_of_512_is_measured_on_real_terrain) {
                                   .height = LD_COST_HEIGHT,
                                   .features_off = 0u,
                                   .god_rays = 0u,
-                                  .show_date = 0u,
-                                  .full_detail = full_detail};
+                                  .show_date = 0u};
     REQUIRE(game_open(game, &config));
     const int64_t start_ns = time_now_ns();
     REQUIRE(game_settle(game));
@@ -225,7 +224,7 @@ TEST(the_real_threads_build_the_far_field_and_keep_up_with_an_eye_that_flies) {
                                   .features_off = 0u,
                                   .god_rays = 0u,
                                   .show_date = 0u,
-                                  .full_detail = 2u};
+                                  .block_radius_given = 2u};
     REQUIRE(game_open(game, &config));
     const uint64_t bytes = post_xrgb_bytes(LD_WIDTH, LD_HEIGHT);
     uint8_t *const screen = sk_aligned(t, bytes);
@@ -292,25 +291,12 @@ static const char ld_script[] = "3 screenshot far.png\n"
 
 static void ld_program_run(test_context_t *t, const ld_temp_dir_t *dir, const char *script, const char *flag,
                            test_process_t *out) {
-    char *argv[] = {t->borrowed_args[0],
-                    (char *)"--headless",
-                    (char *)"--test-world",
-                    (char *)"--no-taa",
-                    (char *)"--no-ao",
-                    (char *)"--render-distance",
-                    (char *)"5",
-                    (char *)"--full-detail",
-                    (char *)"2",
-                    (char *)"--script",
-                    (char *)script,
-                    (char *)"--screenshot-dir",
-                    (char *)dir->path,
-                    (char *)"--width",
-                    (char *)"160",
-                    (char *)"--height",
-                    (char *)"90",
-                    (char *)flag,
-                    nullptr};
+    char *argv[] = {
+        t->borrowed_args[0], (char *)"--headless", (char *)"--test-world", (char *)"--no-taa", (char *)"--no-ao",
+        (char *)"--render-distance",
+        /* Level 0 is never held under 12 chunks (block_radius_min_chunks), so the far field starts past it. */
+        (char *)"14", (char *)"--script", (char *)script, (char *)"--screenshot-dir", (char *)dir->path,
+        (char *)"--width", (char *)"160", (char *)"--height", (char *)"90", (char *)flag, nullptr};
     test_process_run(t, argv, LD_PROGRAM_TIMEOUT_MS, out);
 }
 
@@ -370,7 +356,7 @@ TEST(the_program_draws_the_far_field_and_its_flags_mean_what_they_say) {
     ld_temp_dir_remove(&again);
     ld_temp_dir_remove(&off);
 
-    /* The flag and its number are nothing without a world, and a number has to be one. */
+    /* A flag plan 009 phase 04 took away is no flag at all, and the one left is nothing without a world. */
     char *refused[] = {t->borrowed_args[0], (char *)"--full-detail", (char *)"8", nullptr};
     test_process_run(t, refused, LD_PROGRAM_TIMEOUT_MS, &run);
     CHECK_EQ_I64(run.exit_code, MAIN_EXIT_USAGE);

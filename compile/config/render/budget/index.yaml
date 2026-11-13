@@ -33,7 +33,7 @@ octant_store_mib:
   unit: mib
   min: 8
   max: 1024
-  why: "Host memory for the octants of non-uniform sections, 1536 bytes each, that pyramid levels 1 and 2 are made from where blocks are loaded (plan 009 phase 03): bench_lod found 14 to 41 a chunk, about 120 MiB at full detail 32 and 270 at 48, and 96 ran out at 32. Pages are touched only as used. A column whose octant finds no room is made from terrain instead. RENDER_OCTANT_STORE_MIB."
+  why: "Host memory for the octants of non-uniform sections, 1536 bytes each, that pyramid levels 1 and 2 are made from where blocks are loaded (plan 009 phase 03): bench_lod found 14 to 41 a chunk, about 120 MiB with blocks held 32 chunks each way and 270 at 48, and 96 ran out at 32. Pages are touched only as used. A column whose octant finds no room is made from terrain instead. RENDER_OCTANT_STORE_MIB."
 octant_columns_per_frame:
   value: 8
   type: u32

@@ -751,6 +751,11 @@ gpu_status_t render_frame_queue(render_frame_t *frame, const world_buffers_t *bu
     for (uint32_t i = 0u; i < 3u; i++) {
         temporal->shaft_colour[i] = scene.sun.direct[i] * SHADE_SHAFT_STRENGTH;
     }
+    const bool far = frame->borrowed_lod != nullptr && (features & SHADE_FEATURE_LOD) != 0u;
+    /* Plan 009 phase 04: with a far field, the blocks end at each pixel's d_1, from this frame's own field of view and rows; without one, at
+     * their edge. */
+    const float32_t band_base =
+        far ? render_lod_band_base(frame->borrowed_lod->pixel_error, camera->half_fov_tangent, frame->height) : 0.0f32;
     const traverse_world_t world = {
         .borrowed_table = buffers->borrowed_table,
         .borrowed_pool = buffers->borrowed_pool,
@@ -758,22 +763,25 @@ gpu_status_t render_frame_queue(render_frame_t *frame, const world_buffers_t *bu
         .borrowed_shapes = (frame->scene.features & SHADE_FEATURE_SHAPES) != 0u ? frame->borrowed_shapes : nullptr,
         .shape_count = BLOCK_COUNT,
         .top_limit = buffers->top_limit,
+        .band_base = band_base,
+        .band_dither = far ? frame->borrowed_lod->band_dither : 0.0f32,
+        .band_seed = (features & SHADE_FEATURE_TAA) != 0u ? temporal->frame + 1u : 0u,
     };
     entity_rays_scene_t entities;
     if (frame->borrowed_entities != nullptr) {
         /* Past the fog a box is sky, and with no fog nothing is past anything. */
-        const float32_t far = (features & SHADE_FEATURE_FOG) != 0u ? frame->fog_end : 0.0f32;
+        const float32_t fog_far = (features & SHADE_FEATURE_FOG) != 0u ? frame->fog_end : 0.0f32;
         const gpu_status_t sent = render_entities_frame_staged(frame->borrowed_entities, &frame->gpu.staging, &steady,
-                                                               features, far, &entities);
+                                                               features, fog_far, &entities);
         if (sent != GPU_STATUS_OK) {
             frame->gpu.last_error = frame->borrowed_memory->last_error;
             return sent;
         }
     }
     lod_scene_t far_scene;
-    const bool far = frame->borrowed_lod != nullptr && (features & SHADE_FEATURE_LOD) != 0u;
     if (far) {
         render_lod_scene(frame->borrowed_lod, &far_scene);
+        frame->borrowed_lod->band_base = band_base;
     }
     const shade_sun_t *const sun = &scene.sun;
     /* With no sun to speak of, nothing is lost by no rays towards it. */

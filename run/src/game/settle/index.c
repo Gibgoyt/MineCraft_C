@@ -19,7 +19,7 @@ static bool game_is_settled(const game_t *game) {
     const bool sections_waiting = world->edit.queue_count[WORLD_EDIT_CONSUMER_RENDER] != 0u && !pool_full;
     return game->stream_quiet != 0u && world->map.pending_count == 0u && (!unread || pool_full) && !sections_waiting &&
            (render_upload_idle(&render->upload) || pool_full) &&
-           (render->borrowed_lod == nullptr || render_lod_idle(render->borrowed_lod)) && render_pyramid_idle(render);
+           (render->borrowed_lod == nullptr || render_lod_idle(render->borrowed_lod));
 }
 
 bool game_settle(game_t *game) {
@@ -42,13 +42,6 @@ bool game_settle(game_t *game) {
                 return false; /* it has said why */
             }
         }
-        const render_lod_t *const pyramid = render_pyramid_lod(render);
-        const uint64_t pyramid_built = pyramid != nullptr ? pyramid->stats.columns_built : 0u;
-        const gpu_status_t pyramid_status = render_pyramid_frame(render, game->camera.position);
-        if (pyramid_status != GPU_STATUS_OK) {
-            game_gpu_failed_note(game, pyramid_status);
-            return false; /* it has said why */
-        }
         game_fill_step(game_fill_of(game), render);
         if (render->buffers.pool_full_count != 0u && game->pool_full_said == 0u) {
             LOG_WARN("game: the section pool is full, so part of the world will not be drawn");
@@ -57,10 +50,8 @@ bool game_settle(game_t *game) {
         if (game_is_settled(game)) {
             return true;
         }
-        const bool far_waiting =
-            (render->borrowed_lod != nullptr && render->borrowed_lod->jobs_in_use != 0u &&
-             far_built == render->borrowed_lod->stats.columns_built) ||
-            (pyramid != nullptr && pyramid->jobs_in_use != 0u && pyramid_built == pyramid->stats.columns_built);
+        const bool far_waiting = render->borrowed_lod != nullptr && render->borrowed_lod->jobs_in_use != 0u &&
+                                 far_built == render->borrowed_lod->stats.columns_built;
         if (far_waiting || (waiting_before != 0u && waiting_before == game->jobs_in_use)) {
             time_sleep_ns(GAME_SETTLE_IDLE_NS);
         }

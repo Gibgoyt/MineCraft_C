@@ -13,7 +13,7 @@ Compute only. No real display, console or input device is opened: pictures go to
 
 What it holds to:
 
-- **Render distance in an open world:** in, out and past full detail, counting columns against discs and a far field against its plan, a block placed before it all still there after. A world opened for more full detail than it draws.
+- **Render distance in an open world:** in, out and past level 0 (held at 6 chunks by `block_radius_given`), counting columns against discs and a far field against its plan by the bands, a block placed before it all still there after. A world opened with room for more level 0 than it draws.
 - **Everything else taking at once:** field of view, an effect and render scale, each coming back to the same pixels, a smaller picture brought up square by square, and the mouse.
 - **With the real threads:** render distance, size and effects between two frames, with pictures going, and uncapped drawing more pictures than anyone takes.
 - **A whole session,** on frames from `game_session_source` and input from fake devices: into a new world, Esc, Settings, the wheel on render distance and on render scale, the picture behind the screen drawn again in the pause, Done, the file, Esc, the same world at the same place with its time going on, and out. The display's own loop is what `tests/run/ui/menu/` and `tests/run/game/` hold to.

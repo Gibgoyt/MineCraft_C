@@ -22,9 +22,9 @@
 
 | Setting | Takes effect |
 |---|---|
-| Render distance | At once, with no restart and in the world that is open: nearer than full detail by the map's view, and past it by a far field made anew, which fills in over about 0.4 s of a worker for each coarse column in a release build. See `run/src/game/README.md` |
-| Full detail | At once, up to what the open world's table was sized for, which is what full detail was when it opened. Further is on the screen as taking a new world: the table and the slab pool on the card are sized once, and what is in them is sized for the world as it opened |
-| Field of view, sensitivity | At once |
+| Render distance | At once, with no restart and in the world that is open: near the eye by the map's view (level 0, as far as the game works out from the pixel error, plan 009 phase 04), and past it by a far field made anew, which fills in over about 0.4 s of a worker for each coarse column in a release build. See `run/src/game/README.md` |
+| Field of view | At once: each frame's bands follow it. The levels' squares and level 0's radius follow at the next change that works out the view again (render distance, render scale, an effect) |
+| Sensitivity | At once |
 | Each effect | At once |
 | Render scale | At once: new pictures on the card, brought up to the display's size. See `run/src/game/README.md` |
 | Vsync or uncapped | At once. Uncapped is a flip that does not wait for a vblank, if the driver allows it, and otherwise one that does; the gpu thread stops waiting for a picture to be taken |

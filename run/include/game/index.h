@@ -47,11 +47,11 @@ typedef struct game_config_t {
     uint32_t width;           /* 4: of the picture */
     uint32_t height;          /* 8 */
     uint32_t features_off;    /* 12: SHADE_FEATURE_* to leave off; 0 draws all of SHADE_FEATURES_PLAY */
-    /* 16: how far the world is drawn block by block, in chunks. Past it, to render_distance, coarse grids take over. 0 means
-     * RENDER_LOD_FULL_DETAIL_DEFAULT. */
-    uint32_t full_detail;
-    /* 20: how far full detail may ever reach in this world without opening it again, in chunks, since the table on the card is sized once.
-     * 0 means only what this config asks for. */
+    /* 16: plan 009 phase 04: level 0's radius is worked out (game_view_t.block_radius), and play never sets this. 0 for that; otherwise
+     * level 0 is this many chunks, at most the render distance, for a bench's or a test's reference picture. */
+    uint32_t block_radius_given;
+    /* 20: how far level 0 may ever reach in this world without opening it again, in chunks, since the table on the card is sized once. 0
+     * means what the narrowest field of view would want at this config's picture and render distance (game_view_table_chunks). */
     uint32_t table_chunks;
     uint32_t fov_degrees;         /* 24: the vertical field of view; 0 means RENDER_CAMERA_HALF_FOV_TANGENT_DEFAULT */
     uint32_t sensitivity_percent; /* 28: of RENDER_CAMERA_RADIANS_PER_COUNT; 0 means 100 */
@@ -71,12 +71,13 @@ static_assert(sizeof(game_config_t) == 40);
 /* What a config comes to, for a table of a given size. */
 typedef struct game_view_t {
     render_lod_plan_t lod; /* 0: no levels if there is no far field */
-    uint32_t full_detail;  /* 16: the map's view radius */
-    uint32_t width;        /* 20: what is drawn, before it is brought up to the config's */
-    uint32_t height;       /* 24 */
-    float32_t fog_end;     /* 28: in blocks */
-    uint32_t features;     /* 32: SHADE_FEATURE_* */
-    uint8_t _pad0[4];      /* 36 */
+    uint32_t
+        block_radius;  /* 16: level 0, the map's view radius, in chunks: plan 009 phase 04, worked out from the bands */
+    uint32_t width;    /* 20: what is drawn, before it is brought up to the config's */
+    uint32_t height;   /* 24 */
+    float32_t fog_end; /* 28: in blocks */
+    uint32_t features; /* 32: SHADE_FEATURE_* */
+    uint8_t _pad0[4];  /* 36 */
 } game_view_t;
 static_assert(sizeof(game_view_t) == 40);
 
@@ -368,8 +369,8 @@ bool game_open_climate_step(game_t *game);
 void game_close(game_t *game);
 
 /* The world goes on with this config, the same size as it opened with, without closing. The player, the columns that are still in reach and
- * every edit in them stay. Render distance, effects, field of view, sensitivity, render scale and uncapped all take at once, and full detail as
- * far as table_chunks reaches. The thread that owns input, between frames: anything that needs them stopped stops the threads and starts them
+ * every edit in them stay. Render distance, effects, field of view, sensitivity, render scale and uncapped all take at once, and level 0's
+ * radius as far as table_chunks reaches. The thread that owns input, between frames: anything that needs them stopped stops the threads and starts them
  * again. Takes as long as the card does to give back and take a far field, and each frame after goes on filling it in. False, having said why,
  * only if the card or a thread failed, which nothing more should be asked of. */
 [[nodiscard]] bool game_reconfigure(game_t *game, const game_config_t *config);

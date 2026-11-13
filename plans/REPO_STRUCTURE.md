@@ -355,7 +355,7 @@ Layout: `cuda/src/<dir>/index.cu`, `cuda/include/<dir>/index.hu`, `README.md`. *
 | `post` | Sky, fog, god rays' colour, TAA, tone map | 08.4, 09.x |
 | `frame` | One frame's kernels in order, GPU timers | 08.4, 17.1 |
 | `entity_rays` | Mob and item boxes against a frame's rays; the outline of what is aimed at, on the finished picture | 09.5 |
-| `lod` | Far-field traversal: rays from the finest coarse grid out, past what full detail holds, with a sun ray for each surface | 09.6 |
+| `lod` | Far-field traversal: rays from the finest coarse grid out, past where level 0 stops for each pixel (its band), with a sun ray for each surface | 09.6 |
 
 ### The C ↔ CUDA boundary
 

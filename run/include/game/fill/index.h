@@ -11,12 +11,12 @@
 #include <stdint.h>
 
 /* Plan 005 phase 14: how long the world takes to fill in around the eye, after it opens and after each change of render distance or
- * full detail. Ring r is every column whose distance from the eye's column, rounded up, is r: the map loads a circle. A ring is drawn
+ * level 0's radius. Ring r is every column whose distance from the eye's column, rounded up, is r: the map loads a circle. A ring is drawn
  * when every one of its columns is on the card with all of its sections, which is when the upload queue has finished a view that had
  * them all. */
 
 enum : uint32_t {
-    /* Full detail is at most 48 chunks (the Settings screen's limit). A ring past the last is counted in it. */
+    /* Level 0 is at most 48 chunks (RENDER_LOD_BLOCK_RADIUS_MAX_CHUNKS). A ring past the last is counted in it. */
     GAME_FILL_RINGS = 64u,
     /* The fills the end-of-session report keeps: the newest. */
     GAME_FILL_HISTORY = 16u,
@@ -26,20 +26,20 @@ enum : uint32_t {
 
 typedef enum game_fill_kind_t : uint32_t {
     GAME_FILL_OPEN = 0u,   /* a world opened */
-    GAME_FILL_CHANGE = 1u, /* render distance or full detail changed in an open world */
+    GAME_FILL_CHANGE = 1u, /* render distance or level 0's radius changed in an open world */
     GAME_FILL_JUMP = 2u,   /* plan 006 phase 01: a teleport, timed from when the sim took it, round where it went */
 } game_fill_kind_t;
 
 /* One fill, as the report and bench_world keep it. Times are from its start, in ns; -1 for never. */
 typedef struct game_fill_summary_t {
     int64_t first_ns;         /* 0: the first change drawn: a column come or gone, or a far column built */
-    int64_t ring_near_ns;     /* 8: rings 0 to GAME_FILL_NEAR_RING, or to full detail if that is less */
-    int64_t near_ns;          /* 16: every ring out to full detail */
+    int64_t ring_near_ns;     /* 8: rings 0 to GAME_FILL_NEAR_RING, or to level 0's if that is less */
+    int64_t near_ns;          /* 16: every ring out to level 0's radius */
     int64_t far_ns;           /* 24: the far field had nothing left to build; 0 with no far field */
     int64_t done_ns;          /* 32: both */
     uint64_t far_columns;     /* 40: far columns built by then, or by the time it was cut short */
     uint32_t render_distance; /* 48 */
-    uint32_t full_detail;     /* 52 */
+    uint32_t block_radius;    /* 52 */
     game_fill_kind_t kind;    /* 56 */
     uint8_t _pad0[4];         /* 60 */
 } game_fill_summary_t;
@@ -63,7 +63,7 @@ typedef struct game_fill_t {
     uint16_t ring_columns[GAME_FILL_RINGS]; /* 576: how many columns each ring has */
     uint32_t ready_start;                   /* 704: columns on the card at the start */
     uint32_t render_distance;               /* 708 */
-    uint32_t full_detail;                   /* 712 */
+    uint32_t block_radius;                  /* 712 */
     game_fill_kind_t kind;                  /* 716 */
     uint32_t history_count;                 /* 720: fills finished, of which the last GAME_FILL_HISTORY are kept */
     uint8_t has_far;                        /* 724 */
@@ -97,9 +97,9 @@ static_assert(offsetof(game_fill_t, history) == 736);
 /* Nothing filled yet, for a world opening. */
 void game_fill_reset(game_fill_t *fill);
 
-/* A fill starts now: a world opened, or render distance or full detail changed. render is as the change left it, and no thread may be
- * using it. full_detail is the map's view radius. */
-void game_fill_start(game_fill_t *fill, game_fill_kind_t kind, uint32_t render_distance, uint32_t full_detail,
+/* A fill starts now: a world opened, or render distance or level 0's radius changed. render is as the change left it, and no thread may be
+ * using it. block_radius is the map's view radius. */
+void game_fill_start(game_fill_t *fill, game_fill_kind_t kind, uint32_t render_distance, uint32_t block_radius,
                      const render_t *render);
 
 /* Plan 006 phase 01: a teleport to the column (chunk_x, chunk_y) has just been taken, so the world must come in round it from nothing.

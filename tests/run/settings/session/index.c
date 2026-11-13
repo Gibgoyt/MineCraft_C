@@ -112,8 +112,15 @@ static const game_config_t small_game = {.render_distance = 6u,
                                          .height = GAME_HEIGHT,
                                          .features_off = SHADE_FEATURE_DAY_CYCLE | SHADE_FEATURE_AO | SHADE_FEATURE_TAA,
                                          .show_date = 0u,
-                                         .full_detail = 6u,
+                                         .block_radius_given = 6u,
                                          .table_chunks = 6u};
+
+/* Plan 009 phase 04: the far field the game plans for this picture at a render distance, by the bands. */
+static render_lod_plan_t session_plan(uint32_t render_distance) {
+    const render_lod_bands_t bands = render_lod_bands((float64_t)RENDER_LOD_PIXEL_ERROR, RENDER_LOD_NEAR_GUARANTEE,
+                                                      (float64_t)RENDER_CAMERA_HALF_FOV_TANGENT_DEFAULT, GAME_HEIGHT);
+    return render_lod_plan_by_bands(&bands, render_distance);
+}
 
 /* Columns in a disc of this radius, by counting. */
 static uint32_t disc_columns(int32_t radius) {
@@ -179,12 +186,12 @@ TEST(render_distance_changes_in_an_open_world_and_what_stays_in_reach_stays) {
     REQUIRE(world_map_block_get(map, x, y, z, &block) == WORLD_MAP_STATUS_OK);
     CHECK_EQ_U64(block, BLOCK_ID_STONE);
 
-    /* Past full detail: a far field, and the map has not heard of it. */
+    /* Past level 0: a far field, and the map has not heard of it. */
     const uint64_t columns_before_far = game->columns_made;
     config.render_distance = 64u;
     REQUIRE(game_reconfigure(game, &config));
     REQUIRE(render->borrowed_lod != nullptr);
-    const render_lod_plan_t plan_64 = render_lod_plan(6u, 64u);
+    const render_lod_plan_t plan_64 = session_plan(64u);
     CHECK_EQ_U64(render->borrowed_lod->level_count, plan_64.level_count);
     CHECK_NEAR(render->frame.fog_end, 63.0f32 * 16.0f32, 0.001f32);
     /* Settling one is minutes at -O0, so its columns are the threads' test's and far.script's. */
@@ -194,7 +201,7 @@ TEST(render_distance_changes_in_an_open_world_and_what_stays_in_reach_stays) {
     /* Another plan, the same way. */
     config.render_distance = 96u;
     REQUIRE(game_reconfigure(game, &config));
-    const render_lod_plan_t plan_96 = render_lod_plan(6u, 96u);
+    const render_lod_plan_t plan_96 = session_plan(96u);
     CHECK_EQ_U64(render->borrowed_lod->level_count, plan_96.level_count);
     CHECK_NEAR(render->frame.fog_end, 95.0f32 * 16.0f32, 0.001f32);
 
@@ -219,14 +226,14 @@ TEST(render_distance_changes_in_an_open_world_and_what_stays_in_reach_stays) {
     game_rig_end(t, rig);
 }
 
-TEST(a_world_opened_for_full_detail_holds_room_for_it_at_any_render_distance) {
+TEST(a_world_opened_with_room_for_level_0_holds_it_at_any_render_distance) {
     game_rig_t *const rig = aligned_alloc_64(t, sizeof(game_rig_t));
     REQUIRE(game_rig_begin(t, rig));
     game_t *const game = rig->game;
     world_map_t *const map = &rig->world->map;
     game_config_t config = small_game;
     config.render_distance = 2u;
-    config.full_detail = 6u;
+    config.block_radius_given = 6u;
     config.table_chunks = 6u;
     REQUIRE(game_open(game, &config));
     CHECK_EQ_U64(map->table_radius, 6u + WORLD_MAP_KEEP_EXTRA);
@@ -238,9 +245,9 @@ TEST(a_world_opened_for_full_detail_holds_room_for_it_at_any_render_distance) {
     REQUIRE(game_rig_draw(rig));
     CHECK_EQ_U64(map->ready_count, disc_columns(6));
 
-    /* Full detail in, all by itself, and the far field is what would take up from there. */
+    /* Level 0 in, all by itself, and the far field is what would take up from there. */
     config.render_distance = 40u;
-    config.full_detail = 3u;
+    config.block_radius_given = 3u;
     REQUIRE(game_reconfigure(game, &config));
     CHECK_EQ_U64(map->view_radius, 3u);
     REQUIRE(game->borrowed_render->borrowed_lod != nullptr);
@@ -250,7 +257,7 @@ TEST(a_world_opened_for_full_detail_holds_room_for_it_at_any_render_distance) {
     REQUIRE(game_rig_draw(rig));
     CHECK_EQ_U64(map->ready_count, disc_columns(5));
     /* And past what the table holds it is held to that, until a new world: nothing has failed, and nothing is on the screen that should not be. */
-    config.full_detail = 48u;
+    config.block_radius_given = 48u;
     REQUIRE(game_reconfigure(game, &config));
     CHECK_EQ_U64(map->view_radius, 6u);
     REQUIRE(game_rig_draw(rig));
@@ -465,9 +472,9 @@ enum : int32_t {
     AT_PAUSE_SETTINGS_Y = 248,
     AT_PAUSE_TITLE_Y = 296,
     AT_ROW_0_Y = 68,
-    AT_ROW_2_Y = 164,
-    AT_ROW_4_Y = 260,
-    AT_DONE_Y = 452,
+    AT_ROW_1_Y = 116, /* field of view, since plan 009 phase 04 took the second slider out */
+    AT_ROW_3_Y = 212, /* render scale */
+    AT_DONE_Y = 404,  /* the main page's Done, row 7 */
 };
 
 typedef struct session_rig_t {
@@ -587,7 +594,6 @@ TEST(render_distance_changes_through_the_screen_in_a_pause_with_the_real_threads
     snprintf(file, sizeof(file), "%s/settings.yaml", root);
     settings_load(settings, file);
     settings->values.render_distance = 6u;
-    settings->values.full_detail = 6u;
     settings->values.effects &= ~(uint32_t)(SHADE_FEATURE_DAY_CYCLE | SHADE_FEATURE_AO | SHADE_FEATURE_TAA);
 
     const uint64_t bytes = 640ull * 480ull * 4ull;
@@ -638,14 +644,14 @@ TEST(render_distance_changes_through_the_screen_in_a_pause_with_the_real_threads
 
     /* The field of view needs no restart of the threads, and no one is publishing cameras in a pause: it shows behind the screen all the same. */
     CHECK(game->shown_camera.half_fov_tangent == RENDER_CAMERA_HALF_FOV_TANGENT_DEFAULT);
-    session_move(t, rig, AT_MIDDLE_X, AT_ROW_2_Y);
+    session_move(t, rig, AT_MIDDLE_X, AT_ROW_1_Y);
     session_send(rig->mouse, EV_REL, REL_WHEEL, 30);
     SESSION_WAIT_FOR(game->shown_camera.half_fov_tangent > 1.19f32 && game->shown_camera.half_fov_tangent < 1.20f32);
     CHECK_EQ_U64(settings->values.fov_degrees, 100u);
     CHECK_EQ_U64(game->tick_count, ticks_paused);
 
     /* The render scale too, and pictures behind the screen all the while: what a pause shows does not go black, or away. */
-    session_move(t, rig, AT_MIDDLE_X, AT_ROW_4_Y);
+    session_move(t, rig, AT_MIDDLE_X, AT_ROW_3_Y);
     session_send(rig->mouse, EV_REL, REL_WHEEL, -50);
     SESSION_WAIT_FOR(render->frame.width == 320u);
     CHECK_EQ_U64(settings->values.render_scale_percent, 50u);

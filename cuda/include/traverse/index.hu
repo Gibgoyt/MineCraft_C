@@ -5,6 +5,7 @@
 
 #include "device_memory/index.hu"
 #include "gpu_bridge/traverse/index.h"
+#include "tuning/render/lod/index.h"
 
 #include <math.h>
 
@@ -25,8 +26,12 @@ typedef struct traverse_view_t {
     uint32_t max_steps;                           /* 56: see traverse_view_from for why this is enough */
     uint16_t shape_count;                         /* 60 */
     uint16_t top_limit;                           /* 62: see traverse_world_t; TRAVERSE_HEIGHT_BLOCKS when not known */
+    float32_t band_base;                          /* 64: plan 009 phase 04: traverse_world_t's, 0 for no bands */
+    float32_t band_dither;                        /* 68 */
+    uint32_t band_seed;                           /* 72 */
+    uint8_t _pad0[4];                             /* 76 */
 } traverse_view_t;
-static_assert(sizeof(traverse_view_t) == 64);
+static_assert(sizeof(traverse_view_t) == 80);
 static_assert(alignof(traverse_view_t) == 8);
 
 /* A ray ready to trace: eye_cell[2] is a storage height from here on, not a world z. */
@@ -38,8 +43,12 @@ typedef struct traverse_trace_ray_t {
     /* 40: 0 for a ray starting out, where t_start is inside a block if it is inside a block. 1 for a ray going on past a surface
      * at t_start: it takes only what it enters after t_start, so what it just left, and its far side, are nothing to it. */
     uint32_t resume;
+    /* 44: plan 009 phase 04: the ray stops where its next step would begin at or past this, and says TRAVERSE_FACE_PAST: a miss whose t is
+     * t_end, so that its caller hands it over to the next level from there. It says the same, with t where it came in, on entering a column
+     * the world does not hold. TRAVERSE_T_END_NONE for no end, and then neither. */
+    float32_t t_end;
 } traverse_trace_ray_t;
-static_assert(sizeof(traverse_trace_ray_t) == 44);
+static_assert(sizeof(traverse_trace_ray_t) == 48);
 static_assert(alignof(traverse_trace_ray_t) == 4);
 
 /* A box inside a voxel, in units of TRAVERSE_BOX_UNIT of a block from its low corner. */
@@ -110,6 +119,43 @@ static __device__ __forceinline__ void traverse_camera_direction(const traverse_
     out[0] = x * scale;
     out[1] = y * scale;
     out[2] = z * scale;
+}
+
+/* ---- Plan 009 phase 04: where each level starts along a pixel's ray -------------------------------------------------- */
+
+/* A pixel's band edges all move by this one factor, within band_dither of 1: a hash of the pixel, and of the frame when the world gives one
+ * (TAA on), so that a band edge is a spread of pixels TAA blends and not a line. With no dither, 1. view is level 0's, which holds the
+ * bands. */
+static __device__ __forceinline__ float32_t traverse_band_factor(const traverse_view_t *view, uint32_t pixel_x,
+                                                                 uint32_t pixel_y) {
+    if (!(view->band_dither > 0.0F)) {
+        return 1.0F;
+    }
+    uint32_t h = pixel_x * 0x8DA6B343u ^ pixel_y * 0xD8163841u ^ view->band_seed * 0xCB1AB31Fu;
+    h ^= h >> 16;
+    h *= 0x7FEB352Du;
+    h ^= h >> 15;
+    h *= 0x846CA68Bu;
+    h ^= h >> 16;
+    const float32_t unit = (float32_t)(h >> 8) * (1.0F / 16777216.0F);
+    return 1.0F + view->band_dither * (2.0F * unit - 1.0F);
+}
+
+/* Where the level of voxels of 1 << shift blocks starts along a pixel's ray, in blocks: d_shift = band_base 2^shift, moved by the pixel's
+ * factor, and never nearer than the near guarantee (Ahmed's 16 blocks). With no bands, TRAVERSE_T_END_NONE: level 0 to its edge. */
+static __device__ __forceinline__ float32_t traverse_band_from(const traverse_view_t *view, float32_t factor,
+                                                               uint32_t shift) {
+    if (!(view->band_base > 0.0F)) {
+        return TRAVERSE_T_END_NONE;
+    }
+    const float32_t from = view->band_base * (float32_t)(1u << shift) * factor;
+    return fmaxf(from, (float32_t)MC_TUNE_RENDER_LOD_NEAR_GUARANTEE);
+}
+
+/* traverse_hit_past, on the card: a ray that stopped short with nothing met, at hit->t. */
+static __device__ __forceinline__ bool traverse_past(const traverse_hit_t *hit) {
+    return ((uint32_t)hit->info & TRAVERSE_INFO_FACE_MASK) == (uint32_t)TRAVERSE_FACE_MISS &&
+           hit->t < TRAVERSE_COARSE_SKY;
 }
 
 static __device__ __forceinline__ int32_t traverse_clamp(int32_t value, int32_t low, int32_t high) {
@@ -455,10 +501,20 @@ static __device__ __forceinline__ void traverse_trace_counted(const traverse_vie
     uint64_t brick_mask = 0u;
     uint32_t brick_rank = 0u;
     uint32_t steps = 0u;
-    /* Counting only: the t the next step begins at, and the steps so far in the band of the last. */
-    float32_t t_begun = t_near;
+    /* The t the next step begins at, where the ray entered the cell it is in; and, counting only, the steps so far in the band of the last. */
+    float32_t t_now = t_near;
+    const float32_t t_end = ray->t_end;
     uint32_t count_band = 0u, count_in_band = 0u;
     for (; steps < view->max_steps; steps += 1u) {
+        if (t_now >= t_end) {
+            /* Plan 009 phase 04: as far as this level goes for this ray. */
+            traverse_hit_missed(steps, false, hit);
+            hit->t = t_end;
+            if (tally != nullptr) {
+                traverse_count_end(tally, count_band, count_in_band, steps);
+            }
+            return;
+        }
         if (((uint32_t)(x - window_x) >= width) | ((uint32_t)(y - window_y) >= width) |
             ((uint32_t)z >= (uint32_t)gone_at)) {
             traverse_hit_missed(steps, false, hit);
@@ -471,6 +527,17 @@ static __device__ __forceinline__ void traverse_trace_counted(const traverse_vie
         if (slot != cached_slot) {
             column = &view->borrowed_table[slot];
             column_top = traverse_column_top(column, x >> 4, y >> 4);
+            if (column_top == 0 && t_end < TRAVERSE_T_END_NONE &&
+                (column->ready == 0u || column->chunk_x != (x >> 4) || column->chunk_y != (y >> 4))) {
+                /* Plan 009 phase 04: a ray with an end, entering a column not here (not loaded yet, or no room for it), goes no further in
+                 * this level, and the next takes it from where it came in: so a level shows the next level's ground in its holes. */
+                traverse_hit_missed(steps, false, hit);
+                hit->t = t_now;
+                if (tally != nullptr) {
+                    traverse_count_end(tally, count_band, count_in_band, steps);
+                }
+                return;
+            }
             column_mask[0] = column->section_mask[0];
             column_mask[1] = column->section_mask[1];
             /* A slot holding another column has no say about this place. */
@@ -575,9 +642,9 @@ static __device__ __forceinline__ void traverse_trace_counted(const traverse_vie
         y = next_y;
         z = next_z;
         if (tally != nullptr) {
-            traverse_count_step(tally, t_begun * tally->scale, &count_band, &count_in_band);
-            t_begun = t_step;
+            traverse_count_step(tally, t_now * tally->scale, &count_band, &count_in_band);
         }
+        t_now = t_step;
     }
     traverse_hit_missed(steps, true, hit);
     if (tally != nullptr) {
@@ -640,6 +707,13 @@ static inline gpu_status_t traverse_view_from(gpu_error_t *error, const traverse
     view->top_limit = world->top_limit != 0u && world->top_limit < TRAVERSE_HEIGHT_BLOCKS
                           ? (uint16_t)world->top_limit
                           : (uint16_t)TRAVERSE_HEIGHT_BLOCKS;
+    view->band_base = world->band_base;
+    view->band_dither = world->band_dither;
+    view->band_seed = world->band_seed;
+    view->_pad0[0] = 0u;
+    view->_pad0[1] = 0u;
+    view->_pad0[2] = 0u;
+    view->_pad0[3] = 0u;
     return GPU_STATUS_OK;
 }
 

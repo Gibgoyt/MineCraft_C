@@ -18,12 +18,20 @@ enum : int32_t {
     SETTINGS_GAP = 4,
     SETTINGS_EFFECT_WIDTH = 120,
     SETTINGS_EFFECT_ROWS = 8,
-    /* Row 6, left to right, with SETTINGS_GAP between: each as wide as its box and its words want, and Effects... has what is left.
-     * HUD... has the place the Coordinates box had before plan 004 phase 10 moved it to the HUD page. */
+    /* The main page's rows, from the top: five sliders (plan 009 phase 04 took one out, and the rows under it moved up one), then VSync,
+     * HUD... and Effects... on one row, left to right with SETTINGS_GAP between, each as wide as its box and its words want and Effects...
+     * what is left; HUD... has the place the Coordinates box had before plan 004 phase 10 moved it to the HUD page. Then the sound volume's
+     * slider, and Done. */
+    SETTINGS_FOV_ROW = 1,
+    SETTINGS_SENSITIVITY_ROW = 2,
+    SETTINGS_RENDER_SCALE_ROW = 3,
+    SETTINGS_WORKERS_ROW = 4,
+    SETTINGS_BOXES_ROW = 5,
     SETTINGS_VSYNC_WIDTH = 46,
     SETTINGS_HUD_WIDTH = 82,
-    /* Row 7: the sound volume's slider. */
-    SETTINGS_VOLUME_ROW = 7,
+    SETTINGS_VOLUME_ROW = 6,
+    SETTINGS_MAIN_DONE_ROW = 7,
+    /* The Effects page's Back, under its two columns of eight. */
     SETTINGS_DONE_ROW = 8,
     /* The HUD page's rows: plan 004 phase 10. */
     SETTINGS_HUD_COORDINATES_ROW = 0,
@@ -38,7 +46,6 @@ enum : int32_t {
 
 enum : uint32_t {
     SETTINGS_ID_RENDER_DISTANCE = 100u,
-    SETTINGS_ID_FULL_DETAIL = 101u,
     SETTINGS_ID_FOV = 102u,
     SETTINGS_ID_SENSITIVITY = 103u,
     SETTINGS_ID_RENDER_SCALE = 104u,
@@ -63,11 +70,10 @@ enum : uint32_t {
 };
 
 void ui_screen_settings_open(ui_screen_settings_t *screen, ui_widget_t *widget, settings_values_t *values,
-                             uint32_t full_detail_live_max, uint32_t workers_running, bool over_world) {
+                             uint32_t workers_running, bool over_world) {
     memset(screen, 0, sizeof(*screen));
     screen->borrowed_widget = widget;
     screen->borrowed_values = values;
-    screen->full_detail_live_max = full_detail_live_max;
     screen->workers_running = workers_running;
     screen->page = UI_SCREEN_SETTINGS_PAGE_MAIN;
     screen->over_world = over_world ? 1u : 0u;
@@ -100,25 +106,18 @@ static bool ui_screen_settings_slider(ui_widget_t *widget, uint32_t id, int32_t 
     return changed;
 }
 
-void ui_screen_settings_distance_label(char *out, uint32_t capacity, const char *name, uint32_t chunks,
-                                       bool new_world) {
-    if (new_world) {
-        (void)snprintf(out, capacity, "%s: %" PRIu32 " (new world)", name, chunks);
-        return;
-    }
+void ui_screen_settings_distance_label(char *out, uint32_t capacity, const char *name, uint32_t chunks) {
     /* "32 chunks (512 blocks)" is wider than the track at most values; the tooltip says what the first number counts. */
     (void)snprintf(out, capacity, "%s: %" PRIu32 " (%" PRIu32 " blocks)", name, chunks,
                    chunks * (uint32_t)MC_WORLD_CHUNK_SIZE);
 }
 
-/* Plan 005 phase 8: one line on what each distance means, by the pointer while it is over that slider. */
+/* Plan 005 phase 8: one line on what the distance means, by the pointer while it is over its slider. */
 static void ui_screen_settings_explain(ui_widget_t *widget) {
     const int32_t x = widget->input.pointer_x;
     const int32_t y = widget->input.pointer_y;
     if (ui_rect_contains(ui_screen_settings_row(widget, 0, SETTINGS_ROW_WIDTH), x, y)) {
         ui_widget_tooltip(widget, UI_SCREEN_SETTINGS_EXPLAIN_RENDER_DISTANCE);
-    } else if (ui_rect_contains(ui_screen_settings_row(widget, 1, SETTINGS_ROW_WIDTH), x, y)) {
-        ui_widget_tooltip(widget, UI_SCREEN_SETTINGS_EXPLAIN_FULL_DETAIL);
     }
 }
 
@@ -129,28 +128,26 @@ static bool ui_screen_settings_main_page(ui_screen_settings_t *screen, bool *out
     char label[SETTINGS_LABEL_BYTES];
     bool changed = false;
 
-    ui_screen_settings_distance_label(label, sizeof(label), "Render distance", values->render_distance, false);
+    ui_screen_settings_distance_label(label, sizeof(label), "Render distance", values->render_distance);
     changed |= ui_screen_settings_slider(widget, SETTINGS_ID_RENDER_DISTANCE, 0, label, &values->render_distance,
                                          SETTINGS_RENDER_DISTANCE_MIN, SETTINGS_RENDER_DISTANCE_MAX);
-    const bool past_live = screen->full_detail_live_max != 0u && values->full_detail > screen->full_detail_live_max;
-    ui_screen_settings_distance_label(label, sizeof(label), "Full detail", values->full_detail, past_live);
-    changed |= ui_screen_settings_slider(widget, SETTINGS_ID_FULL_DETAIL, 1, label, &values->full_detail,
-                                         SETTINGS_FULL_DETAIL_MIN, SETTINGS_FULL_DETAIL_MAX);
     ui_screen_settings_explain(widget);
     (void)snprintf(label, sizeof(label), "Field of view: %" PRIu32, values->fov_degrees);
-    changed |= ui_screen_settings_slider(widget, SETTINGS_ID_FOV, 2, label, &values->fov_degrees, SETTINGS_FOV_MIN,
-                                         SETTINGS_FOV_MAX);
+    changed |= ui_screen_settings_slider(widget, SETTINGS_ID_FOV, SETTINGS_FOV_ROW, label, &values->fov_degrees,
+                                         SETTINGS_FOV_MIN, SETTINGS_FOV_MAX);
     (void)snprintf(label, sizeof(label), "Mouse sensitivity: %" PRIu32 "%%", values->sensitivity_percent);
-    changed |= ui_screen_settings_slider(widget, SETTINGS_ID_SENSITIVITY, 3, label, &values->sensitivity_percent,
-                                         SETTINGS_SENSITIVITY_MIN, SETTINGS_SENSITIVITY_MAX);
+    changed |=
+        ui_screen_settings_slider(widget, SETTINGS_ID_SENSITIVITY, SETTINGS_SENSITIVITY_ROW, label,
+                                  &values->sensitivity_percent, SETTINGS_SENSITIVITY_MIN, SETTINGS_SENSITIVITY_MAX);
     (void)snprintf(label, sizeof(label), "Render scale: %" PRIu32 "%%", values->render_scale_percent);
-    changed |= ui_screen_settings_slider(widget, SETTINGS_ID_RENDER_SCALE, 4, label, &values->render_scale_percent,
-                                         SETTINGS_RENDER_SCALE_MIN, SETTINGS_RENDER_SCALE_MAX);
+    changed |=
+        ui_screen_settings_slider(widget, SETTINGS_ID_RENDER_SCALE, SETTINGS_RENDER_SCALE_ROW, label,
+                                  &values->render_scale_percent, SETTINGS_RENDER_SCALE_MIN, SETTINGS_RENDER_SCALE_MAX);
     const bool workers_later = values->worker_count != screen->workers_running;
     (void)snprintf(label, sizeof(label), "Workers: %" PRIu32 "%s", values->worker_count,
                    workers_later ? " (next start)" : "");
-    changed |= ui_screen_settings_slider(widget, SETTINGS_ID_WORKERS, 5, label, &values->worker_count,
-                                         SETTINGS_WORKERS_MIN, SETTINGS_WORKERS_MAX);
+    changed |= ui_screen_settings_slider(widget, SETTINGS_ID_WORKERS, SETTINGS_WORKERS_ROW, label,
+                                         &values->worker_count, SETTINGS_WORKERS_MIN, SETTINGS_WORKERS_MAX);
 
     int32_t volume = (int32_t)values->sound_volume_percent;
     (void)snprintf(label, sizeof(label), "Sound volume: %" PRId32 "%%", volume);
@@ -159,7 +156,7 @@ static bool ui_screen_settings_main_page(ui_screen_settings_t *screen, bool *out
                                 (int32_t)SETTINGS_SOUND_VOLUME_MIN, (int32_t)SETTINGS_SOUND_VOLUME_MAX);
     values->sound_volume_percent = (uint8_t)volume;
 
-    const ui_rect_t row = ui_screen_settings_row(widget, 6, SETTINGS_ROW_WIDTH);
+    const ui_rect_t row = ui_screen_settings_row(widget, SETTINGS_BOXES_ROW, SETTINGS_ROW_WIDTH);
     const int32_t vsync_width = SETTINGS_VSYNC_WIDTH * scale;
     const int32_t hud_width = SETTINGS_HUD_WIDTH * scale;
     const int32_t hud_x = row.x + vsync_width + SETTINGS_GAP * scale;
@@ -179,7 +176,7 @@ static bool ui_screen_settings_main_page(ui_screen_settings_t *screen, bool *out
         screen->page = UI_SCREEN_SETTINGS_PAGE_EFFECTS;
     }
     if (ui_widget_button(widget, SETTINGS_ID_DONE,
-                         ui_screen_settings_row(widget, SETTINGS_DONE_ROW, SETTINGS_ROW_WIDTH), "Done", true)) {
+                         ui_screen_settings_row(widget, SETTINGS_MAIN_DONE_ROW, SETTINGS_ROW_WIDTH), "Done", true)) {
         *out_done = true;
     }
     return changed;

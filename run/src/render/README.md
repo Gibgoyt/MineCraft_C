@@ -28,7 +28,7 @@
 
 | `frame` | The tables the kernels read, the free-fly camera, the pictures on their way home, and putting one on the screen |
 | `entities` | The sim's boxes to the gpu thread, each frame's per-tile lists on the card, what is aimed at and mined |
-| `lod` | Past full detail: coarse grids made on workers, following the eye |
+| `lod` | Past level 0: coarse grids, made from the blocks near the eye and on workers past them, following the eye |
 
 ## Why init takes nothing on the card
 

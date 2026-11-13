@@ -42,7 +42,7 @@
 +1 move 0 -180                  # 320, 68: the first slider
 +1 wheel -6
 +17 screenshot behind_2.png     # what the change waits for is over
-+1 move 0 384                   # 320, 452: Done
++1 move 0 336                   # 320, 404: Done
 +1 button left down
 +1 button left up
 +1 screenshot pause_after_2.png
@@ -53,12 +53,12 @@
 # The same to 8 again: what was there comes back.
 +1 key escape down
 +1 key escape up
-+1 move 0 -204                  # 320, 248
++1 move 0 -156                  # 320, 248
 +1 button left down
 +1 button left up
 +1 move 0 -180                  # 320, 68
 +1 wheel 6
-+17 move 0 384                  # 320, 452
++17 move 0 336                  # 320, 404: Done
 +1 button left down
 +1 button left up
 +1 key escape down
@@ -68,12 +68,12 @@
 # Past full detail, to 14: the far field comes up for the first time in this world, and the world's own columns stay as they are.
 +1 key escape down
 +1 key escape up
-+1 move 0 -204                  # 320, 248
++1 move 0 -156                  # 320, 248
 +1 button left down
 +1 button left up
 +1 move 0 -180                  # 320, 68
 +1 wheel 6
-+17 move 0 384                  # 320, 452
++17 move 0 336                  # 320, 404: Done
 +1 button left down
 +1 button left up
 +1 key escape down
@@ -83,12 +83,12 @@
 # Down to 12: another plan, and what the file ends up holding. Then back to the title and out.
 +1 key escape down
 +1 key escape up
-+1 move 0 -204                  # 320, 248
++1 move 0 -156                  # 320, 248
 +1 button left down
 +1 button left up
 +1 move 0 -180                  # 320, 68
 +1 wheel -2
-+1 move 0 384                   # 320, 452: Done, which does not wait for the change
++1 move 0 336                   # 320, 404: Done, which does not wait for the change
 +1 button left down
 +1 button left up
 +1 key escape down
@@ -96,7 +96,7 @@
 +3 screenshot at_12.png
 +1 key escape down
 +1 key escape up
-+1 move 0 -156                  # 320, 296: Quit to Title
++1 move 0 -108                  # 320, 296: Quit to Title
 +1 button left down
 +1 button left up
 +1 button left down             # the same place: Quit Game

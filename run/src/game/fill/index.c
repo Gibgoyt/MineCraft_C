@@ -23,7 +23,7 @@ static uint32_t fill_ring_of(int64_t dx, int64_t dy) {
 }
 
 static uint32_t fill_rings(const game_fill_t *fill) {
-    return fill->full_detail + 1u < GAME_FILL_RINGS ? fill->full_detail + 1u : GAME_FILL_RINGS;
+    return fill->block_radius + 1u < GAME_FILL_RINGS ? fill->block_radius + 1u : GAME_FILL_RINGS;
 }
 
 /* -1 for never, so that a log never says -0.00. */
@@ -57,7 +57,7 @@ static uint32_t fill_count(const game_fill_t *fill, const render_t *render, uint
         fill->has_centre != 0u ? (int64_t)fill->centre_x : (int64_t)buffers->window.min_x + buffers->window.side / 2u;
     const int64_t center_y =
         fill->has_centre != 0u ? (int64_t)fill->centre_y : (int64_t)buffers->window.min_y + buffers->window.side / 2u;
-    const int64_t limit = (int64_t)fill->full_detail * fill->full_detail;
+    const int64_t limit = (int64_t)fill->block_radius * fill->block_radius;
     uint32_t total = 0u;
     for (uint32_t slot = 0u; slot < buffers->window.slot_count; slot++) {
         const world_buffers_column_t *const column = &buffers->borrowed_shadow[slot];
@@ -84,7 +84,7 @@ static void fill_keep(game_fill_t *fill, const game_fill_summary_t *summary) {
     fill->history_count++;
 }
 
-void game_fill_start(game_fill_t *fill, game_fill_kind_t kind, uint32_t render_distance, uint32_t full_detail,
+void game_fill_start(game_fill_t *fill, game_fill_kind_t kind, uint32_t render_distance, uint32_t block_radius,
                      const render_t *render) {
     if (fill->logged == 0u && atomic_load_explicit(&fill->started_ns, memory_order_relaxed) != 0) {
         /* Cut short by this one: kept as it got, never done. */
@@ -96,7 +96,7 @@ void game_fill_start(game_fill_t *fill, game_fill_kind_t kind, uint32_t render_d
     fill->kind = kind;
     fill->has_centre = 0u; /* a jump sets its own after this */
     fill->render_distance = render_distance;
-    fill->full_detail = full_detail;
+    fill->block_radius = block_radius;
     fill->has_far = render->borrowed_lod != nullptr && render->borrowed_lod->level_count != 0u ? 1u : 0u;
     fill->far_built_start = fill_far_built(render);
     fill->far_built_last = fill->far_built_start;
@@ -106,7 +106,7 @@ void game_fill_start(game_fill_t *fill, game_fill_kind_t kind, uint32_t render_d
         fill->ring_ns[ring] = -1;
         fill->ring_columns[ring] = 0u;
     }
-    const int32_t reach = (int32_t)full_detail;
+    const int32_t reach = (int32_t)block_radius;
     const int64_t limit = (int64_t)reach * reach;
     for (int32_t dy = -reach; dy <= reach; dy++) {
         for (int32_t dx = -reach; dx <= reach; dx++) {
@@ -146,7 +146,7 @@ static void fill_jump_take(game_fill_t *fill, const render_t *render) {
     fill->has_centre = 1u;
     fill->centre_x = chunk_x;
     fill->centre_y = chunk_y;
-    game_fill_start(fill, GAME_FILL_JUMP, fill->render_distance, fill->full_detail, render);
+    game_fill_start(fill, GAME_FILL_JUMP, fill->render_distance, fill->block_radius, render);
     fill->has_centre = 1u;
     fill->centre_x = chunk_x;
     fill->centre_y = chunk_y;
@@ -163,7 +163,7 @@ void game_fill_summary(const game_fill_t *fill, game_fill_summary_t *out) {
     out->far_ns = atomic_load_explicit(&fill->far_ns, memory_order_acquire);
     out->done_ns = atomic_load_explicit(&fill->done_ns, memory_order_acquire);
     out->render_distance = fill->render_distance;
-    out->full_detail = fill->full_detail;
+    out->block_radius = fill->block_radius;
     out->kind = fill->kind;
 }
 
@@ -180,9 +180,9 @@ static void fill_finish(game_fill_t *fill, const render_t *render, int64_t now_n
     LOG_INFO("fill: after %s render distance %" PRIu32 ", %" PRIu32
              " block by block: the first change drawn at %.2f s, the %" PRIu32 " nearest rings at %.2f s, all %" PRIu32
              " at %.2f s, the far field (%" PRIu64 " columns) at %.2f s, all of it at %.2f s",
-             fill_kind_text(fill->kind), fill->render_distance, fill->full_detail,
+             fill_kind_text(fill->kind), fill->render_distance, fill->block_radius,
              (libc_double_t)fill_seconds(summary.first_ns),
-             (fill->full_detail < GAME_FILL_NEAR_RING ? fill->full_detail : GAME_FILL_NEAR_RING) + 1u,
+             (fill->block_radius < GAME_FILL_NEAR_RING ? fill->block_radius : GAME_FILL_NEAR_RING) + 1u,
              (libc_double_t)fill_seconds(summary.ring_near_ns), fill_rings(fill),
              (libc_double_t)fill_seconds(summary.near_ns), summary.far_columns,
              (libc_double_t)fill_seconds(summary.far_ns), (libc_double_t)fill_seconds(now_ns));
@@ -228,7 +228,7 @@ void game_fill_step(game_fill_t *fill, const render_t *render) {
             fill->rings_done++;
         }
         const uint32_t near_rings =
-            (fill->full_detail < GAME_FILL_NEAR_RING ? fill->full_detail : GAME_FILL_NEAR_RING) + 1u;
+            (fill->block_radius < GAME_FILL_NEAR_RING ? fill->block_radius : GAME_FILL_NEAR_RING) + 1u;
         if (atomic_load_explicit(&fill->ring_near_ns, memory_order_relaxed) < 0 && fill->rings_done >= near_rings) {
             atomic_store_explicit(&fill->ring_near_ns, now_ns, memory_order_release);
         }
@@ -248,7 +248,7 @@ static void fill_report_line(const char *state, const game_fill_summary_t *summa
     LOG_INFO("fill: %s %s render distance %" PRIu32 ", %" PRIu32
              " block by block: first change %.2f s, near rings %.2f s, all rings %.2f s, far field %.2f s (%" PRIu64
              " columns), all %.2f s",
-             state, fill_kind_text(summary->kind), summary->render_distance, summary->full_detail,
+             state, fill_kind_text(summary->kind), summary->render_distance, summary->block_radius,
              (libc_double_t)fill_seconds(summary->first_ns), (libc_double_t)fill_seconds(summary->ring_near_ns),
              (libc_double_t)fill_seconds(summary->near_ns), (libc_double_t)fill_seconds(summary->far_ns),
              summary->far_columns, (libc_double_t)fill_seconds(summary->done_ns));

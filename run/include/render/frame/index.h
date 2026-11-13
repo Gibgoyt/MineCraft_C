@@ -149,7 +149,7 @@ typedef struct render_frame_t {
     uint8_t on_way;                             /* 862: frames queued and not finished: 0, 1 or 2 */
     uint8_t oldest_slot;                        /* 863: the flight slot of the first of them, whose picture goes home */
     render_entities_t *borrowed_entities;       /* 864: what each frame draws of them, from the Owner, or nullptr */
-    render_lod_t *borrowed_lod;   /* 872: what each frame draws past full detail, from the Owner, or nullptr */
+    render_lod_t *borrowed_lod;   /* 872: what each frame draws past level 0, from the Owner, or nullptr */
     frame_timings_t last_timings; /* 880: what the last frame took, kernel by kernel, on the card's clock */
     float32_t sun_given[3];       /* 944: with sun_from_outside: toward the sun, unit, x east, y north */
     uint8_t sun_from_outside;     /* 956: 1 after render_frame_sun_set, 0 after render_frame_time_set */

@@ -1017,10 +1017,11 @@ TEST(a_kernel_is_in_the_trace_when_its_flag_says_so) {
     CHECK(frames > 0u);
     CHECK_EQ_U64(pr_count(&run->trace, card, "god_rays"), frames);
 
-    /* Detail ending short of how far it can see: the far field, then, has rays of its own. Building one takes the thread sanitizer about 180 s,
-     * past what a run here is given, and it finds nothing to say about it: see the stage file. */
+    /* Level 0 ending short of how far it can see: the far field, then, has rays of its own. Level 0 is never under 12 chunks (plan 009 phase
+     * 04), so the distance goes past it. Building one takes the thread sanitizer about 180 s, past what a run here is given, and it finds
+     * nothing to say about it: see the stage file. */
 #ifndef __SANITIZE_THREAD__
-    REQUIRE(pr_program(t, "far.json", "--full-detail", "2", run));
+    REQUIRE(pr_program(t, "far.json", "--render-distance", "14", run));
     const uint32_t far_card = pr_tid_named(&run->trace, "card");
     REQUIRE(far_card != 0u);
     CHECK(pr_count(&run->trace, far_card, "coarse") > 0u);

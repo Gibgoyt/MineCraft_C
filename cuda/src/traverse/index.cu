@@ -236,6 +236,8 @@ static __device__ __forceinline__ void traverse_primary_ray(const traverse_view_
     }
     ray.t_start = coarse != nullptr ? coarse[blockIdx.y * gridDim.x + blockIdx.x] : 0.0F;
     ray.resume = 0u;
+    /* Plan 009 phase 04: level 0 as far as this pixel's d_1, and the far field's levels on from there. */
+    ray.t_end = traverse_band_from(view, traverse_band_factor(view, pixel_x, pixel_y), 1u);
     const uint32_t pixel = pixel_y * camera->width + pixel_x;
     traverse_tally_t tally;
     traverse_trace_counted(
@@ -275,6 +277,7 @@ static __device__ __forceinline__ void traverse_given_ray(const traverse_view_t 
     }
     ray.t_start = given.t_start;
     ray.resume = 0u;
+    ray.t_end = given.t_end > 0.0F ? given.t_end : TRAVERSE_T_END_NONE;
     traverse_tally_t tally;
     traverse_trace_counted(
         view, &ray, nullptr, &hits[index],
