@@ -508,11 +508,14 @@ typedef struct gd_jumps_t {
     uint64_t columns[GD_JUMPS + 1u]; /* 24: columns_made at each Enter, and at the end */
     float64_t feet[GD_JUMPS][3];     /* 80: where the body stood before each next Enter */
     uint32_t tunings;                /* 224: places the tuning lines were checked at */
-    uint8_t _pad0[4];                /* 228 */
+    uint32_t landed;                 /* 228: jumps whose arrival has ended */
     climate_t *borrowed_climate;     /* 232 */
     test_context_t *t;               /* 240 */
+    uint64_t hurt_before;            /* 248: the body's hurt_count when the arrival under way began */
+    uint8_t arriving_before;         /* 256: the body's arriving on the last tick looked at */
+    uint8_t _pad0[7];                /* 257 */
 } gd_jumps_t;
-static_assert(sizeof(gd_jumps_t) == 248);
+static_assert(sizeof(gd_jumps_t) == 264);
 
 static int32_t gd_tenths(float32_t celsius) {
     return (int32_t)floorf(celsius * 10.0f32 + 0.5f32);
@@ -568,15 +571,31 @@ static void gd_tuning_check(test_context_t *t, gd_jumps_t *jumps, game_t *game) 
 static void gd_jumps_look(gd_jumps_t *jumps, game_session_t *session, uint32_t tick) {
     game_t *const game = session->borrowed_game;
     test_context_t *const t = jumps->t;
+    const player_t *const body = game->borrowed_player;
+    /* The jump itself never hurts: from the start of an arrival (waiting for the column) to its end (landed, swimming or
+     * flying, or put out of rock) no hit is taken. What the place does after is the place's: on plan 007 phase 03's land
+     * the third jump puts the body in water at 40008, 60008, 132, and it drowns once before the next Enter. */
+    const uint8_t arriving = body->survival.arriving;
+    if (jumps->arriving_before == PLAYER_SURVIVAL_ARRIVING_NONE && arriving != PLAYER_SURVIVAL_ARRIVING_NONE) {
+        jumps->hurt_before = body->survival.hurt_count;
+    } else if (jumps->arriving_before != PLAYER_SURVIVAL_ARRIVING_NONE && arriving == PLAYER_SURVIVAL_ARRIVING_NONE) {
+        CHECK_EQ_U64(body->survival.hurt_count, jumps->hurt_before);
+        jumps->landed++;
+        printf("  jump %" PRIu32 " arrived at tick %" PRIu32 " at %.0f, %.0f, %.0f, hurt %" PRIu64 " times so far\n",
+               jumps->landed, tick, (libc_double_t)body->movement.position[0],
+               (libc_double_t)body->movement.position[1], (libc_double_t)body->movement.position[2],
+               body->survival.hurt_count);
+    }
+    jumps->arriving_before = arriving;
     for (uint32_t j = 0u; j < GD_JUMPS; j++) {
         if (tick == jumps->enter_tick[j] - 1u) {
+            CHECK_EQ_U64(jumps->landed, j);
             jumps->columns[j] = game->columns_made;
             if (j != 0u) {
                 const player_t *const player = game->borrowed_player;
                 memcpy(jumps->feet[j - 1u], player->movement.position, sizeof(jumps->feet[0]));
-                /* It has come down where it went, unharmed, standing in the open. */
+                /* It has come down where it went (unharmed on the way: above), standing in the open. */
                 CHECK_EQ_U64(player->survival.arriving, PLAYER_SURVIVAL_ARRIVING_NONE);
-                CHECK_EQ_U64(player->survival.hurt_count, 0u);
                 CHECK(player->movement.waiting_for_column == 0u);
                 if (j % 2u == 0u) {
                     gd_tuning_check(t, jumps, game);
@@ -607,6 +626,7 @@ static void gd_jumps_look(gd_jumps_t *jumps, game_session_t *session, uint32_t t
 #endif
         }
         CHECK_EQ_U64(found, GD_JUMPS);
+        CHECK_EQ_U64(jumps->landed, GD_JUMPS);
     }
 }
 

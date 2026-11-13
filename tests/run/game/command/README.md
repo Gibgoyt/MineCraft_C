@@ -27,7 +27,8 @@ What it checks:
 - **Three far jumps** (`/tp ~0 ~30000 ~`, then `/tp ~40000 ~ ~`, three times) in a world through the menus with its climate,
   at render distance 6: each `GAME_FILL_JUMP` has its nearest rings drawn in under 15 s in release (under 120 s at -O0, where
   only that it comes is checked), more columns come after every jump, each lands where it said from where the body stood,
-  unharmed and not waiting, and at three of the places the tuning words are `climate_normals_at` at the feet, rounded as printed.
+  not waiting, and unharmed from the start of each arrival to its end (what the place does after is the place's: the third
+  jump comes down in water on plan 007 phase 03's land, and drowns once before the next), and at three of the places the tuning words are `climate_normals_at` at the feet, rounded as printed.
   The lines are printed, as the "before" picture of biomes against the climate.
 - **Saves and the clock:** a save taken mid-jump, with the body waiting for its ground 3 km away, reloads waiting there, then
   stands on the ground with room and its health; fly mode and `/speed 4` are kept by a save, and the HUD's line reads
