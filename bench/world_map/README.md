@@ -59,6 +59,10 @@
 
 ## Results
 
+### 2026-11-13, plan 007 phase 04: floating rock on the 8 seeds
+
+Release, full (not `--map-only`), two runs of 4, exit 0, 0 columns differing. Floating rock per km^2: 2198175988018515243 1911, 1 1464, 42 2098, 20261104 1257, 12636146071196537873 1104, 5569068473609503046 1380, 9999999999999 1630, 18446744073709551557 931, against plan 007 phase 01's 1072 to 1383 (+25%: 1729): over on the two seeds with the most land at 300 or more (51% and 56%), where the plateaus' soft faces are. See the plan 007 phase 04 file, Issues found 9.
+
 ### 2026-11-13, plan 007 phase 03: plateaus, `--map-only`, seed 2198175988018515243
 
 Exit 0. Sea 27.2%, joined 98.0%, dry 96.2%; reaching 150, 300, 500, 750, 1000: 56.4, 52.4, 34.4, 12.3, 0.25% (this map's middle stands on a plateau); top 1155; 17 high pieces, 8 big, the largest 86.7 km^2 and 16.4 km across; steep 13.6%; the spawn on snow_block. Floating rock was not measured (`--map-only`).

@@ -1,6 +1,6 @@
 # 007-ahmed-bohemoth-realistic-landforms — phase 4: Slope profiles, and hills on any ground
 
-**Status:** not started   (updated 2026-11-12)
+**Status:** built and tested; knobs on plateaus met; the slope rows, floating rock and bench_terrain not met (Issues found 7 to 9)   (updated 2026-11-13)
 
 Read first: `plans/007-ahmed-bohemoth-realistic-landforms-phase-00-vision-and-plan-files.md`, then the master `plans/007-ahmed-bohemoth-realistic-landforms.md` (sections 0, 2.2, 3.2, 3.6, 3.7, 3.9, 3.12, 4, 6), then phase 03's file (what it built, its budget and its Issues found), then phase 01's "Today" table. Every number here comes from the master unless it says otherwise.
 
@@ -185,10 +185,10 @@ This phase may edit these, plus this file:
 - [ ] Of ground steeper than 1:2, at least 70% in the top 30% of relief or on faces
 - [ ] Top-decile-over-bottom-3 slope ratio at least 5
 - [ ] Median peak concavity ratio at least 3
-- [ ] At least 25% of knobs on bases of 250 or over
+- [x] At least 25% of knobs on bases of 250 or over
 - [ ] Floating rock per km² at most phase 01's + 25%
 - [ ] `bench_terrain` at least 1000 everywhere (with `plateau_top`); `bench_lod` at most 40 ms
-- [ ] Pictures looked at and described here
+- [x] Pictures looked at and described here
 - [x] READMEs (`density/`, `landform/`)
 
 ## Tests
@@ -254,6 +254,102 @@ He names any slope that still feels like a cone. Recorded here.
 
 Appended as they land:
 
+- `a3dc9438` Plan 007 phase 04, work in progress: slope shaping S_G(m) by ruggedness on the landform lattice, the ridged summit rock in place of jagged, knobs on any ground, hills at cell 384 and at most 30, foothills gone, softness on faces and rugged ranges; the density and landform tests on the new formula. Pins not yet moved.
+- `346ab3cc` Shape plan 007 phase 04's land: a range's height is (1000 - P) S_G(m), soft m^1.6 and sharp m^3 blended by ruggedness G on the landform lattice; the ridged summit rock (cell 48, only above 60% of the envelope) replaces jagged; knobs, dome or koppie by G, 20 to 90 high, on any ground but a range or the sea, on a knob field of cell 640; hills at cell 384 and at most 30; foothills gone; softness from faces and rugged ranges only. Re-pin the density, cave, ore, biome, hydrology, feature, climate cell and systems digests and the Atlas goldens on it, each with this phase's reason, and allow 0.3% bare peaks and six seeds of eight with a long piece of high ground.
+- `17d7ccc1` Follow plan 007 phase 04's land in the program and picture tests: run_audio and run_player_interaction dig on the nearest even ground of seed 11, found from the land by tests/run/game/fixtures/ground.h and reached by /tp (the start is now on the edge of grass and sand); run_player_survival's run is also clear of trees, read from the blocks; run_playthrough's bench allows another kind picked up on the way; render_feature_lod_bands holds near colours exactly at E 2 and to 2 in 10,000 at E 8; run_render_frame's start, north_low and down, render_feature_under_water's land, sea and sea_no_air, and render_feature_lod's real_near and real_far made again, each looked at; clang-format on the phase's files.
+- `34f42bba` Have run_save_state_game's autosave test capture and settle what opening left until no far column more is built, before the away-and-back edit it times: on plan 007 phase 04's land a worker was still building then (it failed 3 times of 5 and passed on the old land), and print what the step built. Tick plan 007 phase 04's built todos.
+
 ## Issues found
 
-None.
+Open questions took their defaults: `TERRAIN_GENERATOR_VERSION` stays 1 and row 1 of `FEA_DIGEST_OF_GENERATOR` changes with a line saying why (master Q2, as phase 03); master section 4's targets as written (Q3, no gate held yet). **Worlds made from this branch's land are test worlds.**
+
+1. **What was built** (`run/src/terrain/density/README.md`, `run/src/terrain/landform/README.md`): `h = base + P + (1000 - P) S_G(m) + peak + knob + hill`, with `S_G = (1 - G) soft(m) + G sharp(m)`; `G` from `landform/rugged` (cell 3072, 2 octaves) on the 32-block lattice, blended with the uplift from the same nodes (a node costs 9 octaves, was 7); `peak = 40 w^3 (1 - |n|)` above `m = 0.6` from `landform/peak` (cell 48), sampled only where the envelope passes 0.6; `knob = (20 + 70 sigma) S_K(t) (1 - body) hill_land(c)` from `relief/knobs`, sampled only on land, `sigma` its second octave by `terrain_noise_sample_points_split`; hills `(6 + 24 hill_relief(e)(0.5 + 0.5 G))` on cell 384; `jagged` and foothills (and the `inland`, `relief` and `peak` splines that only they read) removed. The density's noise fields go 6 to 5, the landform's 3 to 6. Budget: the corner test reaches exactly -116 and 1170 (100 + 1000 + 40 + 30), under 1190.
+
+2. **Changed from the plan: the shaping splines have 12 knots, not 7.** With only master 3.6's table the spline's slope at `m = 0.2` and `G = 0.5` came out 0.145 against the master's 0.18 (19% off, the test allows 15%), as Fritsch-Carlson slopes at a knot follow the secants, not the power curve. The table's knots stay (the test holds them to 1e-12); tenths and 0.95 between them, at `m^1.6` and `m^3` to three places, bring every gradient within 4%: 0.173, 0.344, 0.558, 0.825, 1.063 against 0.18, 0.35, 0.57, 0.83, 1.06. The slope at 0.9 over 0.1: 4.43 (G 0), 10.92 (G 0.5), 134 (G 1); test bands 3 to 5, 6 to 13, at least 40.
+
+3. **Changed from the plan: the knob field's cell is 640, not 320.** On 320 the slope map showed every knob as a dark-red ring, 1:2 to 1:5: `t` climbs 0 to 1 within a few tens of blocks of `K` passing 0.55, so a koppie's middle rise of 60% of its height comes over about 10 blocks, not the master's "6:1 for a low dome to 1:1.5 for a koppie". On 640 the rings are thinner and half as many (2537 against 4988 knobs in 32 km on seed 42); the sides are still steep (the koppie's shape is the master's) and the knobs 250 to 500 across, not 120 to 250. Recorded for Ahmed's look at a koppie.
+
+4. **Changed from the plan: softness no longer reads `high` (erosion's high ground).** `plateau_tops_have_one_surface` wants softness at most 6 on a plateau top with no face and no range, but `high = inland(c) relief(e)` is 0.3 to 1 wherever erosion is low, plateau or not (the plan assumed it low there). `high` meant "where foothills are", and they are gone, so `h = min(1, 0.5 face + 0.3 G m)`: overhangs on faces and rugged ranges, one surface on plains and plateau tops. The test: 5138 plateau-top columns, all with softness at most 6 and one surface.
+
+5. **Foothills stay removed** (the plan's choice): nothing in the measures asked for them back (Issue 8). If Ahmed misses rough ground beside ranges, they come back at 30 with `S_soft`, as the Design says.
+
+6. **`knobs_stand_on_plateaus_too` is measured by `bench_landform`, not a ctest.** The knob rule lives in `bench/landform/measure/` (a flood to the highest saddle within 512 blocks), compiled into that program only; the share of knobs on a base of 250 or more is in the table below for every seed.
+
+7. **The tuning loop** (master section 4's slope rows; `bench_landform`'s profile at 32 km, seeds 42 and 1, a debug build with the constants read from the environment for the tries only, never committed). Each line: flat / gentle / moderate / steep / very steep / cliff / sheer % of land (seed 42; seed 1 within 1.5 points), steep-in-top-30% share, top-decile-over-bottom-3, median concavity, knobs on a base of 250 or more:
+
+   | Try | Histogram (seed 42) | Steep high | Decile ratio | Concavity | Knobs >= 250 |
+   |---|---|---|---|---|---|
+   | The plan's numbers (knob cell 320) | 1.8 / 14.7 / 27.1 / 20.9 / 17.8 / 12.4 / 5.3 | 32.5 / 24.5% | 0.94 / 1.30 | 1.47 / 1.52 | 73 / 43% |
+   | Knob cell 640 (kept) | 1.8 / 15.4 / 29.1 / 21.4 / 16.6 / 10.7 / 5.2 | 30.5 / 24.6% | 0.70 / 0.90 | 1.09 / 1.14 | 72 / 44% |
+   | `G` middle 0.75 (more alpine) | 1.8 / 14.8 / 27.7 / 21.0 / 17.3 / 12.1 / 5.4 | 32.8 / 24.8% | 0.93 / 1.28 | 1.51 / 1.53 | 73 / 42% |
+   | `G` middle 0.25 (more rolling) | 1.8 / 14.7 / 26.6 / 20.8 / 18.3 / 12.7 / 5.3 | 32.2 / 24.2% | 0.95 / 1.31 | 1.44 / 1.53 | 73 / 44% |
+   | No summit rock | 1.8 / 14.7 / 27.1 / 20.9 / 17.8 / 12.4 / 5.3 | 32.9 / 24.8% | 0.95 / 1.30 | 1.46 / 1.52 | 73 / 43% |
+   | `k0` 0.7 (fewer knobs) | 1.9 / 15.6 / 28.1 / 20.2 / 16.7 / 12.1 / 5.4 | 32.5 / 24.6% | 0.86 / 1.25 | 1.47 / 1.50 | 73 / 43% |
+   | Cell 640, `k0` 0.7, `G` 0.75 | 1.9 / 16.2 / 29.8 / 20.6 / 15.8 / 10.6 / 5.2 | 31.3 / 25.0% | 0.68 / 0.86 | 1.12 / 1.17 | 71 / 44% |
+   | Hills of 2 octaves; persistence 0.35 | within 0.2 points of the plan's | | | | |
+
+   **None of the phase's five levers moves the slope rows more than a point or two.** To find what does, the same tool took terms away (seed 42 / 1):
+
+   | Taken away | Flat / gentle / moderate % | Sheer % | Steep high |
+   |---|---|---|---|
+   | Knobs | 2.3 / 18.2 / 31.1 | 5.1 | 32.2% |
+   | Hills | 2.8 / 16.1 / 26.3 | 5.3 | 32.6% |
+   | Knobs and hills | 3.6 / 20.0 / 30.0 | 5.1 | 32.7% |
+   | The valley sinking of `base` (`valley(r)`, ridges cell 512, folded) | 2.3 / 18.3 / 31.9 | 5.1 | 23.6% |
+   | Valley, knobs and hills | 4.8 / 25.5 / 34.9 | 4.9 | 20.6% |
+   | Plateaus | 2.4 / 19.4 / 32.7 | 0.6 | 12.2% |
+   | Plateaus and valley | 3.0 / 24.1 / 38.4 | 0.4 | 16.3% |
+   | Plateaus, valley and knobs | 3.9 / 30.2 / 44.4 | 0.3 | 16.1% |
+
+   So: **the sheer class is the plateau faces** (5% of land with them, 0.4% without); **the "flat" class cannot reach 30%** while ranges cover so much of the land (on seed 42's 32 km, 33% of land stands at 500 or more, and a range's flank, 1000 blocks over about 2.4 km, averages 0.4, moderate by definition) and the lowland keeps `base`'s valleys. Even with plateaus, valleys and knobs all gone, flat is 4%. The decile ratio and the concavity are dominated by peaks on plateaus: a knob or a range on a plateau is a "peak" whose rays cross a flat top before the escarpment, so its top half is short and steep and its bottom half long (ratio under 1); taking knobs away *lowers* the median concavity (fewer peaks with any steep top). **For phase 06**: master section 4's slope rows need the range belt narrower or rarer (the flank's 0.40 knot, the `range_land` gate), the valley sinking softened off the rivers, and the concavity measured on range peaks (relief over 500, not on a plateau) if it is to say what 3.6 means by it. None of those is this phase's (master 3.2: `base` is today's; phase 03 owns the range geometry).
+
+8. **`bench_landform` on the 8 seeds** (release, 64 km, two runs of 4 and Ahmed's seed with the first, exit 0 each; a CPU bench on a shared machine, no card clock applies). Min to max over the 8, Ahmed's seed `11107447384583428913` beside, and phase 01's "Today" for comparison:
+
+   | Measure | Target | Phase 01 (today) | This phase | Ahmed's seed | Met |
+   |---|---|---|---|---|---|
+   | Flat / gentle / moderate / steep / very steep / cliff / sheer, % of land (profile, whole map) | 30–40 / 25–35 / 15–20 / 7–12 / 3–6 / 1.5–3 / 0.3–1 | 1.0–1.2 / 8.8–10.0 / 21.7–23.0 / 24.8–25.4 / 24.4–25.8 / 15.1–16.1 / 1.4–1.6 | 2.0–2.4 / 16.3–19.3 / 30.6–32.7 / 20.5–21.7 / 14.8–16.1 / 8.4–9.8 / 1.8–3.6 | 2.5 / 19.6 / 32.8 / 20.7 / 14.6 / 8.0 / 1.8 | No (every class moved toward its band except sheer, the plateau faces; none is in it but gentle at its edge) |
+   | The same from real blocks in the 64 windows | | 1.1–1.8 / 6.5–9.5 / 17.0–22.0 / 26.4–28.3 / 22.4–26.2 / 13.5–17.7 / 2.5–4.3 | 2.7–3.5 / 13.0–16.1 / 26.6–29.6 / 24.8–26.5 / 15.6–17.8 / 8.5–10.6 / 2.0–3.8 | 2.7 / 13.0 / 26.4 / 27.2 / 18.4 / 10.1 / 2.2 | |
+   | Profile against blocks, largest class difference | under 5 | 3.7–4.7 | 4.5–5.5 (over 5 on 5 seeds: the real blocks steeper by 5 points in gentle; hills and knobs bent by the 3D noise and features) | 5.9 | No |
+   | Of ground steeper than 1:2, share in the top 30% of local relief | at least 70% | 10.9–11.5% | 20.4–27.0% | 22.2% | No |
+   | Top decile's median slope over the bottom 3's | at least 5 | 2.45–2.62 | 0.87–0.99 | 0.91 | No (fell: Issue 7, plateau peaks) |
+   | Median slope by decile, 0 to 9 (seed 2198175988018515243) | rising | 0.39 … 1.65 | 0.33 0.40 0.45 0.51 0.49 0.51 0.51 0.57 0.43 0.39 | 0.32 0.38 0.43 0.47 0.44 0.46 0.47 0.54 0.42 0.37 | The top two deciles are the gentle plateau tops |
+   | Peak concavity, median (peaks found) | at least 3 | 1.39–1.44 | 1.12–1.21 (4733–5117 peaks) | 1.16 (4659) | No (Issue 7) |
+   | Knobs on a base of 250 or more | at least 25% | 12.6–15.2% | 25.4–48.6% (10414–11142 knobs) | 26.8% | **Yes, on all 8** (25.4% and 25.5% on two) |
+   | Escarpment length (phase 03's row) | at least 30 km | 0 | 30.2–156.2 km | 103.7 km | **Yes, on all 8** (phase 03: 5 to 30): the tops are calm enough now for the plateau rule to see their rims |
+   | Plateau pieces of 25 km² (phase 03's row) | at least 2 | 0 | 0; the largest 0.80–1.18 km² | 1.43 km² | No: the rule wants relief at most 80 within 512 blocks, and a knob of up to 90 on the top breaks it. For phase 06: the plateau rule and knobs on plateaus (Ahmed's point 2) cannot both hold as written |
+   | Longest range piece at 500 or more | at least 20 km on 6 of 8 | 3.9–6.0 km | 12.7–39.7 km, 20 or more on 5 of 8 | 13.8 km | No (phase 03: 7 of 8): gentle feet put less of each range above 500 |
+   | Sea | 25–30% | 25.7–27.4% | 24.7–27.0% | 27.1% | Yes (24.66% on one) |
+   | Top | 1100–1190 | 1166–1181 | 1125–1146 | 1128 | Yes |
+   | Profile, µs a lattice column | +15% at most | 0.32–0.37 | 0.44–0.53 (phase 03: 0.38–0.43); still 0.1% of `terrain_generate_box` | 0.47 | No by the letter, at 0.1% of a box's cost |
+
+   `/tp` lines on Ahmed's seed: tallest peak `/tp -1840 -17328` (z 1128); a knob on a base of 250 or more `/tp 12624 -12944` (z 1110); largest plateau piece `/tp -9776 5328` (z 686). `bench_landform` does not print a peak's foot (the Gate asks for it); the y profile through the tallest peak shows its foot at the sea about 2 km south.
+
+9. **Benches**, release, shared machine:
+   - **`bench_terrain`** (load average 8.2): slowest **jungle 968** (`/tp -32000 -5120`), then mangrove_swamp 1008; jagged_peaks 1233 (977 in phase 03: `jagged` gone), plateau_top 1366, every other place 1343 or more. A second run at load 13.9: jungle 900, mangrove_swamp 1059, jagged_peaks 1114, plateau_top 1294. **Missed by 3.2% at its best, at the jungle**, a feature-heavy place this land moved (the profile is 0.1% of a box, so the cost is in what stands on the ground).
+   - **`bench_lod`**: now mean 20.4, 30.6, 11.7, 10.5, 10.5, 10.7 ms at shifts 1 to 6, worst 33.8 and 46.5 at shifts 1 and 2; the 40 ms budget is met on the means, not on shift 2's worst (its own target, 50, is met).
+   - **Floating rock** (`bench_world_map`, two runs of 4, exit 0, 0 columns differing): 931 to 2098 per km² (2198175988018515243 1911, 1 1464, 42 2098, 20261104 1257, 12636146071196537873 1104, 5569068473609503046 1380, 9999999999999 1630, 18446744073709551557 931) against phase 01's 1072 to 1383 (+25%: 1729). **Not met on 2 seeds**, the two with the most land at 300 or more (51% and 56%): it follows the plateau land, whose faces phase 03 made soft (0.5 face) and whose sea pockets have walls hundreds of blocks high; phase 03 did not measure it, so how much is that phase's and how much this one's is not known. This phase's softness change (no `high`) can only have taken overhangs away from lowland.
+
+10. **Pictures, looked at** (`bench_landform`'s, release, in the scratchpad, not committed):
+    - **Slope map, Ahmed's seed.** Lowland is green and yellow (gentle and moderate) in a fine mottle, with thin orange-red rings: plateau rims and knob sides. The ranges are no longer dark red from foot to top (phase 01): each shows as a narrow dark-red streak along its crest with orange flanks fading to yellow at the feet.
+    - **Profiles through the tallest peak** (1128). Along y it rises from the sea over about 2 km at roughly 6:1, then 3:1, steepening past 1:1 in the last 300 blocks to a jagged crest of summit rock; along x a high ridge at about 1000 with arêtes on it. That is the shape the phase is for. Its far side drops in two steps, a plateau escarpment below the range.
+    - **Across the largest plateau's edge.** A level top at about 700 with gentle swells of 30 to 50 (hills and knobs), then a two-step escarpment, tier 2's face and tier 1's, down to the sea.
+    - **A knob field on a plateau** (relief map round the printed knob, which is itself a bump on a range crest at 1110): the grey tier-2 plateau beside it carries small closed contour rings, knobs 250 to 500 across, standing on the top as Ahmed asked; the lowland round it has the same.
+    - **Along the longest range** (13.8 km): plateau tops at 700 broken by three dome-shaped knobs on lower ground and a sea pocket with walls, as phase 03 noted.
+
+11. **Pins moved, each with this phase's line** (old values in comments beside them): `DENSITY_DIGEST_PIN` 0xE3EBEDF560C5F6E1, `CAVE_DIGEST_PIN` 0x5E10440E68CDB35A (unmoved by phase 03; now the ground moves everywhere through the hills' new cell, and caves reach up to it), `ORE_DIGEST_PIN` 0xF20FF176125D18AE (the same), `BIO_DIGEST_PIN` 0x4986AAD77E3B650B, `BIO_COLUMNS_PIN` 0xEDDCD46AB553A0A2, `HYDRO_DIGEST_PIN` 0x7F7DCC0FBB1885CA, `HYDRO_COLUMNS_PIN` 0x7B19743C198ED0F8, `HYDRO_FLOOD_PIN` 0xFE61DC57722A8EC5, `FEA_FOREST_PIN` 0xB1F782D0CD44F880, `FEA_DIGEST_OF_GENERATOR[1]` 0xFDF54F0635ADEE5A, `CELL_DIGEST_PIN` 0x809BAD24EE9E4DA8, `SYS_DIGEST_PIN` 0x70F3E27238A79D91, the Atlas's 52 goldens and its two plain-terrain hashes (0xCF0CDF4A758F698E, 0xE907F05516EF366F); every one of them is the 1-against-16-workers digest of its test, so the same bytes on 1 and 16 workers. `TERRAIN_GENERATOR_VERSION` stays 1.
+
+12. **Other tests changed with reasons:**
+    - `run_terrain_biome`'s bare-peak share: at least 0.3% (was 2%): 0.5 to 0.9% on its three seeds, as only a range's steep top is high.
+    - `run_terrain_density`'s ranges: six seeds of eight with a piece at 150 or more 4 km long and 5 km across (was every seed): one seed's longest is 2816 blocks in the 16 km looked at, as a range's gentle feet put less of its belt above 150.
+    - `run_audio` and `run_player_interaction` dig at seed 11's start, which is now on the edge of grass and sand: the top was grass, the top beside the hole sand, so the hand held dirt and the sound was grass while the report's last block was sand. They now go by `/tp` to the nearest even ground the land gives (`tests/run/game/fixtures/ground.h`: a 9 by 9 square of level ground with the same top, the block under it dropping the same, no log or leaves, read from the very blocks the test world makes, with 12 blocks of air over it so the box did reach above the ground; the first try lacked that and took a box wholly under a wood for even ground).
+    - `run_player_survival`'s run is also clear of trees along every block, read from the blocks: the first dry run went into a wood and the body spent 4 of its 5 saturation jumping against a trunk.
+    - `run_playthrough`'s bench test: at least one stack more after the bench is picked up (a sapling or stick of another kind came too).
+    - `render_feature_lod_bands`: near-pixel colours exactly the reference's at E 2 (the default), and at most 2 in 10,000 at E 8 (63 of 582,668: 48 looking east, 15 north, all at E 8 and 70 degrees, from plan 009 phase 06's shadow rays by level on this land).
+    - `run_save_state_game`'s autosave test captures and settles what opening left until no far column more is built before the away-and-back step it times: on this land a worker was still building then (3 failures of 5; main's land passed with the same test).
+    - **Pictures made again, each looked at:** `run_render_frame`'s `start.png` (jungle crowns), `north_low.png` (a level jungle floor with trunks and a pool, where the old was a terraced slope), `down.png` (crowns and water from above); `render_feature_under_water`'s `land.png` (a level jungle floor: no terraces now), `sea.png` and `sea_no_air.png` (the sea bed's hills lower and broader); `render_feature_lod`'s `real_near.png` (crowns over haze) and `real_far.png` (a coast with low plateaus and one peak whose feet are gentle and top sharp, where the old showed a broad grey dome).
+    - Timing tests (`run_ui_atlas`'s lock wait, `run_climate_warning`'s 20 ms, `run_terrain_feature`'s 300 s under `-j 4`) failed under load and passed alone.
+
+13. **Verification** (debug, after rebasing onto main at ed5bdbb9): the whole suite ran once (175 tests); its land failures are the ones above, each fixed and rerun alone: `run_audio`, `run_player_interaction`, `run_player_survival`, `run_playthrough`, `run_save_state_game` (4 passes in a row after its fix), `render_feature_lod_bands`, `run_render_frame`, `render_feature_under_water`, `render_feature_lod`, `run_ui_atlas`, `run_climate_warning`, `clang_format`, `standards_lint`, all passing; the terrain, climate and Atlas suites pass. Release: `run_terrain_*` pass but `run_terrain_cave_walk`, which needs the release game built (only the bench and terrain targets were, for the disk); `bench_terrain`, `bench_lod`, `bench_landform` and `bench_world_map` as above. The release build was deleted after the numbers.
+
+**For phase 05 and 06:** `G` is on the lattice beside the uplift (`terrain_landform_lattice_points`); the budget's top is 1170 with 20 blocks spare under 1190; the slope rows of master section 4 need work outside this phase's levers (Issue 7); the plateau-piece rule and knobs on plateaus conflict (Issue 8); floating rock follows the plateau faces (Issue 9); `bench_landform` should print a peak's foot for the Gate.
+

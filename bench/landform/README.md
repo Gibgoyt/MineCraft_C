@@ -58,6 +58,10 @@
 
 ## Results
 
+### 2026-11-13, plan 007 phase 04: slope shaping, summit rock, knobs, gentler hills
+
+Release, the 8 seeds in two runs of 4 (Ahmed's seed with the first), exit 0 each. Min to max: flat / gentle / moderate / steep / very steep / cliff / sheer (profile, whole map) 2.0–2.4 / 16.3–19.3 / 30.6–32.7 / 20.5–21.7 / 14.8–16.1 / 8.4–9.8 / 1.8–3.6 %; real blocks 2.7–3.5 / 13.0–16.1 / 26.6–29.6 / 24.8–26.5 / 15.6–17.8 / 8.5–10.6 / 2.0–3.8 %; largest class difference 4.5–5.5 points; steeper than 1:2 in the top 30% of relief 20.4–27.0%; top decile over the bottom 3 0.87–0.99; concavity 1.12–1.21; knobs on a base of 250 or more 25.4–48.6%; escarpment 30.2–156.2 km; longest range piece at 500 or more 12.7–39.7 km (20 or more on 5 of 8); plateau pieces of 25 km^2 still 0 (knobs on the tops break the relief rule); sea 24.7–27.0%; top 1125–1146; the profile 0.44–0.53 µs a lattice column. The slope rows are not met: the plan 007 phase 04 file, Issues found 7 and 8, has why and every try.
+
 ### 2026-11-13, plan 007 phase 03: plateaus, escarpments and long ranges
 
 On the 8 seeds, in two runs of 4, exit 0: sea 24.7 to 27.1%; reaching 150, 300, 500, 750, 1000: 31.9 to 43.1, 23.7 to 37.2, 11.4 to 22.2, 3.3 to 7.7, 0.06 to 0.15%; top 1126 to 1150; escarpment 5.4 to 30.1 km; the longest range piece at 500 or more 14.0 to 39.8 km; plateau pieces of 25 km^2 still 0, as the tops carry today's hills (phase 04); slope classes as before within a point. The profile 0.38 to 0.43 µs a lattice column. The plan 007 phase 03 file has the rest and the pictures.

@@ -15,6 +15,10 @@ A **column** here is what it is in the plan and in `run/src/world/column/`: a ch
 
 ## Results
 
+### 2026-11-13, plan 007 phase 04: slope shaping, summit rock, knobs, gentler hills
+
+Two runs, load averages 8.2 and 13.9: slowest **jungle 968 and 900** (`/tp -32000 -5120`), mangrove_swamp 1008 and 1059, jagged_peaks 1233 and 1114 (977 in phase 03: `jagged` gone), plateau_top 1366 and 1294, every other place 1343 or more. **Not met, by 3.2% at its best**, at the jungle, a feature-heavy place this land moved. See the plan 007 phase 04 file, Issues found 9.
+
 ### 2026-11-13, plan 007 phase 03: plateaus, and a plateau_top place
 
 Each line now ends with the place's `/tp`. Three runs: load averages 86, 4 and 2.8. At 2.8, slowest `jagged_peaks` **977** (a range now standing on a plateau), `plateau_top` 1223, every other place 1177 or more: **not met, by 2.3%**. `plateau_top` read 1004, 1239 and 1223 over the three. See the plan 007 phase 03 file, Issues found 16.
