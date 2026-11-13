@@ -2,7 +2,7 @@
 
 **Purpose:** ctest `render_feature_lod`. Tests the coarse grids in `run/src/render/lod/` and the far rays in `cuda/src/lod/`, with their share in `cuda/src/shade/`, on the real card, through the real encoder and table, with the setting in `run/src/render/frame/` and the flags in `run/src/main/`.
 **Tier:** test.
-**Owns:** nothing outside the test arena, and blocks on the card for the length of a test, under 3 GiB of voxels.
+**Owns:** nothing outside the test arena, and blocks on the card for the length of a test, under 3 GiB of voxels besides the far turn cache's fixed 96 MiB (plan 008 phase 06).
 **Lifetime:** One run.
 **Threads:** main and the real workers.
 **Public functions:** none; a test program.
