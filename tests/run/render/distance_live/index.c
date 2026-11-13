@@ -310,7 +310,8 @@ static bool dl_is_log(uint16_t block) {
 }
 
 /* A log near the eye with open sky in front of one face: DL_LOG_REACH + 1 blocks of air at its height and the one above, and nothing
- * over the place the eye will stand. So it is lit by the sky, and nothing is between it and the eye. */
+ * over the place the eye will stand. So it is lit by the sky, and nothing is between it and the eye. And no log right behind it, so that
+ * mining it changes what the crosshair's square shows. */
 static bool dl_find_log(const world_t *world, const float64_t eye[3], int32_t out_cell[3], int32_t out_step[2]) {
     static const int32_t steps[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
     const int32_t eye_x = (int32_t)floor(eye[0]), eye_y = (int32_t)floor(eye[1]), eye_z = (int32_t)floor(eye[2]);
@@ -323,7 +324,8 @@ static bool dl_find_log(const world_t *world, const float64_t eye[3], int32_t ou
                     continue;
                 }
                 for (uint32_t s = 0u; s < 4u; s++) {
-                    bool open = true;
+                    /* Not a log with another log behind it, as in a jungle tree's 2 x 2 trunk (plan 006 phase 04): mined, it shows the same bark. */
+                    bool open = !dl_is_log(dl_block(world, x - steps[s][0], y - steps[s][1], z));
                     for (int32_t k = 1; open && k <= (int32_t)DL_LOG_REACH + 1; k++) {
                         open = dl_block(world, x + steps[s][0] * k, y + steps[s][1] * k, z) == BLOCK_ID_AIR &&
                                dl_block(world, x + steps[s][0] * k, y + steps[s][1] * k, z + 1) == BLOCK_ID_AIR;
