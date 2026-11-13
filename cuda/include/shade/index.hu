@@ -7,8 +7,12 @@
 #include "device_memory/index.hu"
 #include "gpu_bridge/shade/index.h"
 #include "traverse/index.hu"
+#include "tuning/render/traverse/index.h"
 
 #include <math.h>
+
+/* Plan 009 phase 05: the water walk crosses a brick or a section all water in one step. See shade_water_through. */
+#define SHADE_WATER_BOXES MC_TUNE_RENDER_TRAVERSE_UNIFORM_BRICKS
 
 /* What every step of a pixel reads, so that the functions below do not take a dozen arguments each. Lives on the kernel's stack. */
 typedef struct shade_context_t {
@@ -94,10 +98,23 @@ typedef struct shade_water_walk_t {
 } shade_water_walk_t;
 static_assert(sizeof(shade_water_walk_t) == 16);
 
+/* What a walk from cell to cell learns of the cell it reads besides its material (plan 009 phase 05): the side, as a shift, of the box
+ * around it that is all that one material, so that a walk of the water may cross it whole. */
+enum : uint32_t {
+    SHADE_BOX_NONE = 0u,    /* none known */
+    SHADE_BOX_BRICK = 2u,   /* a uniform_mask brick */
+    SHADE_BOX_SECTION = 4u, /* a section all of one block */
+};
+
 /* The material of the block in a cell, or SHADE_NO_MATERIAL for air and for what is not loaded. The tree's three levels, read once:
- * the ray loop's own form of this cannot stop at a change of material. */
-static __device__ __forceinline__ uint32_t shade_cell_material(const traverse_view_t *view, const int32_t cell[3]) {
+ * the ray loop's own form of this cannot stop at a change of material. box, when not nullptr, gets the box around the cell all of that
+ * material: see SHADE_BOX_NONE. */
+static __device__ __forceinline__ uint32_t shade_cell_material(const traverse_view_t *view, const int32_t cell[3],
+                                                               uint32_t *box) {
     const int32_t x = cell[0], y = cell[1], z = cell[2];
+    if (box != nullptr) {
+        *box = SHADE_BOX_NONE;
+    }
     if (((uint32_t)(x - view->window_min_block[0]) >= view->window_blocks) |
         ((uint32_t)(y - view->window_min_block[1]) >= view->window_blocks) |
         ((uint32_t)z >= (uint32_t)TRAVERSE_HEIGHT_BLOCKS)) {
@@ -111,11 +128,17 @@ static __device__ __forceinline__ uint32_t shade_cell_material(const traverse_vi
     const uint8_t *const encoded = traverse_section_bytes(view, column->sections[z >> 4]);
     const world_buffers_section_t header = *(const world_buffers_section_t *)(const void *)encoded;
     if (header.brick_count == 0u) {
+        if (box != nullptr) {
+            *box = SHADE_BOX_SECTION;
+        }
         return traverse_section_value(encoded, &header, 0u) & TRAVERSE_VALUE_MATERIAL_MASK;
     }
     const int32_t brick = ((x >> 2) & 3) | (((y >> 2) & 3) << 2) | (((z >> 2) & 3) << 4);
     if (((header.brick_mask >> brick) & 1u) == 0u) {
         return SHADE_NO_MATERIAL;
+    }
+    if (box != nullptr && ((header.uniform_mask >> brick) & 1u) != 0u) {
+        *box = SHADE_BOX_BRICK;
     }
     const uint8_t *const after_header = encoded + sizeof(world_buffers_section_t);
     const uint32_t rank = (uint32_t)__popcll(header.brick_mask & ((1ull << brick) - 1ull));
@@ -137,22 +160,26 @@ typedef struct shade_cell_cursor_t {
     const uint8_t *encoded; /* 0: that section's bytes, or nullptr for no bytes */
     uint64_t bricks;        /* 8: that section's */
     uint64_t brick_mask;    /* 16: that brick's voxels */
+    uint64_t uniform_mask;  /* 24: that section's (plan 009 phase 05) */
     int32_t
-        section[3]; /* 24: which: x and y as columns, z as a section. section[0] is INT32_MAX until something is read */
-    int32_t brick;  /* 36: which, of that section, or -1 */
-    int32_t top;    /* 40: that column's: see traverse_column_top */
-    uint32_t uniform;         /* 44: a section all of one block: its material. Otherwise SHADE_NO_MATERIAL */
-    uint32_t rank;            /* 48: that brick's place among the section's */
-    uint32_t brick_count;     /* 52: that section's */
-    uint32_t material_offset; /* 56 */
-    uint8_t _pad0[4];         /* 60 */
+        section[3]; /* 32: which: x and y as columns, z as a section. section[0] is INT32_MAX until something is read */
+    int32_t brick;  /* 44: which, of that section, or -1 */
+    int32_t top;    /* 48: that column's: see traverse_column_top */
+    uint32_t uniform;         /* 52: a section all of one block: its material. Otherwise SHADE_NO_MATERIAL */
+    uint32_t rank;            /* 56: that brick's place among the section's */
+    uint32_t brick_count;     /* 60: that section's */
+    uint32_t material_offset; /* 64 */
+    uint8_t _pad0[4];         /* 68 */
 } shade_cell_cursor_t;
-static_assert(sizeof(shade_cell_cursor_t) == 64);
+static_assert(sizeof(shade_cell_cursor_t) == 72);
 
-/* shade_cell_material, the same answer each time, from what the cursor has. */
+/* shade_cell_material, the same answers each time, from what the cursor has. */
 static __device__ __forceinline__ uint32_t shade_cell_material_kept(const traverse_view_t *view, const int32_t cell[3],
-                                                                    shade_cell_cursor_t *cursor) {
+                                                                    shade_cell_cursor_t *cursor, uint32_t *box) {
     const int32_t x = cell[0], y = cell[1], z = cell[2];
+    if (box != nullptr) {
+        *box = SHADE_BOX_NONE;
+    }
     if (((uint32_t)(x - view->window_min_block[0]) >= view->window_blocks) |
         ((uint32_t)(y - view->window_min_block[1]) >= view->window_blocks) |
         ((uint32_t)z >= (uint32_t)TRAVERSE_HEIGHT_BLOCKS)) {
@@ -173,6 +200,7 @@ static __device__ __forceinline__ uint32_t shade_cell_material_kept(const traver
             const world_buffers_section_t header = *(const world_buffers_section_t *)(const void *)cursor->encoded;
             cursor->brick_count = header.brick_count;
             cursor->bricks = header.brick_mask;
+            cursor->uniform_mask = header.uniform_mask;
             cursor->material_offset = header.material_offset;
             if (header.brick_count == 0u) {
                 cursor->uniform = traverse_section_value(cursor->encoded, &header, 0u) & TRAVERSE_VALUE_MATERIAL_MASK;
@@ -183,11 +211,17 @@ static __device__ __forceinline__ uint32_t shade_cell_material_kept(const traver
         return SHADE_NO_MATERIAL;
     }
     if (cursor->brick_count == 0u) {
+        if (box != nullptr) {
+            *box = SHADE_BOX_SECTION;
+        }
         return cursor->uniform;
     }
     const int32_t brick = ((x >> 2) & 3) | (((y >> 2) & 3) << 2) | (((z >> 2) & 3) << 4);
     if (((cursor->bricks >> brick) & 1u) == 0u) {
         return SHADE_NO_MATERIAL;
+    }
+    if (box != nullptr && ((cursor->uniform_mask >> brick) & 1u) != 0u) {
+        *box = SHADE_BOX_BRICK;
     }
     const uint8_t *const after_header = cursor->encoded + sizeof(world_buffers_section_t);
     if (brick != cursor->brick) {
@@ -205,10 +239,61 @@ static __device__ __forceinline__ uint32_t shade_cell_material_kept(const traver
     return ((const uint16_t *)(const void *)(cursor->encoded + cursor->material_offset))[place];
 }
 
+/* The t at which the ray crosses this plane of one axis: from the eye, whole number first, as everywhere. */
+static __device__ __forceinline__ float32_t shade_plane_t(const traverse_trace_ray_t *ray, const float32_t inverse[3],
+                                                          uint32_t axis, int32_t plane) {
+    return ((float32_t)(plane - ray->eye_cell[axis]) - ray->eye_frac[axis]) * inverse[axis];
+}
+
+/* Plan 009 phase 05: the walk is in a voxel of a box of side 1 << box all of its water. This moves it at once to the voxel of the box a walk
+ * voxel by voxel would be in last, and says when it came into that voxel, so that the walk's next step leaves the box exactly where and when
+ * that walk would have. That walk crosses planes in the order of their t, a tie going to x, then y, then z: so it leaves by the box's face
+ * that comes first in that order, and on each other axis it has crossed every plane that comes before that. False, with nothing moved, when
+ * the box is left at reach past t_hit or further, where the walk must look plane by plane (the same test as its own, and t - t_hit only grows
+ * with t, so every plane before passes it too), or when the walk is in that last voxel already. */
+static __device__ __forceinline__ bool shade_water_box_cross(const traverse_trace_ray_t *ray,
+                                                             const float32_t inverse[3], uint32_t box, float32_t t_hit,
+                                                             float32_t reach, int32_t cell[3], float32_t *entered) {
+    const int32_t side = 1 << box;
+    int32_t low[3];
+    uint32_t out_axis = 0u;
+    float32_t t_out = 1e30F;
+    for (uint32_t i = 0u; i < 3u; i += 1u) {
+        low[i] = cell[i] & ~(side - 1);
+        const float32_t t = shade_plane_t(ray, inverse, i, ray->direction[i] > 0.0F ? low[i] + side : low[i]);
+        if (t < t_out) {
+            t_out = t;
+            out_axis = i;
+        }
+    }
+    if (!(t_out - t_hit < reach)) {
+        return false;
+    }
+    bool moved = false;
+    float32_t last = *entered;
+    for (uint32_t i = 0u; i < 3u; i += 1u) {
+        const bool up = ray->direction[i] > 0.0F;
+        const int32_t edge = up ? low[i] + side - 1 : low[i];
+        while (cell[i] != edge) {
+            /* The plane between this voxel and the next along the ray. On the axis it leaves by, every one comes first. */
+            const float32_t t = shade_plane_t(ray, inverse, i, up ? cell[i] + 1 : cell[i]);
+            if (i != out_axis && !(t < t_out || (t == t_out && i < out_axis))) {
+                break;
+            }
+            cell[i] += up ? 1 : -1;
+            last = fmaxf(last, t);
+            moved = true;
+        }
+    }
+    *entered = last;
+    return moved;
+}
+
 /* From a voxel of water a ray has reached, on along it, voxel by voxel, to where the water stops: a voxel of anything else, or air.
  * A sea is a great many voxels of one block with nothing to see between them, and starting a trace for each would cost a ray per
  * block of depth. Every plane is worked out from the eye, whole number first, as the ray loop's are, so that going on from last_in
- * gives the same bits and finds what is behind and nothing before. */
+ * gives the same bits and finds what is behind and nothing before. A brick or a section all water is crossed in one step (plan 009
+ * phase 05), to the voxel the walk would have left it from, so nothing it says changes. */
 static __device__ __forceinline__ void shade_water_through(const traverse_view_t *view, const traverse_trace_ray_t *ray,
                                                            const traverse_hit_t *hit, uint32_t water, float32_t reach,
                                                            shade_cell_cursor_t *cursor, shade_water_walk_t *out) {
@@ -226,7 +311,17 @@ static __device__ __forceinline__ void shade_water_through(const traverse_view_t
     for (uint32_t i = 0u; i < 3u; i += 1u) {
         out->last[i] = hit->offset[i];
     }
+    uint32_t box = SHADE_BOX_NONE;
     for (uint32_t step = 0u; step < view->max_steps; step += 1u) {
+        if (SHADE_WATER_BOXES && box != SHADE_BOX_NONE) {
+            float32_t entered = out->last_in;
+            if (shade_water_box_cross(ray, inverse, box, hit->t, reach, cell, &entered)) {
+                out->last_in = entered;
+                for (uint32_t i = 0u; i < 3u; i += 1u) {
+                    out->last[i] = (int16_t)(cell[i] - ray->eye_cell[i]);
+                }
+            }
+        }
         float32_t nearest = 1e30F;
         uint32_t axis = 0u;
         for (uint32_t i = 0u; i < 3u; i += 1u) {
@@ -243,8 +338,9 @@ static __device__ __forceinline__ void shade_water_through(const traverse_view_t
             return;
         }
         cell[axis] += ray->direction[axis] > 0.0F ? 1 : -1;
-        if ((cursor != nullptr ? shade_cell_material_kept(view, cell, cursor) : shade_cell_material(view, cell)) !=
-            water) {
+        uint32_t *const box_out = SHADE_WATER_BOXES ? &box : nullptr;
+        if ((cursor != nullptr ? shade_cell_material_kept(view, cell, cursor, box_out)
+                               : shade_cell_material(view, cell, box_out)) != water) {
             return;
         }
         out->last_in = nearest;

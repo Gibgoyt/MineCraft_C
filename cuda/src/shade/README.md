@@ -15,7 +15,7 @@
 
 **The far field:** where a ray of its own leaves the world, with `shade_scene_t.borrowed_lod_hits` there, it stops on what `cuda/src/lod/` found on that same ray: `shade_far_colour`, the face's mean colour, or what near water comes to when deep, under the same light. So fog, water and glass in front of it work as they do on anything. See that README.
 
-Only for CUDA code (`cuda/include/shade/index.hu`): `shade_context_t`, `shade_surface_t`, `shade_texel`, `shade_surface_read`, `shade_cell_material`, `shade_cell_material_kept`, `shade_water_walk_t` and `shade_water_through`, inline, so that `cuda/src/lod/` asks the very same questions of a pixel's ray as `shade_kernel` does, to send a far ray only where shade will look.
+Only for CUDA code (`cuda/include/shade/index.hu`): `shade_context_t`, `shade_surface_t`, `shade_texel`, `shade_surface_read`, `shade_cell_material`, `shade_cell_material_kept`, `shade_water_walk_t`, `shade_plane_t`, `shade_water_box_cross` and `shade_water_through`, inline, so that `cuda/src/lod/` asks the very same questions of a pixel's ray as `shade_kernel` does, to send a far ray only where shade will look.
 
 **May be called by:** `render`, `cuda/src/frame/`.
 **Depends on:** `gpu_bridge/device_memory`, `gpu_bridge/post` for the sky and fog it draws behind glass and in water, `gpu_bridge/status`, `gpu_bridge/traverse`, and `cuda/include/traverse/` for a pixel's direction and the ray loop.
@@ -76,7 +76,7 @@ The sun ray goes on the same way, so a shadow agrees with what is seen: it passe
 
 ## Water
 
-The block `shade_scene_t.water_material` names, which only `render_frame_t` needs to know. A sea is a great many voxels of one block with nothing to see between them, so a ray does not start a trace for each. **`shade_water_through` steps along the ray cell by cell, reading the tree's three levels at each, to where the water stops**, and the trace goes on from there, from the last voxel's own entry, so that it takes what is past that voxel and nothing before. That is one memory walk for a whole body of water however deep, and `SHADE_WATER_SEEN_BLOCKS` is the most it walks with tint on.
+The block `shade_scene_t.water_material` names, which only `render_frame_t` needs to know. A sea is a great many voxels of one block with nothing to see between them, so a ray does not start a trace for each. **`shade_water_through` steps along the ray cell by cell, reading the tree's three levels at each, to where the water stops**, and the trace goes on from there, from the last voxel's own entry, so that it takes what is past that voxel and nothing before. That is one memory walk for a whole body of water however deep, and `SHADE_WATER_SEEN_BLOCKS` is the most it walks with tint on. Since plan 009 phase 05 a brick the section header's `uniform_mask` says is all water, or a section all water, is crossed in one step (`shade_water_box_cross`): to the voxel of it the walk cell by cell would be in last, found by the order that walk crosses planes in (by t, a tie going to x, then y, then z), and with the t it came into that voxel at, so its next step leaves exactly where and when that walk would have and nothing the walk says changes. A box the walk would leave at `reach` or past it is walked cell by cell, by the same test the walk makes. `shade_cell_material` and `shade_cell_material_kept` say which box a cell is in for this.
 
 A pixel of water is, near to far:
 

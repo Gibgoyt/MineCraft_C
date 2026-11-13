@@ -43,7 +43,8 @@ static_assert(WORLD_BUFFERS_PAGE_GRANULES < WORLD_BUFFERS_SLAB_NONE);
 
 /* What one section takes on the card, in this order, starting on an 8-byte boundary:
  *
- *     world_buffers_section_t            the header, whose brick_mask has one bit for each 4x4x4 brick with a voxel in it
+ *     world_buffers_section_t            the header, whose brick_mask has one bit for each 4x4x4 brick with a voxel in it, and
+ *                                        uniform_mask one for each brick full of one block (plan 009 phase 05)
  *     uint64_t brick_voxels[brick_count] per brick with a bit, in bit order: one bit for each voxel in it
  *     uint16_t brick_first[brick_count]  how many occupied voxels come before that brick
  *     uint16_t material[voxel_count]     the block state of each occupied voxel, in bit order
@@ -54,35 +55,46 @@ static_assert(WORLD_BUFFERS_PAGE_GRANULES < WORLD_BUFFERS_SLAB_NONE);
  * place inside it, so walking set bits with tzcnt walks each axis in order. A section with no block has no bytes at all.
  *
  * A section whose 4096 voxels are all one block with one light is the header, with brick_count 0 and every bit of brick_mask,
- * then that one material and that one light: WORLD_BUFFERS_SECTION_BYTES_UNIFORM bytes. Buried stone is most of a column, and
- * took 12944 bytes a section before this: Stage 08.4 issue 2. */
+ * then that one material and that one light: WORLD_BUFFERS_SECTION_BYTES_UNIFORM bytes, with every bit of uniform_mask too. Buried
+ * stone is most of a column, and took 12944 bytes a section before this: Stage 08.4 issue 2.
+ *
+ * A uniform_mask bit says only that the brick's 64 voxels are all one material, the same 16 bits, whatever their light: a body of
+ * water lights unevenly, and what reads the mask (the water walk, which crosses such a brick in one step) asks only the material. It
+ * is never set for a brick that is not full. Plan 009 phase 05; sections are encoded from the world on every load, so nothing on
+ * disk changed. */
 typedef struct world_buffers_section_t {
     uint64_t brick_mask;      /* 0 */
-    uint16_t voxel_count;     /* 8: at least 1, up to 4096 */
-    uint16_t material_offset; /* 10: from the start of this header */
-    uint16_t light_offset;    /* 12: the same */
-    uint8_t brick_count;      /* 14: the bits in brick_mask; 0 for a uniform section */
-    uint8_t _pad0[1];         /* 15 */
+    uint64_t uniform_mask;    /* 8: plan 009 phase 05 */
+    uint16_t voxel_count;     /* 16: at least 1, up to 4096 */
+    uint16_t material_offset; /* 18: from the start of this header */
+    uint16_t light_offset;    /* 20: the same */
+    uint8_t brick_count;      /* 22: the bits in brick_mask; 0 for a uniform section */
+    uint8_t _pad0[1];         /* 23 */
 } world_buffers_section_t;
-static_assert(sizeof(world_buffers_section_t) == 16);
+static_assert(sizeof(world_buffers_section_t) == 24);
 static_assert(alignof(world_buffers_section_t) == 8);
 static_assert(offsetof(world_buffers_section_t, brick_mask) == 0);
-static_assert(offsetof(world_buffers_section_t, voxel_count) == 8);
-static_assert(offsetof(world_buffers_section_t, material_offset) == 10);
-static_assert(offsetof(world_buffers_section_t, light_offset) == 12);
-static_assert(offsetof(world_buffers_section_t, brick_count) == 14);
-static_assert(offsetof(world_buffers_section_t, _pad0) == 15);
+static_assert(offsetof(world_buffers_section_t, uniform_mask) == 8);
+static_assert(offsetof(world_buffers_section_t, voxel_count) == 16);
+static_assert(offsetof(world_buffers_section_t, material_offset) == 18);
+static_assert(offsetof(world_buffers_section_t, light_offset) == 20);
+static_assert(offsetof(world_buffers_section_t, brick_count) == 22);
+static_assert(offsetof(world_buffers_section_t, _pad0) == 23);
 
 enum : uint32_t {
-    /* Every brick full: 12944 bytes, which is a multiple of 8 as it stands. */
+    /* Every brick full: 12952 bytes, which is a multiple of 8 as it stands. */
     WORLD_BUFFERS_SECTION_BYTES_MAX = (uint32_t)sizeof(world_buffers_section_t) + WORLD_BUFFERS_BRICKS * 8u +
                                       WORLD_BUFFERS_BRICKS * 2u + WORLD_BUFFERS_SECTION_VOXELS * 3u,
 };
 static_assert(WORLD_BUFFERS_SECTION_BYTES_MAX % 8u == 0u);
 enum : uint32_t {
     /* The header, a material and a light, up to a multiple of 8. */
-    WORLD_BUFFERS_SECTION_BYTES_UNIFORM = 24u,
+    WORLD_BUFFERS_SECTION_BYTES_UNIFORM = 32u,
 };
+static_assert(WORLD_BUFFERS_SECTION_BYTES_UNIFORM >= sizeof(world_buffers_section_t) + 3u &&
+              WORLD_BUFFERS_SECTION_BYTES_UNIFORM % 8u == 0u &&
+              WORLD_BUFFERS_SECTION_BYTES_UNIFORM - 8u < sizeof(world_buffers_section_t) + 3u);
+static_assert(WORLD_BUFFERS_SECTION_BYTES_MAX == 12952u);
 
 enum : uint32_t {
     /* A square of this many columns each way, on the world's own grid, has one top: a power of 2. */

@@ -122,20 +122,25 @@ static void tw_set(tw_world_t *world, int32_t x, int32_t y, int32_t z, uint32_t 
 static uint32_t tw_encode_section(tw_world_t *world, uint32_t x0, uint32_t y0, uint32_t z0, uint8_t *out) {
     const uint32_t first_value = tw_value(world, x0, y0, z0);
     uint64_t words[64];
-    uint64_t brick_mask = 0u;
+    uint64_t brick_mask = 0u, uniform_mask = 0u;
     uint32_t bricks = 0u, voxels = 0u;
     bool uniform = true;
     for (uint32_t b = 0u; b < 64u; b += 1u) {
         const uint32_t bx = x0 + (b & 3u) * 4u, by = y0 + ((b >> 2) & 3u) * 4u, bz = z0 + (b >> 4) * 4u;
         uint64_t mask = 0u;
+        const uint32_t brick_material = tw_value(world, bx, by, bz) & TRAVERSE_VALUE_VOXEL_MASK;
+        bool one_material = true;
         for (uint32_t v = 0u; v < 64u; v += 1u) {
             const uint32_t value = tw_value(world, bx + (v & 3u), by + ((v >> 2) & 3u), bz + (v >> 4));
             uniform = uniform && value == first_value;
+            one_material = one_material && (value & TRAVERSE_VALUE_VOXEL_MASK) == brick_material;
             if (value != 0u) {
                 mask |= 1ull << v;
                 voxels += 1u;
             }
         }
+        /* Plan 009 phase 05: full, and one material whatever the light. */
+        uniform_mask |= mask == ~0ull && one_material ? 1ull << b : 0u;
         if (mask != 0u) {
             brick_mask |= 1ull << b;
             words[bricks] = mask;
@@ -149,20 +154,21 @@ static uint32_t tw_encode_section(tw_world_t *world, uint32_t x0, uint32_t y0, u
         world->uniform_sections += 1u;
         if (out != nullptr) {
             const world_buffers_section_t header = {.brick_mask = ~0ull,
+                                                    .uniform_mask = ~0ull,
                                                     .voxel_count = 4096u,
-                                                    .material_offset = 16u,
-                                                    .light_offset = 18u,
+                                                    .material_offset = 24u,
+                                                    .light_offset = 26u,
                                                     .brick_count = 0u};
             const uint16_t material = (uint16_t)(first_value & TRAVERSE_VALUE_VOXEL_MASK);
             memcpy(out, &header, sizeof(header));
-            memcpy(out + 16, &material, 2u);
-            out[18] = (uint8_t)(first_value >> TRAVERSE_VALUE_LIGHT_SHIFT);
+            memcpy(out + 24, &material, 2u);
+            out[26] = (uint8_t)(first_value >> TRAVERSE_VALUE_LIGHT_SHIFT);
         }
         return WORLD_BUFFERS_SECTION_BYTES_UNIFORM;
     }
     world->brick_count += bricks;
     world->voxel_count += voxels;
-    const uint32_t first_offset = 16u + bricks * 8u;
+    const uint32_t first_offset = 24u + bricks * 8u;
     const uint32_t material_offset = first_offset + bricks * 2u;
     const uint32_t light_offset = material_offset + voxels * 2u;
     const uint32_t bytes = (light_offset + voxels + 7u) & ~7u;
@@ -170,12 +176,13 @@ static uint32_t tw_encode_section(tw_world_t *world, uint32_t x0, uint32_t y0, u
         return bytes;
     }
     const world_buffers_section_t header = {.brick_mask = brick_mask,
+                                            .uniform_mask = uniform_mask,
                                             .voxel_count = (uint16_t)voxels,
                                             .material_offset = (uint16_t)material_offset,
                                             .light_offset = (uint16_t)light_offset,
                                             .brick_count = (uint8_t)bricks};
     memcpy(out, &header, sizeof(header));
-    memcpy(out + 16, words, bricks * 8u);
+    memcpy(out + 24, words, bricks * 8u);
     uint32_t rank = 0u, place = 0u;
     for (uint32_t b = 0u; b < 64u; b += 1u) {
         if (((brick_mask >> b) & 1u) == 0u) {

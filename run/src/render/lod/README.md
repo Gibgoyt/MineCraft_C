@@ -41,7 +41,7 @@ The game holds blocks (level 0) out to `render_lod_block_radius`: d_1 and `block
 
 ## Why it is the way it is
 
-**A level is a world.** A coarse column is 16 x 16 voxels and up to 768 high (1536 blocks in voxels of 2), in the same sections, table and slab pool as the blocks', so `render_encode_section` writes it, `world_buffers` holds it, `traverse_trace` walks it, and its uniform sections and masks do for it what they do for the world. Only the meaning of a voxel is different: it is `1 << shift` blocks each way. A section of air costs nothing and buried stone 24 bytes, and a level costs what its surface costs.
+**A level is a world.** A coarse column is 16 x 16 voxels and up to 768 high (1536 blocks in voxels of 2), in the same sections, table and slab pool as the blocks', so `render_encode_section` writes it, `world_buffers` holds it, `traverse_trace` walks it, and its uniform sections and masks do for it what they do for the world. Only the meaning of a voxel is different: it is `1 << shift` blocks each way. A section of air costs nothing and buried stone 32 bytes (24 before plan 009 phase 05 grew the header), and a level costs what its surface costs.
 
 **One sample for each voxel's column.** One column of blocks at a voxel's middle, 256 of them for a coarse column, by the stages of `terrain_generate_box` that show from far off: no caves or ores, and what grows only for voxels of up to `1 << RENDER_LOD_FEATURES_SHIFT_MAX` blocks.
 

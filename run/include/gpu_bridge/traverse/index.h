@@ -113,7 +113,10 @@ typedef struct traverse_world_t {
         band_dither; /* 60: a pixel's edges all move by up to this share of themselves, by a hash of it: 0 for none */
     uint32_t
         band_seed; /* 64: hashed with the pixel: the frame with TAA on, 0 with it off, so that one picture comes out the same */
-    uint8_t _pad0[4]; /* 68 */
+    /* 68: plan 009 phase 05: 1 for traverse_primary and traverse_rays without that phase's merged boxes, the loop a test holds every hit
+     * of the real one to, bit for bit. 0 in the game. */
+    uint8_t plain;
+    uint8_t _pad0[3]; /* 69 */
 } traverse_world_t;
 static_assert(sizeof(traverse_world_t) == 72);
 static_assert(alignof(traverse_world_t) == 8);
@@ -126,7 +129,8 @@ static_assert(offsetof(traverse_world_t, top_limit) == 52);
 static_assert(offsetof(traverse_world_t, band_base) == 56);
 static_assert(offsetof(traverse_world_t, band_dither) == 60);
 static_assert(offsetof(traverse_world_t, band_seed) == 64);
-static_assert(offsetof(traverse_world_t, _pad0) == 68);
+static_assert(offsetof(traverse_world_t, plain) == 68);
+static_assert(offsetof(traverse_world_t, _pad0) == 69);
 
 /* A bit per material, material m at bit m % 32 of words[m / 32]: set for one that stops a ray asking only where the first thing is
  * that it cannot see through. A kernel takes it by value. */

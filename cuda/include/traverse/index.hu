@@ -6,8 +6,16 @@
 #include "device_memory/index.hu"
 #include "gpu_bridge/traverse/index.h"
 #include "tuning/render/lod/index.h"
+#include "tuning/render/traverse/index.h"
 
 #include <math.h>
+
+/* Plan 009 phase 05: an empty 2 x 2 x 2 cube in a brick with something in it is one step. See traverse_trace_core. */
+#define TRAVERSE_COALESCE_2 MC_TUNE_RENDER_TRAVERSE_COALESCE_2
+/* The bits of a brick's word for the 2 x 2 x 2 cube at its low corner: voxels (0..1, 0..1, 0..1). The cube whose low corner is at
+ * (2a, 2b, 2c) is this shifted left by 2a | 8b | 32c, which is a voxel's bit number with its low bit on each axis cleared. */
+#define TRAVERSE_PAIR_CUBE 0x0000000000330033ull
+#define TRAVERSE_PAIR_CORNER 0x2A
 
 /* A direction component nearer zero than this becomes this, keeping its sign, so that its inverse stays finite. A test's CPU
  * reference applies the same rule. */
@@ -29,7 +37,8 @@ typedef struct traverse_view_t {
     float32_t band_base;                          /* 64: plan 009 phase 04: traverse_world_t's, 0 for no bands */
     float32_t band_dither;                        /* 68 */
     uint32_t band_seed;                           /* 72 */
-    uint8_t _pad0[4];                             /* 76 */
+    uint8_t plain;                                /* 76: traverse_world_t's: the kernels' choice, never the loop's */
+    uint8_t _pad0[3];                             /* 77 */
 } traverse_view_t;
 static_assert(sizeof(traverse_view_t) == 80);
 static_assert(alignof(traverse_view_t) == 8);
@@ -456,10 +465,11 @@ static __device__ __forceinline__ const traverse_tally_t *traverse_tally_for(tra
  * all of one is passed whole: for a ray that asks only where the first thing is that it cannot see through. Inlined with stops
  * nullptr, as traverse_trace is, those tests are not there at all. With a tally (plan 009 phase 01) each step that moves the ray
  * is counted into the band of the t it began at, so the bands add up to the steps in the hit's info, and nothing the ray does
- * changes; inlined with tally nullptr, none of the counting is there. */
-static __device__ __forceinline__ void traverse_trace_counted(const traverse_view_t *view,
-                                                              const traverse_trace_ray_t *ray, const uint32_t *stops,
-                                                              traverse_hit_t *hit, const traverse_tally_t *tally) {
+ * changes; inlined with tally nullptr, none of the counting is there. plain (plan 009 phase 05) leaves out that phase's merged boxes:
+ * a constant at every call but a test's, for the loop a test holds every hit of the real one to, bit for bit. */
+static __device__ __forceinline__ void traverse_trace_core(const traverse_view_t *view, const traverse_trace_ray_t *ray,
+                                                           const uint32_t *stops, traverse_hit_t *hit,
+                                                           const traverse_tally_t *tally, bool plain) {
     const float32_t dx = ray->direction[0], dy = ray->direction[1], dz = ray->direction[2];
     const float32_t fx = ray->eye_frac[0], fy = ray->eye_frac[1], fz = ray->eye_frac[2];
     const int32_t ex = ray->eye_cell[0], ey = ray->eye_cell[1], ez = ray->eye_cell[2];
@@ -605,8 +615,14 @@ static __device__ __forceinline__ void traverse_trace_counted(const traverse_vie
                             }
                             return;
                         }
+                        shift = 0;
+                    } else {
+                        /* Plan 009 phase 05: an empty voxel in an empty 2 x 2 x 2 cube: the node is the cube. */
+                        shift = TRAVERSE_COALESCE_2 && !plain &&
+                                        ((brick_mask >> (voxel & TRAVERSE_PAIR_CORNER)) & TRAVERSE_PAIR_CUBE) == 0u
+                                    ? 1
+                                    : 0;
                     }
-                    shift = 0;
                 } else {
                     shift = 2;
                 }
@@ -632,9 +648,26 @@ static __device__ __forceinline__ void traverse_trace_counted(const traverse_vie
         const bool step_x = tx <= ty && tx <= tz;
         const bool step_y = !step_x && ty <= tz;
         const float32_t t_step = step_x ? tx : (step_y ? ty : tz);
-        const int32_t along_x = traverse_clamp((int32_t)floorf(fx + dx * t_step) + ex, x_min, x_max);
-        const int32_t along_y = traverse_clamp((int32_t)floorf(fy + dy * t_step) + ey, y_min, y_max);
-        const int32_t along_z = traverse_clamp((int32_t)floorf(fz + dz * t_step) + ez, z_min, z_max);
+        int32_t along_x = traverse_clamp((int32_t)floorf(fx + dx * t_step) + ex, x_min, x_max);
+        int32_t along_y = traverse_clamp((int32_t)floorf(fy + dy * t_step) + ey, y_min, y_max);
+        int32_t along_z = traverse_clamp((int32_t)floorf(fz + dz * t_step) + ez, z_min, z_max);
+        if (TRAVERSE_COALESCE_2 && !plain && shift == 1) {
+            /* Plan 009 phase 05: out of a 2 x 2 x 2 cube where a walk voxel by voxel would come out, and not where floorf says, which
+             * near a tie can be the voxel beside it: so no hit changes. That walk crosses planes in the order of their t, a tie going to
+             * x, then y, then z. So on an axis it does not step along, it has crossed the cube's middle plane, if that is still ahead
+             * of the voxel it is in, when that plane comes before the step out in that order. */
+            const float32_t mid_x = ((float32_t)(x_low + 1 - ex) - fx) * ix;
+            const float32_t mid_y = ((float32_t)(y_low + 1 - ey) - fy) * iy;
+            const float32_t mid_z = ((float32_t)(z_low + 1 - ez) - fz) * iz;
+            const bool ahead_x = (dx > 0.0F) == (x == x_low), ahead_y = (dy > 0.0F) == (y == y_low),
+                       ahead_z = (dz > 0.0F) == (z == z_low);
+            const bool cross_x = ahead_x && (mid_x < t_step || (mid_x == t_step && !step_x));
+            const bool cross_y = ahead_y && (mid_y < t_step || (mid_y == t_step && !step_x && !step_y));
+            const bool cross_z = ahead_z && mid_z < t_step;
+            along_x = x ^ (int32_t)cross_x;
+            along_y = y ^ (int32_t)cross_y;
+            along_z = z ^ (int32_t)cross_z;
+        }
         const int32_t next_x = step_x ? (dx > 0.0F ? x_high : x_low - 1) : along_x;
         const int32_t next_y = step_y ? (dy > 0.0F ? y_high : y_low - 1) : along_y;
         const int32_t next_z = !step_x && !step_y ? (dz > 0.0F ? z_high : z_low - 1) : along_z;
@@ -650,6 +683,12 @@ static __device__ __forceinline__ void traverse_trace_counted(const traverse_vie
     if (tally != nullptr) {
         traverse_count_end(tally, count_band, count_in_band, steps);
     }
+}
+
+static __device__ __forceinline__ void traverse_trace_counted(const traverse_view_t *view,
+                                                              const traverse_trace_ray_t *ray, const uint32_t *stops,
+                                                              traverse_hit_t *hit, const traverse_tally_t *tally) {
+    traverse_trace_core(view, ray, stops, hit, tally, false);
 }
 
 static __device__ __forceinline__ void traverse_trace_stopping(const traverse_view_t *view,
@@ -710,10 +749,10 @@ static inline gpu_status_t traverse_view_from(gpu_error_t *error, const traverse
     view->band_base = world->band_base;
     view->band_dither = world->band_dither;
     view->band_seed = world->band_seed;
+    view->plain = world->plain != 0u ? (uint8_t)1u : (uint8_t)0u;
     view->_pad0[0] = 0u;
     view->_pad0[1] = 0u;
     view->_pad0[2] = 0u;
-    view->_pad0[3] = 0u;
     return GPU_STATUS_OK;
 }
 

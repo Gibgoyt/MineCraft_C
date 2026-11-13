@@ -35,7 +35,7 @@ static uint64_t encode_test_random(uint64_t *rng) {
 }
 
 static uint32_t encode_test_expected_bytes(uint32_t bricks, uint32_t voxels) {
-    return (16u + 10u * bricks + 3u * voxels + 7u) & ~7u;
+    return (24u + 10u * bricks + 3u * voxels + 7u) & ~7u;
 }
 
 /* Every voxel, one at a time, against the arrays it came from, through the same lines a kernel runs, and every number the
@@ -45,6 +45,17 @@ static void encode_test_compare(test_context_t *t, const uint8_t *encoded, uint3
     uint64_t bricks_seen = 0u;
     uint32_t voxels_seen = 0u;
     uint32_t wrong = 0u;
+    /* Plan 009 phase 05: the bricks full of one material, light aside, the long way. */
+    uint64_t uniform_seen = 0u;
+    for (uint32_t brick = 0u; brick < 64u; brick++) {
+        const uint32_t bx = (brick & 3u) * 4u, by = ((brick >> 2) & 3u) * 4u, bz = (brick >> 4) * 4u;
+        const uint16_t first = blocks[section_voxel_index(bx, by, bz)];
+        bool same = first != 0u;
+        for (uint32_t v = 0u; v < 64u && same; v++) {
+            same = blocks[section_voxel_index(bx + (v & 3u), by + ((v >> 2) & 3u), bz + (v >> 4))] == first;
+        }
+        uniform_seen |= same ? 1ull << brick : 0u;
+    }
     for (uint32_t z = 0; z < 16u; z++) {
         for (uint32_t y = 0; y < 16u; y++) {
             for (uint32_t x = 0; x < 16u; x++) {
@@ -69,16 +80,17 @@ static void encode_test_compare(test_context_t *t, const uint8_t *encoded, uint3
         return;
     }
     const world_buffers_section_t *const header = (const world_buffers_section_t *)(const void *)encoded;
+    CHECK_EQ_U64(header->uniform_mask, uniform_seen);
     if (header->brick_count == 0u) {
         CHECK_EQ_U64(header->brick_mask, ~0ull);
         CHECK_EQ_U64(bricks_seen, ~0ull);
         CHECK_EQ_U64(header->voxel_count, SECTION_VOXELS);
         CHECK_EQ_U64(voxels_seen, SECTION_VOXELS);
-        CHECK_EQ_U64(header->material_offset, 16u);
-        CHECK_EQ_U64(header->light_offset, 18u);
+        CHECK_EQ_U64(header->material_offset, 24u);
+        CHECK_EQ_U64(header->light_offset, 26u);
         CHECK_EQ_U64(bytes, WORLD_BUFFERS_SECTION_BYTES_UNIFORM);
         CHECK_EQ_U64(header->_pad0[0], 0u);
-        for (uint32_t i = 19u; i < bytes; i++) {
+        for (uint32_t i = 27u; i < bytes; i++) {
             CHECK_EQ_U64(encoded[i], 0u);
         }
         for (uint32_t i = bytes; i < ENCODE_TEST_BUFFER_BYTES; i++) {
@@ -93,8 +105,8 @@ static void encode_test_compare(test_context_t *t, const uint8_t *encoded, uint3
     CHECK_EQ_U64(header->brick_mask, bricks_seen);
     CHECK_EQ_U64(header->brick_count, brick_total);
     CHECK_EQ_U64(header->voxel_count, voxels_seen);
-    CHECK_EQ_U64(header->material_offset, 16u + 10u * brick_total);
-    CHECK_EQ_U64(header->light_offset, 16u + 10u * brick_total + 2u * voxels_seen);
+    CHECK_EQ_U64(header->material_offset, 24u + 10u * brick_total);
+    CHECK_EQ_U64(header->light_offset, 24u + 10u * brick_total + 2u * voxels_seen);
     CHECK_EQ_U64(bytes, encode_test_expected_bytes(brick_total, voxels_seen));
     CHECK_EQ_U64(header->_pad0[0], 0u);
     for (uint32_t i = header->light_offset + voxels_seen; i < bytes; i++) {
@@ -128,7 +140,7 @@ TEST(a_section_with_no_block_has_no_bytes) {
 }
 
 /* The numbers here were worked out on paper. Voxel (5, 9, 14): brick (1, 2, 3) is 1 + 2*4 + 3*16 = 57. Inside it (1, 1, 2) is
- * 1 + 1*4 + 2*16 = 37. The size is 16 + 8 + 2 + 2 + 1 = 29, so 32 with padding. */
+ * 1 + 1*4 + 2*16 = 37. The size is 24 + 8 + 2 + 2 + 1 = 37, so 40 with padding. The header's uniform_mask is 0: no brick is full. */
 TEST(one_voxel_gives_exactly_these_bytes) {
     uint16_t *const blocks = test_alloc(t, SECTION_VOXELS * sizeof(uint16_t));
     uint8_t *const light = test_alloc(t, SECTION_VOXELS);
@@ -136,17 +148,43 @@ TEST(one_voxel_gives_exactly_these_bytes) {
     const uint32_t index = (14u << 8) | (9u << 4) | 5u;
     blocks[index] = 0xBEEFu;
     light[index] = 0xC3u;
-    REQUIRE(encode_test_arrays(out, blocks, light) == 32u);
+    REQUIRE(encode_test_arrays(out, blocks, light) == 40u);
     uint64_t word = 0u;
     memcpy(&word, out, 8u);
     CHECK_EQ_U64(word, 1ull << 57);
-    memcpy(&word, out + 16, 8u);
+    memcpy(&word, out + 8, 8u);
+    CHECK_EQ_U64(word, 0u);
+    memcpy(&word, out + 24, 8u);
     CHECK_EQ_U64(word, 1ull << 37);
-    const uint8_t expected_header_tail[8] = {1u,  0u, 26u, 0u,
-                                             28u, 0u, 1u,  0u}; /* 1 voxel, offsets 26 and 28, 1 brick */
-    CHECK_MEM_EQ(out + 8, expected_header_tail, 8u);
+    const uint8_t expected_header_tail[8] = {1u,  0u, 34u, 0u,
+                                             36u, 0u, 1u,  0u}; /* 1 voxel, offsets 34 and 36, 1 brick */
+    CHECK_MEM_EQ(out + 16, expected_header_tail, 8u);
     const uint8_t expected_tail[8] = {0u, 0u, 0xEFu, 0xBEu, 0xC3u, 0u, 0u, 0u}; /* first 0, material, light, padding */
-    CHECK_MEM_EQ(out + 24, expected_tail, 8u);
+    CHECK_MEM_EQ(out + 32, expected_tail, 8u);
+}
+
+/* Plan 009 phase 05. Brick 0 all water: marked. Brick 1 water with one stone in it: not. Brick 2 water lit two ways: marked, as the mask is of
+ * the material alone (the water walk asks nothing else, and a lake is lit unevenly). Brick 3 water with one air: not, as it is not full. */
+TEST(the_uniform_mask_marks_full_one_block_bricks) {
+    uint16_t *const blocks = test_alloc(t, SECTION_VOXELS * sizeof(uint16_t));
+    uint8_t *const light = test_alloc(t, SECTION_VOXELS);
+    uint8_t *const out = encode_test_buffer(t);
+    const uint16_t water = 0x0009u, stone = 0x0001u;
+    for (uint32_t brick = 0u; brick < 4u; brick++) {
+        for (uint32_t v = 0u; v < 64u; v++) {
+            const uint32_t index = section_voxel_index(brick * 4u + (v & 3u), (v >> 2) & 3u, v >> 4);
+            blocks[index] = water;
+            light[index] = brick == 2u && v % 2u == 1u ? 0xA0u : 0xF0u;
+        }
+    }
+    blocks[section_voxel_index(4u + 2u, 1u, 3u)] = stone;
+    blocks[section_voxel_index(12u + 3u, 3u, 0u)] = 0u;
+    const uint32_t bytes = encode_test_arrays(out, blocks, light);
+    REQUIRE(bytes > 0u);
+    const world_buffers_section_t *const header = (const world_buffers_section_t *)(const void *)out;
+    CHECK_EQ_U64(header->brick_mask, 0xFull);
+    CHECK_EQ_U64(header->uniform_mask, 0x5ull);
+    encode_test_compare(t, out, bytes, blocks, light);
 }
 
 TEST(any_one_voxel_is_found_where_it_was_put_and_nowhere_else) {
@@ -158,16 +196,16 @@ TEST(any_one_voxel_is_found_where_it_was_put_and_nowhere_else) {
         blocks[index] = (uint16_t)(index + 1u);
         light[index] = (uint8_t)(index ^ 0x5Au);
         const uint32_t bytes = encode_test_arrays(out, blocks, light);
-        CHECK_EQ_U64(bytes, 32u);
+        CHECK_EQ_U64(bytes, 40u);
         encode_test_compare(t, out, bytes, blocks, light);
         blocks[index] = 0u;
         light[index] = 0u;
     }
 }
 
-/* Worked out on paper: 16 bytes of header, the material, the light, then five zeros. Any one voxel that differs, in block or in
+/* Worked out on paper: 24 bytes of header (every bit of both masks), the material, the light, then five zeros. Any one voxel that differs, in block or in
  * light, takes the long form, which is why each is tried at the first voxel, the last, and between. */
-TEST(a_section_of_one_block_and_one_light_is_24_bytes_and_anything_else_is_not) {
+TEST(a_section_of_one_block_and_one_light_is_32_bytes_and_anything_else_is_not) {
     uint16_t *const blocks = test_alloc(t, SECTION_VOXELS * sizeof(uint16_t));
     uint8_t *const light = test_alloc(t, SECTION_VOXELS);
     uint8_t *const out = encode_test_buffer(t);
@@ -176,32 +214,35 @@ TEST(a_section_of_one_block_and_one_light_is_24_bytes_and_anything_else_is_not) 
         blocks[i] = 0x0102u;
         light[i] = 0x35u;
     }
-    REQUIRE(encode_test_arrays(out, blocks, light) == 24u);
-    encode_test_compare(t, out, 24u, blocks, light);
-    const uint8_t expected_tail[16] = {0x00u, 0x10u, 16u, 0u, 18u, 0u, 0u, 0u, 0x02u, 0x01u, 0x35u, 0u, 0u, 0u, 0u, 0u};
-    CHECK_MEM_EQ(out + 8, expected_tail, sizeof(expected_tail));
+    REQUIRE(encode_test_arrays(out, blocks, light) == 32u);
+    encode_test_compare(t, out, 32u, blocks, light);
+    const uint8_t expected_tail[16] = {0x00u, 0x10u, 24u, 0u, 26u, 0u, 0u, 0u, 0x02u, 0x01u, 0x35u, 0u, 0u, 0u, 0u, 0u};
+    CHECK_MEM_EQ(out + 16, expected_tail, sizeof(expected_tail));
+    uint64_t uniform_word = 0u;
+    memcpy(&uniform_word, out + 8, 8u);
+    CHECK_EQ_U64(uniform_word, ~0ull);
 
     const render_encode_source_t uniform = {.block_uniform = 0x0102u, .light_uniform = 0x35u};
     memset(out, ENCODE_TEST_BYTE_DIRT, ENCODE_TEST_BUFFER_BYTES);
-    REQUIRE(render_encode_section(&uniform, out) == 24u);
-    encode_test_compare(t, out, 24u, blocks, light);
+    REQUIRE(render_encode_section(&uniform, out) == 32u);
+    encode_test_compare(t, out, 32u, blocks, light);
 
     for (uint32_t p = 0; p < 3u; p++) {
         blocks[places[p]] = 0x0103u;
         uint32_t bytes = encode_test_arrays(out, blocks, light);
-        CHECK(bytes > 24u);
+        CHECK(bytes > 32u);
         encode_test_compare(t, out, bytes, blocks, light);
         blocks[places[p]] = 0x0102u;
         light[places[p]] = 0x36u;
         bytes = encode_test_arrays(out, blocks, light);
-        CHECK(bytes > 24u);
+        CHECK(bytes > 32u);
         encode_test_compare(t, out, bytes, blocks, light);
         light[places[p]] = 0x35u;
     }
     /* One voxel of air, and it is not full at all. */
     blocks[77u] = 0u;
     const uint32_t bytes = encode_test_arrays(out, blocks, light);
-    CHECK(bytes > 24u);
+    CHECK(bytes > 32u);
     encode_test_compare(t, out, bytes, blocks, light);
 }
 
@@ -214,13 +255,13 @@ TEST(a_full_section_takes_the_most_a_section_can_and_says_so_in_brick_order) {
         light[i] = (uint8_t)(i * 31u);
     }
     const uint32_t bytes = encode_test_arrays(out, blocks, light);
-    CHECK_EQ_U64(bytes, 12944u);
+    CHECK_EQ_U64(bytes, 12952u);
     CHECK_EQ_U64(bytes, WORLD_BUFFERS_SECTION_BYTES_MAX);
     encode_test_compare(t, out, bytes, blocks, light);
 
     /* The order on the wire, not only the lookup: brick 1, the second, starts at voxel 64, whose first voxel is (4, 0, 0). */
     const world_buffers_section_t *const header = (const world_buffers_section_t *)(const void *)out;
-    const uint16_t *const first = (const uint16_t *)(const void *)(out + 16u + 64u * 8u);
+    const uint16_t *const first = (const uint16_t *)(const void *)(out + 24u + 64u * 8u);
     const uint16_t *const material = (const uint16_t *)(const void *)(out + header->material_offset);
     CHECK_EQ_U64(first[0], 0u);
     CHECK_EQ_U64(first[1], 64u);

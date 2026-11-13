@@ -64,6 +64,7 @@ static uint32_t encode_uniform(const render_encode_source_t *source, uint8_t *ou
     const uint32_t light_offset = (uint32_t)sizeof(world_buffers_section_t) + (uint32_t)sizeof(uint16_t);
     const world_buffers_section_t header = {
         .brick_mask = ~0ull,
+        .uniform_mask = ~0ull,
         .voxel_count = (uint16_t)SECTION_VOXELS,
         .material_offset = (uint16_t)sizeof(world_buffers_section_t),
         .light_offset = (uint16_t)light_offset,
@@ -75,6 +76,25 @@ static uint32_t encode_uniform(const render_encode_source_t *source, uint8_t *ou
     memcpy(out + sizeof(header), &material, sizeof(material));
     out[light_offset] = light;
     return WORLD_BUFFERS_SECTION_BYTES_UNIFORM;
+}
+
+/* Plan 009 phase 05: a bit for each full brick whose voxels are all one material, light aside: see world_buffers_section_t. */
+static uint64_t encode_uniform_mask(const render_encode_source_t *source, const uint64_t *bricks) {
+    uint64_t mask = 0u;
+    for (uint32_t brick = 0; brick < ENCODE_WORDS; brick++) {
+        if (bricks[brick] != ~0ull) {
+            continue;
+        }
+        bool same = true;
+        if (source->borrowed_blocks != nullptr) {
+            const uint16_t first = source->borrowed_blocks[encode_voxel_index(brick, 0u)];
+            for (uint32_t voxel = 1; voxel < 64u && same; voxel++) {
+                same = source->borrowed_blocks[encode_voxel_index(brick, voxel)] == first;
+            }
+        }
+        mask |= same ? 1ull << brick : 0u;
+    }
+    return mask;
 }
 
 uint32_t render_encode_section(const render_encode_source_t *source, uint8_t *out) {
@@ -119,6 +139,7 @@ uint32_t render_encode_section(const render_encode_source_t *source, uint8_t *ou
     uint8_t *const out_light = out + light_offset;
     const world_buffers_section_t header = {
         .brick_mask = brick_mask,
+        .uniform_mask = encode_uniform_mask(source, bricks),
         .voxel_count = (uint16_t)voxel_count,
         .material_offset = (uint16_t)material_offset,
         .light_offset = (uint16_t)light_offset,

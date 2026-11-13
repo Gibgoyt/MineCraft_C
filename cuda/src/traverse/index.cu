@@ -218,7 +218,8 @@ __global__ void traverse_coarse_kernel(const traverse_view_t view, const travers
  * (plan 009 phase 01, traverse_primary_counted's second copy), every ray's steps go into them. */
 static __device__ __forceinline__ void traverse_primary_ray(const traverse_view_t *view,
                                                             const traverse_camera_t *camera, const float32_t *coarse,
-                                                            traverse_hit_t *hits, traverse_counts_t *counts) {
+                                                            traverse_hit_t *hits, traverse_counts_t *counts,
+                                                            bool plain) {
     const uint32_t pixel_x = blockIdx.x * blockDim.x + threadIdx.x;
     const uint32_t pixel_y = blockIdx.y * blockDim.y + threadIdx.y;
     if (pixel_x >= camera->width || pixel_y >= camera->height) {
@@ -240,25 +241,31 @@ static __device__ __forceinline__ void traverse_primary_ray(const traverse_view_
     ray.t_end = traverse_band_from(view, traverse_band_factor(view, pixel_x, pixel_y), 1u);
     const uint32_t pixel = pixel_y * camera->width + pixel_x;
     traverse_tally_t tally;
-    traverse_trace_counted(
+    traverse_trace_core(
         view, &ray, nullptr, &hits[pixel],
-        traverse_tally_for(&tally, counts, TRAVERSE_COUNT_PRIMARY, pixel, TRAVERSE_COUNT_NO_LEVEL, 1.0F));
+        traverse_tally_for(&tally, counts, TRAVERSE_COUNT_PRIMARY, pixel, TRAVERSE_COUNT_NO_LEVEL, 1.0F), plain);
 }
 
 __global__ void traverse_primary_kernel(const traverse_view_t view, const traverse_camera_t camera,
                                         const float32_t *coarse, traverse_hit_t *hits) {
-    traverse_primary_ray(&view, &camera, coarse, hits, nullptr);
+    traverse_primary_ray(&view, &camera, coarse, hits, nullptr, false);
+}
+
+/* traverse_world_t.plain: a test's reference. */
+__global__ void traverse_primary_plain_kernel(const traverse_view_t view, const traverse_camera_t camera,
+                                              const float32_t *coarse, traverse_hit_t *hits) {
+    traverse_primary_ray(&view, &camera, coarse, hits, nullptr, true);
 }
 
 __global__ void traverse_primary_counted_kernel(const traverse_view_t view, const traverse_camera_t camera,
                                                 const float32_t *coarse, traverse_hit_t *hits,
                                                 traverse_counts_t *counts) {
-    traverse_primary_ray(&view, &camera, coarse, hits, counts);
+    traverse_primary_ray(&view, &camera, coarse, hits, counts, view.plain != 0u);
 }
 
 static __device__ __forceinline__ void traverse_given_ray(const traverse_view_t *view, const traverse_ray_t *rays,
                                                           traverse_hit_t *hits, uint32_t ray_count,
-                                                          traverse_counts_t *counts) {
+                                                          traverse_counts_t *counts, bool plain) {
     const uint32_t index = blockIdx.x * blockDim.x + threadIdx.x;
     if (index >= ray_count) {
         return;
@@ -279,19 +286,24 @@ static __device__ __forceinline__ void traverse_given_ray(const traverse_view_t 
     ray.resume = 0u;
     ray.t_end = given.t_end > 0.0F ? given.t_end : TRAVERSE_T_END_NONE;
     traverse_tally_t tally;
-    traverse_trace_counted(
+    traverse_trace_core(
         view, &ray, nullptr, &hits[index],
-        traverse_tally_for(&tally, counts, TRAVERSE_COUNT_PRIMARY, index, TRAVERSE_COUNT_NO_LEVEL, 1.0F));
+        traverse_tally_for(&tally, counts, TRAVERSE_COUNT_PRIMARY, index, TRAVERSE_COUNT_NO_LEVEL, 1.0F), plain);
 }
 
 __global__ void traverse_rays_kernel(const traverse_view_t view, const traverse_ray_t *rays, traverse_hit_t *hits,
                                      uint32_t ray_count) {
-    traverse_given_ray(&view, rays, hits, ray_count, nullptr);
+    traverse_given_ray(&view, rays, hits, ray_count, nullptr, false);
+}
+
+__global__ void traverse_rays_plain_kernel(const traverse_view_t view, const traverse_ray_t *rays, traverse_hit_t *hits,
+                                           uint32_t ray_count) {
+    traverse_given_ray(&view, rays, hits, ray_count, nullptr, true);
 }
 
 __global__ void traverse_rays_counted_kernel(const traverse_view_t view, const traverse_ray_t *rays,
                                              traverse_hit_t *hits, uint32_t ray_count, traverse_counts_t *counts) {
-    traverse_given_ray(&view, rays, hits, ray_count, counts);
+    traverse_given_ray(&view, rays, hits, ray_count, counts, view.plain != 0u);
 }
 
 static gpu_status_t traverse_camera_check(gpu_error_t *error, const traverse_camera_t *camera) {
@@ -354,6 +366,9 @@ gpu_status_t traverse_primary_counted(gpu_error_t *error, const traverse_world_t
     if (counts != nullptr) {
         traverse_primary_counted_kernel<<<grid, dim3(TRAVERSE_TILE_PIXELS, TRAVERSE_TILE_PIXELS)>>>(
             view, *camera, coarse, hits, (traverse_counts_t *)device_memory_pointer(counts));
+    } else if (view.plain != 0u) {
+        traverse_primary_plain_kernel<<<grid, dim3(TRAVERSE_TILE_PIXELS, TRAVERSE_TILE_PIXELS)>>>(view, *camera, coarse,
+                                                                                                  hits);
     } else {
         traverse_primary_kernel<<<grid, dim3(TRAVERSE_TILE_PIXELS, TRAVERSE_TILE_PIXELS)>>>(view, *camera, coarse,
                                                                                             hits);
@@ -390,6 +405,8 @@ gpu_status_t traverse_rays_counted(gpu_error_t *error, const traverse_world_t *w
     if (counts != nullptr) {
         traverse_rays_counted_kernel<<<blocks, per_block>>>(view, given, out, ray_count,
                                                             (traverse_counts_t *)device_memory_pointer(counts));
+    } else if (view.plain != 0u) {
+        traverse_rays_plain_kernel<<<blocks, per_block>>>(view, given, out, ray_count);
     } else {
         traverse_rays_kernel<<<blocks, per_block>>>(view, given, out, ray_count);
     }

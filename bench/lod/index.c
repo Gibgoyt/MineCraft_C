@@ -135,7 +135,7 @@ typedef struct bench_lod_octant_space_t {
     render_octant_section_t sections[BENCH_LOD_LEVEL1_SECTIONS];
     uint8_t opened[BENCH_LOD_COLUMN_VOXELS];                   /* terrain's working bytes */
     uint8_t light[BENCH_LOD_LEVEL1_SECTIONS * SECTION_VOXELS]; /* level 1's light */
-    uint8_t _pad0[48];                                         /* to a whole line: 12944 is 16 past one */
+    uint8_t _pad0[40];                                         /* to a whole line: 12952 is 24 past one */
 } bench_lod_octant_space_t;
 static_assert(sizeof(bench_lod_octant_space_t) % MC_CPU_CACHE_LINE_BYTES == 0u);
 

@@ -319,7 +319,7 @@ static __device__ __forceinline__ float32_t shade_ao_corner_of(const traverse_vi
         int32_t cell[3] = {front[0], front[1], front[2]};
         cell[along_u] += steps[k][0];
         cell[along_v] += steps[k][1];
-        const uint32_t material = shade_cell_material_kept(view, cell, &cursor);
+        const uint32_t material = shade_cell_material_kept(view, cell, &cursor, nullptr);
         solid |= shade_ao_solid(view, stops, water_material, material) ? 1u << k : 0u;
     }
     return shade_ao_corner(solid, surface->local[along_u], surface->local[along_v]);
