@@ -947,6 +947,14 @@ TEST(the_upscale_s_jitter_and_mix_are_as_on_paper) {
     CHECK_NEAR(post_upscale_place(0u, 4u, 3u), 0.375f32, 0.0f32);
     CHECK_NEAR(post_upscale_place(3u, 4u, 3u), 2.625f32, 0.0f32);
     CHECK_NEAR(post_upscale_place(7u, 8u, 8u), 7.5f32, 0.0f32);
+    /* The mip by the shown pixel: at the camera's own rows (or 0) the same bits, and drawn at 75 % of 1080 the output's pixel. */
+    traverse_camera_t drawn = {.up = {0.0f32, 0.7f32, 0.0f32}, .width = 1440u, .height = 810u};
+    const float32_t own = shade_pixel_tangent(&drawn);
+    const float32_t same = shade_pixel_tangent_rows(&drawn, 810u);
+    const float32_t unsaid = shade_pixel_tangent_rows(&drawn, 0u);
+    CHECK_EQ_U64((uint64_t)memcmp(&own, &same, sizeof(own)), 0u);
+    CHECK_EQ_U64((uint64_t)memcmp(&own, &unsaid, sizeof(own)), 0u);
+    CHECK_NEAR(shade_pixel_tangent_rows(&drawn, 1080u), own * 0.75f32, 1e-8f32);
     /* At 75 % an output pixel is 0.75 drawn pixels wide: a sample 0.3 drawn pixels off is inside it, one 0.4 off is not. */
     const float32_t across = 4.0f32 / 3.0f32;
     CHECK_NEAR(post_upscale_weight(0.3f32, 0.0f32, across, across), 1.0f32 + POST_UPSCALE_SOFT * 0.7f32, 1e-6f32);
@@ -1113,15 +1121,16 @@ TEST(a_still_picture_at_75_converges_to_100) {
         game_close(game);
         sk_rig_end(t, &rig);
     }
-    /* The plan's bounds were a mean of 1 and a 99.9th of 8 at 75 %. They are not met, and are recorded, not held (plan 009 phase 07, Issues
-     * found): room 1.17 and 23, against 100 % itself from nothing at 0.23 and 5; the jungle 2.19 and 133, against 100 % itself at 0.42 and 39,
-     * as its bamboo is thinner than a drawn pixel. About a third of the room's mean is the mip, chosen for a drawn pixel's size (a mip bias
-     * brought it to 0.85 in a trial), and its 99.9th is edges, where nine jittered points inside an output pixel and the 100 % picture's eight
-     * weigh an edge differently. Held here: each is nearer than one frame brought up (above), and none gets much worse unseen. */
+    /* The plan's bounds are a mean of 1 and a 99.9th of 8 at 75 % (plan 009 phase 07, Issues found). With the mip chosen by the output's
+     * pixel, the room's mean meets its bound, 0.87 (1.17 with the drawn pixel's mip), and is held to it. Its 99.9th, 23, is edges, where nine
+     * jittered points inside an output pixel and the 100 % picture's eight weigh an edge differently: recorded, not held. The jungle comes to
+     * 1.59 and 84 (2.19 and 133 before), against 100 % itself from nothing at 0.42 and 39, as its bamboo is thinner than a drawn pixel. Held
+     * besides: each is nearer than one frame brought up (above), and none gets much worse unseen. */
+    CHECK(spreads[0][0].mean <= 1.0f64);
     for (uint32_t place = 0u; place < 2u; place++) {
-        CHECK(spreads[place][0].mean <= 3.0f64);
-        /* the_same_at_50: recorded, not a target. */
-        CHECK(spreads[place][1].mean <= 4.5f64);
+        CHECK(spreads[place][0].mean <= 2.0f64);
+        /* the_same_at_50: recorded, not a target (room 1.20, jungle 2.20). */
+        CHECK(spreads[place][1].mean <= 3.0f64);
     }
 }
 

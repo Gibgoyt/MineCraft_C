@@ -785,6 +785,15 @@ SHADE_BOTH_SIDES static inline float32_t shade_pixel_tangent(const traverse_came
     return F32(2.0) * sqrtf(squared) / (float32_t)camera->height;
 }
 
+/* Plan 009 phase 07: the same for a picture drawn smaller than it is shown, rows being the shown picture's (0 for the camera's own): a texture
+ * drawn at 75 % takes the mip it would at 100 %, so that the frames gathered at the output's size come to the 100 % picture. The same bits as
+ * shade_pixel_tangent when rows is the camera's. */
+SHADE_BOTH_SIDES static inline float32_t shade_pixel_tangent_rows(const traverse_camera_t *camera, uint32_t rows) {
+    const float32_t squared =
+        camera->up[0] * camera->up[0] + camera->up[1] * camera->up[1] + camera->up[2] * camera->up[2];
+    return F32(2.0) * sqrtf(squared) / (float32_t)(rows != 0u ? rows : camera->height);
+}
+
 /* How much of the light a surface of water reflects, for how square a ray meets it: the cosine, from 0 along it to 1 straight on. */
 SHADE_BOTH_SIDES static inline float32_t shade_water_fresnel(float32_t cosine) {
     const float32_t off = cosine >= F32(1.0) ? F32(0.0) : (cosine <= F32(0.0) ? F32(1.0) : F32(1.0) - cosine);
@@ -900,11 +909,14 @@ static_assert(offsetof(shade_marks_t, borrowed_counts) == 40);
 
 /* shade_frame_entities with marks, or without if marks is nullptr. Plan 009 phase 06: with lod, this frame's far field (what lod_frame was
  * given), and SHADE_FEATURE_LOD on, a shadow ray goes through level 0 only as far as the light's cone lets level 1 take over, and on through
- * the levels from there (shade_shadow_cone_base); with nullptr it goes through level 0 to its edge, as before. lod is read during the call. */
+ * the levels from there (shade_shadow_cone_base); with nullptr it goes through level 0 to its edge, as before. lod is read during the call.
+ * Plan 009 phase 07: mip_rows is the rows of the picture as it is shown, by which a texture's mip is chosen (shade_pixel_tangent_rows): the
+ * output's when the camera is drawn smaller and gathered at the output's size, or 0 for the camera's own. */
 gpu_status_t shade_frame_marked(gpu_error_t *error, const shade_scene_t *scene, const post_settings_t *post,
                                 const traverse_world_t *world, const traverse_camera_t *camera,
                                 const device_block_t *hits, const device_block_t *pixels,
-                                const entity_rays_scene_t *entities, const lod_scene_t *lod, shade_marks_t *marks);
+                                const entity_rays_scene_t *entities, const lod_scene_t *lod, uint32_t mip_rows,
+                                shade_marks_t *marks);
 
 /* A span's name, for a profile and the frame log. Lasts for good. */
 const char *shade_span_name(shade_span_t span);
