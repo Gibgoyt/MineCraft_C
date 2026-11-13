@@ -25,7 +25,7 @@ What it checks:
 
       MC_GOLDEN_WRITE=1 tools/test-or-build.sh ctest --preset debug -R '^render_feature_lod$'
 
-  `real_near.png` and `real_far.png` were last made for plan 003 phase 8 stage 7: the new land. `real_far.png` was made again at that phase's gate, as frozen seas now show as ice at every level, 398 pixels past the tolerance. Their eyes moved with it. Over the start the eye looks further down, as it was nearly all sky, and the far one is at z = 1240, as z = 420 at the world's middle is inside a range now. The `hills*` pictures stand on made-up ground and came out the same bytes.
+  `real_near.png` and `real_far.png` were last made for plan 003 phase 8 stage 7: the new land. `real_far.png` was made again at that phase's gate, as frozen seas now show as ice at every level, 398 pixels past the tolerance. Their eyes moved with it. Over the start the eye looks further down, as it was nearly all sky, and the far one is at z = 1240, as z = 420 at the world's middle is inside a range now. The `hills*` pictures stand on made-up ground and came out the same bytes. Plan 009 phase 04 made `real_near.png` and `real_far.png` again on plan 006 phase 03's land with its bands: coarser levels sooner, and past level 0's two chunks `real_near`'s far field is made from the loaded blocks, so the snow the census laid on the hill shows white.
 
 - **The cost:** on real terrain, at 1080p, on the card's own clock, printed as `cost, ...` lines: at R = 512, on a release build only, as a debug one's terrain takes too long. Nothing here is a limit: the numbers are recorded in `plans/001-ahmed-bohemoth-minecraft-from-scratch-phase-09-stage-6-lod-clipmaps.md`.
 - **The real threads:** the gpu thread builds it beside the sim, and goes on with the eye flying.
