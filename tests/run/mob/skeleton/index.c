@@ -1126,9 +1126,9 @@ static uint32_t msk_drops_on_pad(const item_drop_store_t *drops, int32_t pad_x, 
     uint32_t count = 0u;
     for (uint32_t i = 0u; i < drops->count; i++) {
         const float64_t *const at = drops->borrowed_items[i].position;
-        count += fabs(at[0] - ((float64_t)pad_x + 0.5f64)) <= 15.0f64 && fabs(at[1] - ((float64_t)pad_y + 0.5f64)) <= 15.0f64
-                     ? 1u
-                     : 0u;
+        const bool on_x = fabs(at[0] - ((float64_t)pad_x + 0.5f64)) <= 15.0f64;
+        const bool on_y = fabs(at[1] - ((float64_t)pad_y + 0.5f64)) <= 15.0f64;
+        count += on_x && on_y ? 1u : 0u;
     }
     return count;
 }
