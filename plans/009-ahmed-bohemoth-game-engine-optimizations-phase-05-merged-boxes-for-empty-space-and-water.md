@@ -1,6 +1,6 @@
 # 009-ahmed-bohemoth-game-engine-optimizations — phase 5: Merged boxes for empty space and water
 
-**Status:** not started   (updated 2026-11-12)
+**Status:** partly done: changes 1 to 3 tried (1 and the cheap form of 2 dropped, 3 kept); 4 and 5 not tried   (updated 2026-11-13)
 
 Read first: the phase 00 file, then the master: sections 2.1, 3.4 (the 64-tree, Teardown and Chebyshev rows), 4.6 and 5. Then:
 
@@ -126,25 +126,37 @@ The switches are tuning keys during this phase. At the end, a kept change's swit
 
 ## Todo
 
-- [ ] 2³ coalescing; `cuda_traverse` exact; Results row
-- [ ] `uniform_mask` in the header (24 bytes) with every assert; encode; water walk and loop use it; `render_feature_water` exact; Results row
-- [ ] Per-brick distance written and read; neighbour re-encode on edit; exact; Results rows for primary, sun and AO steps
+- [x] 2³ coalescing; `cuda_traverse` exact; Results row (dropped: 3 % slower at his spot)
+- [x] `uniform_mask` in the header (24 bytes) with every assert; encode; water walk uses it (the loop already crosses a uniform section whole); `render_feature_water` exact; Results row
+- [ ] Per-brick distance written and read; neighbour re-encode on edit; exact; Results rows for primary, sun and AO steps (only its cheap form, a 2 x 2 x 2 cube of empty bricks as one step, was tried: dropped, 5 % slower on `deep_ocean/orbit`)
 - [ ] Coarse pass on the pyramid; the exact-trace test passes; Results row
 - [ ] Mirroring tried; kept only if at least 3 %
-- [ ] Each change kept or dropped by its numbers; switches removed; dropped code deleted
-- [ ] Every golden picture and settled hash unchanged from phase 04
-- [ ] `cuda/src/traverse/README.md` "What a ray skips" and `run/include/gpu_bridge/world_buffers/index.h`'s format comment updated with each kept change
+- [x] Each change kept or dropped by its numbers; switches removed; dropped code deleted (for the three tried)
+- [x] Every golden picture and settled hash unchanged from phase 04 (`render_feature_*` pass; the settled hashes of his spot and `deep_ocean/orbit` the same with every change; see Results for `jungle/orbit` and `plains/orbit`)
+- [x] `cuda/src/traverse/README.md` "What a ray skips" and `run/include/gpu_bridge/world_buffers/index.h`'s format comment updated with each kept change
 
 ## Results (filled in by this phase)
 
-| Change | His spot (primary / shade ms, steps) | `jungle/orbit` | `deep_ocean/orbit` | `plains/orbit` | Kept? |
+Measured on the profile build at 4c147bd9 (phase 04's last commit), 1920x1080, one `bench_world` or `bench_world_slope` row per run through the
+wrapper, the builds' binaries saved and run interleaved. The card is power-capped and its clock wandered from 146 to 1590 MHz from run to run,
+so a time is compared only with one at the same clock: his spot ran at 148 MHz in most runs, and `deep_ocean/orbit` at 300 MHz. His spot is
+`ahmed_slope/night-64` (render distance 64); the orbits are at 32.
+
+| Change | His spot at 148 MHz: Mcycles; primary / shade (AO) ms | `jungle/orbit` | `deep_ocean/orbit` at 300 MHz: card mean ms | `plains/orbit` | Kept? |
 |---|---|---|---|---|---|
-| Phase 04 baseline | | | | | — |
-| + coalescing | | | | | |
-| + uniform bricks | | | | | |
-| + per-brick distance | | | | | |
-| + coarse on pyramid | | | | | |
-| + mirroring | | | | | |
+| Phase 04 baseline | 7.63, 7.66, 7.78; 17.2 to 17.5 / 23.9 to 24.3 (9.1 to 9.2) | 45.9, 78.7 | 101.1, 98.6 | 90.3, 49.7 | — |
+| + coalescing | 7.85, 7.88, 7.89; 17.3 / 25.2 to 25.4 (10.0 to 10.1) | 27.3, 93.0 | 99.3, 99.3 | 50.6, 55.8 | **no** |
+| + uniform bricks (on coalescing) | 7.87, 7.88; the same as coalescing alone: no water in his view to speak of (water 0.96 ms both) | 80.4 | **90.0, 89.9** | 50.9 | **yes** |
+| + an empty 2 x 2 x 2 cube of bricks as one step (per-brick distance's cheap form) | not at a matching clock | — | 94.5 | — | **no** |
+| + per-brick distance | not tried | | | | |
+| + coarse on pyramid | not tried | | | | |
+| + mirroring | not tried | | | | |
+
+- **Coalescing** (plan step 1): `cuda_traverse`'s new `every_skip_finds_what_the_plain_loop_finds` held every hit's voxel, face, value and `t` to a plain copy of the loop (`traverse_world_t.plain`) bit for bit, with no hit differing, over the random world (-18 % steps), a checkerboard of single voxels (-24 %), Stage 01.3's terrain and lattice frames with and without the coarse pass (-26 % and -12 %), and slopes of 10 and 30 degrees from 1 to 2 blocks up (-20 % and -23 %, `skips_take_fewer_steps`). It left a 2 x 2 x 2 cube where a walk voxel by voxel would, not where `floorf` says, which is what made it exact at ties. But the card took 3 % more cycles at his spot, all of it in shade, most in AO (+0.9 ms) and the far field (+0.3 ms): the play kernels' registers did not change, so it is the work per step. Over the 3 % the plan allows, so it is gone, with the plain loop and both tests.
+- **Uniform bricks** (step 3): the header is 24 bytes, `uniform_mask` one bit per full brick all one material (light aside: a lake is lit unevenly, and the walk asks only the material). `shade_water_through` crosses such a brick, or a section all one block, in one step, to the voxel of it a walk cell by cell would be in last and with the `t` it entered that voxel, so it leaves exactly where and when that walk would. `deep_ocean/orbit` 9 % faster at the same clock (primary 32.0 to 27.0 ms: the far field's own copy of the walk; shade 55.0 to 50.7), with its settled hash the same (A2B40714A47F8A28), and `render_feature_water`'s goldens the same to the bit. Every section is 8 bytes bigger and a uniform one 32 bytes, not 24; the bench's voxels in use did not move to the MiB on any orbit row (369, 1072 and 595 MiB).
+- **A cube of empty bricks** as one step of 8 blocks, left where going brick by brick would leave it: exact on every scene above (-24 % steps on the random world, -23 % on the lattice), but 5 % slower than uniform bricks alone on `deep_ocean/orbit`. A distance per brick is the same idea with bigger boxes, bytes on the card and re-encoding on edits; with this result, and coalescing's, the step count is not what this card pays for here, and it was not built.
+- **Hashes.** His spot's (3BE1DE0E27FDF83C) and `deep_ocean/orbit`'s are the same with every change. `jungle/orbit` and `plains/orbit` settle on a different picture from run to run with the phase 04 binary alone (plains 1C27CA02A70A76C4, then 8D2AB666C26E1602), so theirs say nothing either way; the times of those two rows are as noisy, for the same reason, and are given only as measured.
+- **The coarse pass on the pyramid and mirroring** were not tried in this phase's time.
 
 ## Tests
 
@@ -197,6 +209,13 @@ Pictures do not change, so the gate is numbers. Ahmed reads the Results table. I
 
 Appended as they land:
 
+- `fc80bd50`: coalescing and uniform bricks tried, behind switches, with the exactness tests.
+- `bcae4ad3`: coalescing and its plain loop dropped; uniform bricks kept with no switch.
+- This file's Results.
+
+**Verification**, after rebasing onto main at 150986d6: the debug build; `ctest -R '^(cuda_traverse|run_render_encode|run_render_upload|run_render_lod|run_gpu_bridge|render_feature_.*|run_render_frame|standards_lint|clang_format)$'`, 21 of 21 passing; the profile build. The measurements in Results were on phase 04's commit, before the rebase, which brought only terrain.
+
 ## Issues found
 
-None.
+1. **`bench_world_slope --steps` fails at his spot**, with the phase 04 binary as well: "counting steps failed" after the measured frames, so the per-band step counts of phase 01 could not be had there, and steps are from `cuda_traverse` instead. Not looked into here.
+2. **The card's clock is not steady enough for the orbit rows.** See Results.
