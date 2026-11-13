@@ -1136,21 +1136,28 @@ static void render_lod_jobs_request(render_lod_t *lod) {
     }
 }
 
-/* Plan 008 phase 06: the revision moves on when any level's square shown or anything put in its table has changed since it was last worked
- * out. A column sent counts even outside the square, which only costs the turn cache a frame's texels while the far field is still filling. */
+/* Plan 008 phase 06: the revision moves on at once when any level's square shown has moved, and when anything has been put in a level's table
+ * since it last moved on, but then at most once every RENDER_LOD_TURN_REVISE_FRAMES frames: at Ahmed's spot at render distance 64 the pyramid
+ * sends about 3 columns a frame for a long while after it has filled (levels made from the blocks taking over from terrain, 8 a frame), which
+ * would end the turn cache's generation every frame. So a far column sent shows in what a turn reads from the cache that many frames late at
+ * most, and at once in what is traced. */
 static void render_lod_revise(render_lod_t *lod) {
-    uint64_t key = 0xCBF29CE484222325ull;
+    uint64_t shown = 0xCBF29CE484222325ull, contents = 0xCBF29CE484222325ull;
     for (uint32_t i = 0u; i < lod->level_count; i++) {
         const render_lod_level_t *const level = &lod->levels[i];
-        const uint32_t words[4] = {(uint32_t)level->shown_min_x, (uint32_t)level->shown_min_y, level->shown_side,
-                                   level->generation};
-        for (uint32_t w = 0u; w < 4u; w++) {
-            key = (key ^ words[w]) * 0x100000001B3ull;
+        const uint32_t words[3] = {(uint32_t)level->shown_min_x, (uint32_t)level->shown_min_y, level->shown_side};
+        for (uint32_t w = 0u; w < 3u; w++) {
+            shown = (shown ^ words[w]) * 0x100000001B3ull;
         }
+        contents = (contents ^ level->generation) * 0x100000001B3ull;
     }
-    if (key != lod->revision_key) {
-        lod->revision_key = key;
+    lod->revision_wait = lod->revision_wait < UINT32_MAX ? lod->revision_wait + 1u : UINT32_MAX;
+    if (shown != lod->shown_key ||
+        (contents != lod->revision_key && lod->revision_wait >= (uint32_t)RENDER_LOD_TURN_REVISE_FRAMES)) {
+        lod->shown_key = shown;
+        lod->revision_key = contents;
         lod->revision++;
+        lod->revision_wait = 0u;
     }
 }
 
@@ -1171,6 +1178,8 @@ static void render_lod_turn_take(render_lod_t *lod) {
     }
     lod->turn.borrowed_block = &lod->owned_turn_block;
     lod->turn.cleared = 0u;
+    LOG_INFO("render: the far field's turn cache, %" PRIu32 " texels a face, %" PRIu64 " MiB", lod->turn.side,
+             bytes >> 20);
 }
 
 gpu_status_t render_lod_turn_tally(render_lod_t *lod, lod_turn_tally_t *out) {

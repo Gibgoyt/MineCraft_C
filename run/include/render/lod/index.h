@@ -48,6 +48,8 @@ enum : uint32_t {
 #define RENDER_LOD_BAND_DITHER MC_TUNE_RENDER_LOD_BAND_DITHER
 /* Plan 008 phase 06: texels along a face of the turn cache: compile/config/render/lod/index.yaml. */
 #define RENDER_LOD_TURN_CACHE_SIDE MC_TUNE_RENDER_LOD_TURN_CACHE_SIDE
+/* Plan 008 phase 06: the fewest frames between two moves of the revision for columns sent: compile/config/render/lod/index.yaml. */
+#define RENDER_LOD_TURN_REVISE_FRAMES MC_TUNE_RENDER_LOD_TURN_REVISE_FRAMES
 enum : uint64_t {
     /* What a level's pool gives each of its columns, and what one frame may send of finished columns: compile/config/render/budget/index.yaml.
      * The pool's numbers are in the stage file's cost section. */
@@ -185,17 +187,19 @@ typedef struct render_lod_t {
     /* 2040: the last frame's traverse_world_t band_base, or 0 before one: a column nearer than any ray of its level starts, over loaded
      * blocks, is asked for last */
     float32_t band_base;
-    /* 2044: plan 008 phase 06: changes whenever what any level shows does, a column sent or the square shown moved; the turn cache's texels
-     * of an older one are invalid */
+    /* 2044: plan 008 phase 06: changes when any level's square shown moves, and when columns have been sent, at most once every
+     * RENDER_LOD_TURN_REVISE_FRAMES frames; the turn cache's texels of an older one are invalid */
     uint32_t revision;
     /* 2048: the turn cache, which lod_frame keeps. Its side starts as the tuning file says; a test may set another, or 0 for none, before
      * the first render_lod_frame, which takes its block from the voxels' pool. */
     lod_turn_cache_t turn;
     device_block_t owned_turn_block;  /* 2120 */
     device_memory_t *borrowed_memory; /* 2144 */
-    uint64_t revision_key;            /* 2152: what revision was last worked out from */
+    uint64_t revision_key;            /* 2152: what is in the levels' tables, as revision last saw it */
     uint8_t turn_given_up;            /* 2160: its block could not be had, which has been said */
-    uint8_t _pad2[15];                /* 2161 */
+    uint8_t _pad2[3];                 /* 2161 */
+    uint32_t revision_wait;           /* 2164: frames since revision last moved on */
+    uint64_t shown_key;               /* 2168: the levels' squares shown, as revision last saw them */
 } render_lod_t;
 static_assert(sizeof(render_lod_t) == 2176);
 static_assert(offsetof(render_lod_t, turn) == 2048);

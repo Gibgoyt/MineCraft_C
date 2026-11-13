@@ -83,3 +83,10 @@ turn_cache_side:
   min: 0
   max: 2048
   why: "Plan 008 phase 06: texels along each of the six faces of the far field's turn cache, a cube round the eye holding each direction's far ray. 1024 is 0.088 degrees a texel at a face's middle against 0.065 a pixel at the middle of 1080 rows of 70 degrees, so about a pixel; 6 x 1024^2 x 16 bytes is 96 MiB of the voxels' pool. 768 (54 MiB) is the fallback if that is too much; 0 is no cache."
+turn_revise_frames:
+  value: 30
+  type: u32
+  unit: frames
+  min: 1
+  max: 600
+  why: "Plan 008 phase 06: the fewest frames between two ends of the turn cache's generation for far columns sent (a level's square shown moving ends it at once). At Ahmed's spot at render distance 64 the pyramid sends about 3 columns a frame for a long while after filling; ending the generation for each kept the cache from ever being read. A far column sent then shows in what a turn reads from the cache at most this many frames late, half a second at 60."

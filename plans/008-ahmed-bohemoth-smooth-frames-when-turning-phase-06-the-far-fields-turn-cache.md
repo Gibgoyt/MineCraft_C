@@ -1,6 +1,6 @@
 # 008-ahmed-bohemoth-smooth-frames-when-turning — phase 6: The far field's turn cache (conditional)
 
-**Status:** in progress: built (the decision says build), tests pass; the shake rows to measure   (updated 2026-11-13)
+**Status:** done, for Ahmed's gate: built; where the far field is seen (jagged peaks, r64) the shake's far field costs 0.10 of today settled and 0.19 live-capped, 99 % of far rays read from the cache; at Ahmed's own spot the shake sends no far rays at all today, so the cache neither helps nor costs there; a still picture the same to the bit   (updated 2026-11-13)
 
 Read first: `plans/008-ahmed-bohemoth-smooth-frames-when-turning-phase-00-vision-and-plan-files.md`, then the master `plans/008-ahmed-bohemoth-smooth-frames-when-turning.md`: section 1 (C5), 3.6, 6 and Q7. Then `cuda/src/lod/README.md` (all of it), phase 01's cost rose at render distance 64, and phase 05's results (how often the floor was hit at 64).
 
@@ -119,7 +119,7 @@ This phase may edit these, plus this file:
 - [x] (If built) direction-to-texel addressing, with host tests
 - [x] (If built) the turn cache in `lod_frame_kernel`; generation by eye distance; revision from `render_lod_t`
 - [x] (If built) `SHADE_FEATURE_LOD_TURN_CACHE`; 96 MiB in `render_lod`'s budget, measured
-- [ ] (If built) a still eye's pictures byte for byte as before; shake rows' far-field ms ≤ 0.4 × today
+- [x] (If built) a still eye's pictures byte for byte as before; shake rows' far-field ms ≤ 0.4 × today (at jagged peaks; at Ahmed's spot there is no far-field ray to save, see Results)
 - [x] (If built) READMEs
 
 ## Decision (filled in by this phase)
@@ -136,9 +136,15 @@ This phase may edit these, plus this file:
 
 | Row | Far field ms, before / after | Card ms | Interval p99 | Cache hit share |
 |---|---|---|---|---|
-| `spot/shake-720-r64` | | | | |
-| `spot/shake-720-live-capped-r64` | | | | |
-| `plains/flight-live-r128` (walking: should be ≈ today) | | | | |
+| `spot/shake-720-r64` | 0.25 / 0.25 ms (999 to 1034 MHz): no far ray is sent | 7.25 / 7.33 | 7.75 / 8.05 | none (no far rays) |
+| `spot/shake-720-live-capped-r64` | 0.29 at 313 MHz / 0.08 at 1123 MHz: 0.09 Mcycles both, the "who asks" pass alone | 10.56 / 2.97 (clock) | 25.02 / 25.03 | none (no far rays) |
+| `jagged_peaks/shake-720-r64` | 33.07 at 114 MHz (3.77 Mcycles) / 2.89 at 130 MHz (0.38 Mcycles): **0.10** | 68.49 / 33.16 (7.37 / 4.07 Mcycles) | 97.18 / 63.53 | 99.4 % |
+| `jagged_peaks/shake-720-live-capped-r64` | 7.92 at 111 MHz (0.88 Mcycles) / 1.24 at 135 MHz (0.17 Mcycles): **0.19** | 23.24 / 16.92 (3.02 / 2.36 Mcycles) | 41.69 / 33.37; 45 / 61 pictures a second | 94.9 % |
+| `plains/flight-live-r128` (walking: should be ≈ today) | primary pass 51.73 / 52.97 | 97.48 / 98.05 | 132.17 / 132.64 | (walking: a new generation every 0.25 blocks) |
+
+Before / after = `--features-off 100000` / the cache on, one run after the other, profile build, 1920x1080, `--dynamic-floor 50` (the game's default), recorded in `bench/world/shake/history.tsv` ("008 phase 06: turn cache, features off ..." at the spot, "... at jagged peaks, ..." at `bench_world_shake`'s own place). Ahmed's game was closed (`pgrep` before every run). **The card was thermally throttled throughout, its clock moving from 35 to 1400 MHz between and within runs** (clock64 readings in each row), so before and after compare in Mcycles, not ms. `gpu_watch.sh` was not run beside these (the bench lines are adapted: `bench_world_shake` with the rows named, not `bench_world --only shake`).
+
+**At Ahmed's spot the far field is not what turning costs.** With plan 009 phase 04 level 0 is held out to 27 chunks (432 blocks) at r64, and from the spot looking 10 degrees down every pixel of the shake's sweep ends on blocks of level 0: the far field's kernels send no far ray at all (the cache's tally stayed at 0 for the whole row, yaw 0 and 255 alike), and their 0.09 Mcycles is the pass that finds that out. Phase 01's 15 to 23 % at r64 was measured before plan 009 phase 04. So at the spot this phase changes nothing, and the floor is still held by shade (AO and surfaces) and post, which are plan 009 phases 05 to 07's. Where the far field is seen (jagged peaks, looking out over the range), it is half the picture's card time while shaking, and the cache takes it to a tenth.
 
 ## Tests
 
@@ -188,6 +194,9 @@ If the phase closes as not needed, only the measurements already made in phases 
 
 Appended as they land:
 
+- `8634f98a` Keep each far ray by direction in a cube round the eye, plan 008 phase 06: the cache, its addressing, the feature bit, the 96 MiB, `render_feature_lod_turn`, the tests in `run_render_lod`, the share in `bench_world_shake`.
+- this commit: space the far field's revision (`turn_revise_frames`, 30) so the pyramid's steady trickle of columns does not end the cache's generation every frame; `bench_world_shake` reads the tally through the frame's far field; the shake rows measured at Ahmed's spot and at jagged peaks, and the walking row.
+
 ## Issues found
 
 - **The far field is plan 009's pyramid now.** Since plan 009 phase 04 there is no Full detail: level 0 ends at each pixel's d_1 (`band_base` 2^1 by a dithered factor, 385 blocks at E 2 and 1080 rows, 193 at the 50 % rung) and the levels take over from there. So "the far field" this phase caches is every ray past level 0, from where level 0 stopped for that pixel. The texel therefore also holds `from`, where its ray started, and a pixel takes a texel only if its own ray starts within `2 band_dither + 2 %` (18 %) of that: the dither of d_1 frame to frame is allowed, a pixel whose ray leaves level 0 somewhere else (a hole in level 0, shade's ray through water, a rung that moved d_1 by half) traces. The 0.25 block rule was argued for 512 blocks; at d_1 = 193 it is 0.074 degrees against 0.13 a pixel at 540 rows, still under one.
@@ -196,5 +205,7 @@ Appended as they land:
 - **The generation** is one counter for all that ends it: the eye 0.25 blocks from where it began, the far field's `revision`, the sun. `revision` moves on in `render_lod_frame` (not inside `render_lod_level_show`, which returns early when nothing is stale) whenever a hash of every level's shown square and `generation` (bumped by every column sent) changes.
 - **Memory**: the block is taken from the voxels' pool at the first `render_lod_frame` (not at init: `render_replan_lod` inits the new far field before giving back the old one's, so at init the card would briefly hold two). Measured by `the_cache_takes_what_its_side_says_from_the_voxels`: 96.0 MiB beside 66.2 MiB the test's far field and world held of the 6144 MiB pool. The side is `turn_cache_side` in `compile/config/render/lod/index.yaml` (768 the fallback, 0 none).
 - **The feature bit** is `1u << 20`, asked for by `game_frame_features` unless `features_off` has it, like `SHADE_FEATURE_AO_FIRST_GUESS`; `render_frame_features_set` keeps it beside `SHADE_FEATURES_EVERY`, and `run/src/render/frame/` drops the cache from a frame without it (two lines in that shared file, one in `run/src/game/`). It is not in `SHADE_FEATURES_PLAY`, so a settings file saved before it does not turn it off. Plan 009's parallel phases may take bit 20 too; whoever lands second moves theirs.
-- **Tests are their own ctest, `render_feature_lod_turn` (`tests/cuda/lod/turn/`)**: `render_feature_lod`'s file is at 1517 lines. The addressing tests are in `run_render_lod`, as they need no card. The turn tests use a side of 256, a texel about a pixel of the test's 180 rows, as 1024 is of 1080. `moving_a_quarter_block_retraces` and `a_far_change_retraces` are one test, `moving_a_quarter_block_or_a_far_change_retraces`. Results (debug build): still eye, 60 frames with TAA, 0 of 60 pictures differ, 0 texels read; turn back, 37181 far rays traced on the way out and 273 on the way back (0.7 %), with 0.08 % of the way back's pixels off by more than 24 from the same camera traced; same eye 359 traced / 15286 read, 0.3 blocks off and a far change 0 read.
-- **`bench_world_shake`** prints `far turn cache: N % of far rays read from it` for each row (a field in the place of its result's last padding); `--features-off 100000` is the cache off.
+- **Tests are their own ctest, `render_feature_lod_turn` (`tests/cuda/lod/turn/`)**: `render_feature_lod`'s file is at 1517 lines. The addressing tests are in `run_render_lod`, as they need no card. The turn tests use a side of 256, a texel about a pixel of the test's 180 rows, as 1024 is of 1080. `moving_a_quarter_block_retraces` and `a_far_change_retraces` are one test, `moving_a_quarter_block_or_a_far_change_retraces`. Results (debug build, after the revision spacing): still eye, 60 frames with TAA, 0 of 60 pictures differ, 0 texels read, 591848 far rays written; turn back, 29969 far rays traced on the way out and 242 on the way back (0.8 %), with 0.10 % of the way back's pixels off by more than 24 from the same camera traced; same eye 161 traced / 9703 read, 0.3 blocks off and a far change 0 read. The test's settle draws `turn_revise_frames` more far-field frames after the far field is idle, so that a revision put off for its last columns lands before the test and not in the middle of the turn (it did, once, before that).
+- **`bench_world_shake`** prints `far turn cache: N % of far rays read from it` for each row (a field in the place of its result's last padding); `--features-off 100000` is the cache off. It reads the tally through `render.frame.borrowed_lod`.
+- **The revision is spaced** (`turn_revise_frames`, 30, in `compile/config/render/lod/index.yaml`), found by measuring: at Ahmed's spot the pyramid sends about 3 columns a frame long after filling (levels made from the blocks taking over from terrain), and ending the generation for each kept the cache from ever being read. Columns sent now end it at most once every 30 frames; a level's square shown moving ends it at once. A far column sent shows in what a turn reads from the cache at most 30 frames late, and at once in what is traced. Even so, at the spot the revision still moved every frame in the bench, so a level's square shown moves there every frame while columns come in: harmless there, as no far ray is sent, but worth a look by whoever next works on the pyramid (`render_lod_level_show`).
+- **The decision, measured again**: the first row of the decision table is met by phase 01's numbers but not by today's at the spot (0.09 Mcycles, about 0.15 ms at 600 MHz, under the 1.5 ms bar), as plan 009 phase 04 moved what the spot sees into level 0. It is met where the far field is seen (3.77 Mcycles, 6.3 ms at 600 MHz, at jagged peaks). The cache was built on phase 01's and 05's numbers as the phase says, and is kept on: it costs nothing measurable where no far ray is sent, and takes the far field to a tenth where one is. Ahmed decides at the gate; `turn_cache_side: 0` takes it and its 96 MiB out.

@@ -9,7 +9,7 @@
 **May be called by:** ctest.
 **Depends on:** `tests/harness/`, `tests/cuda/sky/fixtures/rig.h` for a real run with a world holding only what a test puts there, `run/src/render/` and everything under it, and a card. No card fails it, on purpose.
 
-The world is rolling hills, the same in level 0 (4 chunks each way) and in the far field's samples (levels of 2, 4 and 8 blocks), drawn at 320 by 180 from 6 blocks over the ground, looking a little down, so that most of a picture is far field. The cache's tally (`render_lod_turn_tally`) counts far rays traced and read from a texel.
+The world is rolling hills, the same in level 0 (4 chunks each way) and in the far field's samples (levels of 2, 4 and 8 blocks), drawn at 320 by 180 from 6 blocks over the ground, looking a little down, so that most of a picture is far field. The cache's tally (`render_lod_turn_tally`) counts far rays traced and read from a texel. Settling ends with `turn_revise_frames` more far-field frames, so that a revision put off for the last columns sent lands before a test and not in it.
 
 What it checks:
 

@@ -78,7 +78,13 @@ static bool lt_settle(test_context_t *t, sk_rig_t *rig, const float64_t position
             return false;
         }
         if (render_lod_idle(lod)) {
-            return CHECK_EQ_U64(render_lod_frame(lod, position), GPU_STATUS_OK);
+            /* A revision put off for columns sent lands within RENDER_LOD_TURN_REVISE_FRAMES frames: before the test, not in it. */
+            for (uint32_t frame = 0u; frame <= (uint32_t)RENDER_LOD_TURN_REVISE_FRAMES; frame++) {
+                if (!CHECK_EQ_U64(render_lod_frame(lod, position), GPU_STATUS_OK)) {
+                    return false;
+                }
+            }
+            return true;
         }
         time_sleep_ns(20000);
     }

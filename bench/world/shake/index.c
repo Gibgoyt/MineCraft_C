@@ -626,9 +626,9 @@ static void sh_settled_sample(const sh_t *sh, sh_sample_t *out, float32_t host_m
 }
 
 /* Plan 008 phase 06: the far field's turn cache's tally now, both 0 with none. On the gpu thread, or with it stopped: it waits for the card. */
-static lod_turn_tally_t sh_turn_tally(game_t *game) {
+static lod_turn_tally_t sh_turn_tally(sh_t *sh) {
     lod_turn_tally_t tally = {0u, 0u};
-    render_lod_t *const lod = game->borrowed_render->borrowed_lod;
+    render_lod_t *const lod = sh->borrowed_app->render.frame.borrowed_lod;
     if (lod != nullptr) {
         (void)render_lod_turn_tally(lod, &tally);
     }
@@ -657,11 +657,11 @@ static bool sh_row_settled(sh_t *sh, const sh_row_t *row, float64_t heading_deg,
                               (float32_t)time_ns_to_ms(time_now_ns() - draw_ns));
         }
         if (frame + 1u == SH_WARM_FRAMES) {
-            turn_before = sh_turn_tally(game);
+            turn_before = sh_turn_tally(sh);
         }
     }
     r->seconds = time_ns_to_ms(time_now_ns() - started_ns) / 1000.0f64;
-    const lod_turn_tally_t turn_after = sh_turn_tally(game);
+    const lod_turn_tally_t turn_after = sh_turn_tally(sh);
     r->turn_read_share = sh_turn_share(&turn_before, &turn_after);
     sh_samples_sum(sh, SH_MEASURED_FRAMES, r);
     r->late_share = 0.0f64;
@@ -739,7 +739,7 @@ static bool sh_row_live(sh_t *sh, const sh_row_t *row, float64_t heading_deg, ui
                         uint32_t still_tail, sh_result_t *r) {
     game_t *const game = &sh->borrowed_app->game;
     display_buffer_t target = sh_target(sh);
-    const lod_turn_tally_t turn_before = sh_turn_tally(game);
+    const lod_turn_tally_t turn_before = sh_turn_tally(sh);
     if (!game_loop_start(game, nullptr)) {
         return false;
     }
@@ -777,7 +777,7 @@ static bool sh_row_live(sh_t *sh, const sh_row_t *row, float64_t heading_deg, ui
         }
     }
     ok = game_loop_stop(game) && ok;
-    const lod_turn_tally_t turn_after = sh_turn_tally(game);
+    const lod_turn_tally_t turn_after = sh_turn_tally(sh);
     r->turn_read_share = sh_turn_share(&turn_before, &turn_after);
     count = sh_rings_take(sh, watch, &takes_read, &last_taken_ns, count);
     r->back_ms = tail_ns != 0 ? sh_back_ms(watch, takes_from, still_ns, game->view.scale_percent) : -1.0f32;
