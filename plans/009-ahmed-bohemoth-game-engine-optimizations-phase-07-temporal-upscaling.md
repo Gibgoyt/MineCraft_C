@@ -1,6 +1,6 @@
 # 009-ahmed-bohemoth-game-engine-optimizations — phase 7: Temporal upscaling
 
-**Status:** built and measured; not all targets met (mip bias by the output's pixel in, 2026-11-13). The upscale kernel, its tests and the ladder hookup are in. The convergence bounds and 75 % ≤ 62 % are not met (Issues found, Results). Checkerboard was not built. Ahmed's gate is still to come   (updated 2026-11-13)
+**Status:** built and measured; not all targets met (mip bias by the output's pixel in; the bench's black picture found and fixed; re-measured: 75 % is 67 to 69 %; 2026-11-13). The upscale kernel, its tests and the ladder hookup are in. The convergence bounds and 75 % ≤ 62 % are not met (Issues found, Results). Checkerboard was not built. Ahmed's gate is still to come   (updated 2026-11-13)
 
 Read first: the phase 00 file, then the master: sections 3.1 (TSR), 3.5, 4.7, 5 and 7. Then:
 
@@ -114,8 +114,8 @@ A switch `checkerboard` in `render/temporal`. Primary and shade run on half the 
 - [ ] Convergence test at 75 % and 50 % (32 frames, mean ≤ 1 / 255, p99.9 ≤ 8 / 255): the test is built and runs. With the mip by the output's pixel the room's mean meets its bound (0.87) and is held to 1; the p99.9 (23) and the jungle (1.59, 84) do not. See Issues found
 - [x] Moving-camera ghost test
 - [x] 100 % pictures unchanged (golden pictures, settled hashes)
-- [ ] His spot at 100 / 85 / 75 / 50 %: ray passes ms in Results; 75 % ≤ 62 % of 100 %. Measured, in Results: 75 % is 67 % by cycles, so the target is not met, and the bench's saved picture is black (Results)
-- [ ] Checkerboard measured; kept or deleted
+- [ ] His spot at 100 / 85 / 75 / 50 %: ray passes ms in Results; 75 % ≤ 62 % of 100 %. Measured, in Results: 75 % is 67 to 69 % by cycles, so the target is not met. The bench's black picture was an eye inside the new land's stone, fixed (Results)
+- [ ] Checkerboard measured; kept or deleted. Still not built (2026-11-13): not trivially cheap, as it needs a parity mask in `cuda/src/traverse/` and `cuda/src/shade/` index math and a fill in post
 - [x] Plan 008's ladder uses temporal upscaling for rungs below 100 %
 - [x] `cuda/src/post/README.md` "The temporal pass" rewritten for output-resolution accumulation
 - [ ] Ahmed has seen 75 % and answered Q9
@@ -136,6 +136,17 @@ A switch `checkerboard` in `render/temporal`. Primary and shade run on half the 
 **75 % is 67 % of 100 %'s ray passes by cycles, against the plan's 62 %.** That is not met, and the clock moving between runs makes the cycle numbers rough, as part of the work is bound by memory and not by the clock. By milliseconds alone, 75 % is 53 %. The gather costs about 0.1 Mcycles more than the pass at 100 % (0.56 against 0.46). Level 0's radius falls with the rung (27, 23, 21, 15 chunks), because θ grows by 1 / scale. The bench's rows read **NOT SOUND** because the picture it saves is black at every scale and eye height, with TAA on or off (the same hash, 08C740299C6F4325), while the card's passes clearly run. This also happens with TAA off at 100 %, so it is not this phase's: Ahmed's spot or the bench's picture capture after plan 007 phase 03 and 008 phase 05 needs a look. The pass times are still the card's.
 
 **Why the picture was black (found 2026-11-13): the land moved under the spot.** The bench put the feet at z = 2, 5.png's F3 on the land of its day. Plan 007 phase 03's land stands 301 high at x -385, y 347 (`game_ground_z`), so the eye at z 3.62 was 300 blocks inside stone (block 132 at the eye), and every picture was that block's inside, one colour, whatever the scale, TAA or eye height under 301 (the raised eye tried was not raised enough). The capture and readback were fine. The timings above are therefore of an eye in stone, not of a view: they are not Ahmed's spot, and are superseded by the rows below. `bench_world_slope` now puts the feet on the ground at that x and y when `--at` is not given (z 302 today, printed on the row's line and in its history line), and says in the log when an eye is inside a block. The picture is sound again: a cliff close on the right and a snowy range to the left under the night sky. It is not 5.png's view, which that land no longer has.
+
+**Re-measured with the feet on the ground and the mip by the output's pixel (2026-11-13),** `bench_world_slope --only night-64 [--render-scale 75]`, profile build, `main` db0c7d45 plus this branch, two pairs, as the card's clock moved between every run. Ray passes are coarse + primary + shade; Mcycles = ms × the run's mean MHz.
+
+| Run | Drawn | Level 0 | Ray passes ms | Card MHz (range) | Ray passes Mcycles | Post ms | Card total ms |
+|---|---|---|---|---|---|---|---|
+| 100 % (a) | 1920 × 1080 | 27 chunks | 8.21 (primary 3.24, shade 4.95) | 691 (511-882) | 5.67 | 0.98 | 10.49 |
+| 75 % (a) | 1440 × 810 | 21 chunks | 4.45 (primary 1.64, shade 2.79) | 883 (697-984) | 3.93 | 0.71 | 6.43 |
+| 100 % (b, recorded) | 1920 × 1080 | 27 chunks | 34.40 (primary 14.80, shade 19.50) | 148 (145-149) | 5.09 | 4.24 | 39.91 |
+| 75 % (b, recorded) | 1440 × 810 | 21 chunks | 6.86 (primary 2.90, shade 3.94) | 497 (339-654) | 3.41 | 1.16 | 9.30 |
+
+**75 % costs 69 % (pair a) and 67 % (pair b) of 100 %'s ray passes by cycles: the plan's 62 % is still not met,** the same as the 67 % the stone-filled bench gave. By milliseconds at a like clock it would be lower, but no two runs had one. Part of the work is bound by memory and not the clock, so cycles at a high clock overstate it, and the far field's share grows at 75 % (level 0's radius falls from 27 to 21 chunks as θ grows by 1 / 0.75: far 0.77 of primary's 1.64 ms against 1.41 of 3.24). Both pictures are sound and look alike (`590952F3134BD8D8` at 100 %, `39230642DD14F8E3` at 75 %). The two recorded rows are in `bench/world/slope/history.tsv`. The profile build was deleted after, for the disk.
 
 ## Tests
 
@@ -193,7 +204,10 @@ Appended as they land:
 
 - 1a2b27fb Gather a picture drawn smaller at the output's size, plan 009 phase 07 (the kernel, the 16-point jitter, the history's weight, the frame hookup, the tests, the READMEs).
 - 9b06718b Measure plan 009 phase 07 at Ahmed's spot (Results; the frame pool to 288 MiB).
-- Rebased onto `main` ed5bdbb9, which has plan 009 phase 06. There, the debug build and all 20 of `render_feature_*`, `run_render_frame`, `standards_lint` and `clang_format` pass.
+- Rebased onto `main` ed5bdbb9, which has plan 009 phase 06.
+- a6bed60e Choose a texture's mip by the output's pixel when TAA gathers a picture drawn smaller (the mip bias; the room's mean at 75 % to 0.87, held to 1).
+- 9319505b Put bench_world_slope's feet on the ground at Ahmed's x and y (the black picture: the eye was inside plan 007 phase 03's land).
+- Both rebased onto `main` db0c7d45, which has plan 008 phase 06. There, the debug build and all 20 of `render_feature_*`, `run_render_frame`, `standards_lint` and `clang_format` pass.
 
 ## Issues found
 
