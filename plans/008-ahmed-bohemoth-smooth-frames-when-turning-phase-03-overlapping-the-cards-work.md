@@ -1,6 +1,6 @@
 # 008-ahmed-bohemoth-smooth-frames-when-turning — phase 3: Overlapping the card's work
 
-**Status:** in progress: the overlap built and tested; measuring   (updated 2026-11-12)
+**Status:** done, for Ahmed's gate: the readback is off the card's critical path, the pictures are the same byte for byte, camera to screen as serial   (updated 2026-11-13)
 
 Read first: `plans/008-ahmed-bohemoth-smooth-frames-when-turning-phase-00-vision-and-plan-files.md`, then the master `plans/008-ahmed-bohemoth-smooth-frames-when-turning.md`: section 1 (C7), 3.3, 5 and 8. Then phase 01's C7 row ($P$ by part, readback ms) and phase 02's start rule.
 
@@ -146,18 +146,33 @@ This phase may edit these, plus this file:
 - [x] `--serial-frames` for the game and `bench_world`
 - [x] A fault is reported within 2 frames with its own words (test)
 - [x] Pictures byte for byte with and without `--serial-frames`; golden pictures and settled hashes unchanged
-- [ ] Phase 01's rows again; results below
+- [x] Phase 01's rows again; results below
 - [x] READMEs
 
 ## Results (filled in by this phase)
 
-| Row | Card ms a picture, serial / overlapped | Readback on the critical path, ms | $P$ seen by the card, ms | Interval p50 / p99 | Camera-to-screen p50 |
-|---|---|---|---|---|---|
-| `spot/shake-0` | | | | | |
-| `spot/shake-720-live-capped` | | | | | |
-| `spot/shake-720-live-capped-r64` | | | | | |
-| `plains/flight-live` (uploads busy) | | | | | |
+All on Ahmed's card (RTX 2080 Super, his game closed, checked before each run), `build/profile/bin/bench_world_shake` at his spot (`--at -80 134 418 --seed 14148492376765118422`), 1920x1080, every effect, the sidecar beside the whole run (`bench/world/gpu_watch.sh`, `/tmp/mc_c_shake/gpu_p03d.csv`, not kept). **Serial and overlapped alternated in one run**, twice each, then r64 once each, recorded in `bench/world/shake/history.tsv` as "008 phase 03: serial, final, ..." and "008 phase 03: overlap, final, ...". **The card was at its thermal floor all along:** `clock64` 148 to 187 MHz mean per row (readings 147 to 532), 42.5 W mean of a 50 W limit. So a still picture costs 31 ms here, not phase 01's 9.8 ms at 547 MHz, and the gain below is a small share of it; at 600 MHz the same 1.3 ms would be 13 % of a still picture.
 
+"Card ms a picture" is the row's time over every picture the gpu thread drew (taken or not): back to back, the card's time between pictures. "Readback on the critical path" is that less the card's own time a picture with the readback taken out (card mean - readback): what of the copy home, and of the gap between frames, the card still waits for. "P seen by the card" is the gpu thread's own part (start to all queued); overlapped, the next picture is queued before the card is free, so the card sees none of it.
+
+| Row | Card ms a picture, serial / overlapped | Readback on the critical path, ms, serial / overlapped | $P$ seen by the card, ms, serial / overlapped | Interval p50 / p99, serial / overlapped | Camera-to-screen p50, serial / overlapped |
+|---|---|---|---|---|---|
+| `spot/shake-0` (settled, no threads) | 31.22 / 31.22 @ 149 MHz (the same path: `frame_gpu_run`) | 1.27 / 1.27 | none, no threads | 31.22 / 31.22 | - |
+| `spot/shake-0-live-capped`, passes 1 and 2 | 30.12, 30.94 / **29.89, 29.89** @ 160 to 187 MHz | 1.85, 1.50 / **0.22, 0.27** (readback 1.27 / 1.41) | 0.08 / 0 (0.08 to 0.09 on the CPU) | 33.31 / 33.37, 33.31 / 33.37 // 33.30 / 33.37, 33.30 / 33.38 | 34.93, 35.33 / 35.50, 35.58 |
+| `spot/shake-720-live-capped`, passes 1 and 2 | 52.01, 52.14 / **50.40, 50.60** @ 162 to 183 MHz | 1.53, 0.63 / **0.04, -0.42** (below 0 is noise: the card mean is over the pictures taken, the row's time over all drawn) | 0.11 / 0 | 50.00 / 66.70, 50.01 / 66.70 // 50.00 / 66.69, 50.00 / 91.63 | 56.64, 56.23 / 55.52, 56.22 |
+| `spot/shake-720-live` (uncapped), passes 1 and 2 | 52.03, 52.95 / **50.64, 51.27** @ 181 to 185 MHz | 1.38, 2.15 / **0.43, 0.85** | 0.11 / 0 | 50.00 / 66.67, 50.00 / 66.75 // 50.00 / 66.69, 50.00 / 66.69 | 55.80, 58.19 / 56.00, 55.74 |
+| `spot/shake-720-live-capped-r64` | 54.65 / 55.27 @ 180 / 179 MHz | 1.51 / 0.39 | 0.13 / 0 | 50.03 / 75.00 // 58.31 / 75.00 | 58.05 / 61.34 |
+| `plains/flight-live` (uploads busy) | not run: `bench_world_shake` has no flight row, and `bench_world` (at 1494 lines) did not get one. The overlap with uploads, far-field flushes and entity lists is checked for the same pictures by `overlapped_frames_draw_the_same_pictures`, not timed | | | | |
+
+Pictures a second, serial / overlapped: still 33.1, 32.1 / 33.4, 33.4; 720°/s capped 19.1, 18.8 / 19.6, 19.3; uncapped 19.1, 19.1 / 19.7, 19.7; r64 18.2 / 17.9 (that overlapped row had one 121 ms picture, and its card mean is 2 ms over the serial one's at the same clock: noise of the content, not the overlap, whose critical readback there is 0.39 ms).
+
+**What it says.**
+
+- **The readback is off the card's critical path.** Serial, the card waits 1.3 to 2.2 ms a picture past its kernels (the copy home and the gap to the next frame); overlapped, 0 to 0.85 ms, 0.2 to 0.3 on the still rows. 99 to 100 % of overlapped pictures were begun with the one before on its way.
+- **$P$ was never the cost:** the gpu thread's part is 0.08 to 0.13 ms (phase 01 said 0.03 to 0.16). The gain is the readback, as the plan's last risk said it would be: about 3 % more pictures a second at this clock, as a 52 ms picture loses 1.3 ms.
+- **Camera to screen is as serial** on every 32-chunk row (within 0.6 ms, either way). The one r64 row is 3.3 ms worse with its 121 ms spike; its p50 interval is a slot later too.
+- **The copy home is a little slower overlapped:** 1.41 to 1.44 ms against 1.27, as it now runs beside the next frame's kernels.
+- **Settled pictures are the same:** `spot/shake-0`'s hash is BA28CEC20AD658FA in every run, as in phase 01 and 02's history.
 ## Tests
 
 ### `run_render_frame` (extended)
@@ -214,6 +229,32 @@ This phase changes nothing Ahmed can see but speed. He reads the results table: 
 
 Appended as they land:
 
+- `44c7a824` Overlap the card's work, plan 008 phase 03: the picture goes home on a second stream from one of two device pictures written in turn, the gpu thread keeps one frame on its way when the start rule would begin the next at once, and every per-frame copy to the card goes through a pinned staging ring of two; --serial-frames keeps the old path, and the pictures of both are the same byte for byte.
+- `3d5e1dac` Begin the next picture only 3 ms before the one on its way should be done, by the last picture's time, so the camera is read no earlier than without the overlap; hand the one on its way over first if it is done already; and have bench_world_shake say camera to screen p50 for each live row.
+- `2ce56f4c` Begin the next picture once the one on its way is whole on the card, and queue its copy home only behind the next frame's copies and kernels: a copy to the card queued after a copy home still waiting for its picture waited for it, so the card started the next frame only after the whole readback. Now the readback leaves the critical path and camera to screen stays as serial; bench_world_shake also says the gpu thread's own part, start to queued.
+- this commit: the measurements, the results, and the verification.
+
+**Verification, as run (2026-11-13, on `e64a93db`, main unmoved since):** his game was not running before any GPU run (`pgrep` printed nothing). `cmake --build --preset debug`: clean. `run_render_frame` (goldens unchanged, the three new cases among them), `run_render_upload`, `run_render_lod`, `run_render_distance_live`, `render_feature_bridge`, `run_game_pace`, `run_game`, `run_profiler`, `run_failure`, `standards_lint`, `clang_format`: all passed. `--preset sanitize`: the whole build stops at `tests/fuzz/support` built for the callgraph without ASan (its own `#error`; not this phase's), so `minecraft_c`, `run_render_frame` and `run_render_upload` were built as targets: both passed under ASan. `--preset tsan`: the whole build stops at `tests/run/ui/hud/corner/index.c:768` (`-Werror=maybe-uninitialized`, not this phase's), so the same targets: every case of `run_render_frame` passed, and ThreadSanitizer reported one race, between `the_real_threads_draw_what_one_thread_draws...`'s atomic read of `game->stream_quiet` (test line 1360) and the sim's plain write of it in `game_columns_request` (`run/src/game/index.c:1121`): neither is changed here, and none involves the gpu thread, the frames on their way or the staging. `cmake --build --preset profile` and `--preset release`: clean, release's 16 KiB frame limit held. The bench lines ran as `bench_world_shake` with the sidecar, serial and overlapped alternated (one script through the lock), recorded in `bench/world/shake/history.tsv`. `pgrep -af "$PWD/build"` and `pgrep -af gpu_watch` printed nothing after.
+
 ## Issues found
 
-None.
+**Three tries to get the gain, all measured at the spot (history.tsv has each as its own label):**
+
+1. *"008 phase 03: overlap, pass N"* (the plan's design as written: queue N+1 at once while N is on the card, its copy home queued at N-1's publish). Card ms a picture fell 0.6 to 0.9 ms under the card's own time, but N+1 was begun, and its camera read, a whole picture before the card could start it: the master's "the camera of N+1 is read while N is still on the card". The bench did not yet say camera to screen; it does from the next try.
+2. *"..., lead, ..."*: N+1 begun 3 ms before N should be done by the last picture's time. Camera to screen p50 was **3 to 5 ms worse** than serial (still 37.8 against 34.6 to 35.3; 720°/s 60.3 against 55.4 to 56.6): turning pictures vary by tens of ms, so the guess was early, and N+1's camera old.
+3. *"..., whole, ..."*: N+1 begun only once N's picture is whole on the card (`frame_gpu_whole`, an event query every 0.1 ms). Camera to screen as serial, but **no gain at all**: the card started N+1 1.2 ms after its queue. The cause: N's copy home was queued at N-1's publish, a whole picture early, waiting on N's post; N+1's staging copies (the entity lists, every frame) were queued after it and waited for it, though they are on the other stream. So the copy home of a frame is now queued only behind the next frame's copies and kernels (`frame_home_oldest` in `render/frame`); a frame queued alone goes home at once. With that (*"..., final, ..."*), the readback is off the critical path and camera to screen is as serial: the results above.
+
+**What changed from the plan, and why:**
+
+- **`frame_gpu_queue` queues the kernels only; the copy home is `frame_gpu_home`,** queued when the exchange has a slot for the picture. The exchange keeps three slots (main's, the newest, the writer's): with two frames on their way, the second has no slot until the first is published. A fourth slot would grow `render_frame_t` and so `app_t`, at main's frame limit. And the order measured above wants the copy home queued late anyway.
+- **The events per slot are the frame's own kernel events,** not separate `post_done`, `end`, `home`: `owned_events[FRAME_KERNEL_READBACK]` is post done (the picture whole), `owned_events[FRAME_KERNEL_COUNT]` is recorded on the copy stream after the copy (home), so the readback is still timed from the one to the other, and `owned_end` ends the frame's stream work. Shade's span events and the clock kernel's two are per slot too, and the fresh count and the clock's cycles are copied, queued, into the pinned slot: `frame_marks_t` keeps only the outputs and two events for `frame_gpu_clock_mhz`. `frame_marks_t` went from 104 to 72 bytes.
+- **Where the new state lives, with `app_t` at 16192 bytes:** `frame_flight_t` (two slots, 392 bytes, a pinned page) and the two staging areas come from the frame arena (`render_frame_arena_bytes` took a `staging_bytes`); `frame_gpu_t` stays 120 bytes, its events moved into the flight and its room given to the copy stream and the `device_staging_t`. `render_frame_t` traded `picture_bytes` (worked out when needed) for `borrowed_xrgb_second`, and its 2 padding bytes for `on_way` and `oldest_slot`. The second device picture is `render_t.owned_xrgb_second`, in its last 24 bytes of padding. `world_buffers_t` grew 8 bytes (`borrowed_staging`), taken from `render_t`'s padding, so `render_t` and `app_t` stay the same size; `render_lod_level_t` grew to 296 and `render_lod_t` kept its size from its padding. `--serial-frames` is `render_t.serial_frames`, one padding byte, as `game_t` is full.
+- **Staging: one `device_staging_t` per frame, not "in the World arena":** the frame arena, as the pictures are, pinned with `cudaHostRegister` by `device_staging_init` (no new allocator). Each area is a frame's upload budget (4 MiB), the whole column table, the entity lists, the rain top and 1 MiB for the far field: 16 MiB an area at render distance 64 and 1080p. A copy that does not fit goes waiting, which is exact, only slower: `game_settle`'s loop of many uploads between two frames does that (3 700 times in the flight test), a frame of play does not. The marks are the staging's own events, recorded at each frame's queue (`device_staging_turn`), not borrowed from the frame.
+- **Entities and the rain top go through staging by `render_entities_frame_staged` and `render_weather_take_staged`;** the old names stay, with no staging, for the tests that call them.
+- **One frame on its way only when the start rule would start the next at once** (late, back to back, uncapped). Otherwise the one on its way is finished first, as before, so pictures that fit two ticks keep phase 02's just-in-time start. The rule is asked as if the one on its way were ready when T-hat says, and waiting for main. Phase 02's slice loop and `planned_ns` guard are kept (the guard only with nothing on its way).
+- **`--serial-frames` is on the game and `bench_world_shake`,** not `bench_world`: the shake rows are in `bench_world_shake` since phase 01, and `bench_world` is at the standard's 1500 lines.
+- **`a_fault_is_reported_within_two_frames` runs its half in a child process** (`render_feature_bridge` runs itself with `TEST_FILTER` and an argument), as a card that faulted stays faulted for the process. It queued a frame, a kernel writing at 0x1000, and a second frame: the finish said "frame: waiting for the passes" (cudaErrorIllegalAddress) on the second of two finishes.
+- **The watch numbers pictures by `pictures_begun`** (in its padding), as one may begin before the last is drawn, and a picture begun with one on its way stamps no wait. In the frame log and the bench, P (ready - start - card) then holds the end of the picture before: the bench's new "start to queued" is the gpu thread's own part.
+- **The profiler's gpu lane has `frame_wait`** for the finish beside `frame_draw` for the queue; the card lane is laid out as before.
+
+**Not done here:** Ahmed's own frame log and his feel of it (the gate). The gain at this clock is small (3 % more pictures a second at 52 ms pictures); at his usual 600 MHz the same 1.3 ms is about 13 % of a still picture.
