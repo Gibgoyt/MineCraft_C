@@ -1,6 +1,6 @@
 # 006-ahmed-bohemoth-biomes-follow-the-climate — phase 3: Biomes from the climate
 
-**Status:** code done and the survey met; the debug suite is not green: tests that play the default world near its spawn need new expectations (Issues 9)   (updated 2026-11-12)
+**Status:** done but for `bench_terrain` at 1000 columns a second (Issues 10: the slowest place, jungle, makes 917 to 964); the whole debug suite passes (Issues 16)   (updated 2026-11-13)
 
 Read first: `plans/006-ahmed-bohemoth-biomes-follow-the-climate-phase-00-vision-and-plan-files.md`, then the master `plans/006-ahmed-bohemoth-biomes-follow-the-climate.md` (sections 0, 1, 2.4, 2.7, 4, 5, 6 and 9). Every number here comes from the master. Where this file adds a number the master does not give, it says so and why.
 
@@ -179,7 +179,7 @@ Expanded:
 - [x] Ahmed's place (x -68, y 149) on the screenshot's seed is not a snow biome
 - [x] Every height, density, hydrology, cave and ore digest unchanged; biome/surface/feature digests re-pinned with reasons
 - [ ] `bench_terrain` slowest place at or above 1000 columns a second, recorded
-- [ ] `standards_lint`, `clang_format` and the whole debug suite pass; `pgrep -af "$PWD/build"` prints nothing
+- [x] `standards_lint`, `clang_format` and the whole debug suite pass; `pgrep -af "$PWD/build"` prints nothing (Issues 16)
 
 ## Tests
 
@@ -229,11 +229,16 @@ Ahmed flies the strip with `/tp lat` steps (0, 15, 30, 45, 60, 75) and checks ea
 
 ## Commits
 
-Appended as they land:
+Appended as they land (hashes as on this branch after the rebase onto main at `9ec6bcd0`):
 
-- `d433d78e` Add the variety and wetness noise fields and hand the climate sample to every biome, surface and feature stage (nullptr for the fallback), and agree plan 006 phase 03's family table for all 53 biomes; no rule reads the sample yet and no terrain digest moved.
-- `d104f690` Choose biomes from the climate: the family from the column's own cell at its height, then landform, variety and wetness among the family's members; every biome YAML names its families under a new climate block with the old one renamed landform, the tool refuses a biome without a family and a family without a biome for any kind of place, F3 shows the family, and bench_biome_vs_class surveys and draws biomes against the climate class; biome and feature pins re-pinned for plan 006 phase 03.
-- (this commit) The 8-seed survey, the pictures, bench_terrain and the record of this phase.
+- `4ec794f3` Add the variety and wetness noise fields and hand the climate sample to every biome, surface and feature stage (nullptr for the fallback), and agree plan 006 phase 03's family table for all 53 biomes; no rule reads the sample yet and no terrain digest moved.
+- `143bfedb` Choose biomes from the climate: the family from the column's own cell at its height, then landform, variety and wetness among the family's members; every biome YAML names its families under a new climate block with the old one renamed landform, the tool refuses a biome without a family and a family without a biome for any kind of place, F3 shows the family, and bench_biome_vs_class surveys and draws biomes against the climate class; biome and feature pins re-pinned for plan 006 phase 03.
+- `64709fa8` Read the biome's climate once per 4-block lattice point with one warp for blend and nearest cell, widen the screenshot test to 2 km round the equator, expect podzol's sound in run_audio, and record plan 006 phase 03's 8-seed survey (under 5% in every class), the pictures, bench_terrain and the tests the new land moved.
+- `cef2adea` Make the tests that play the default world near its spawn read the land rather than name it, after plan 006 phase 03 moved it: the programs that dig read which block the report says and hold the rest to it, the dive finds the deep sea from the terrain and goes there by /tp, the pads that stage mobs are wide and high enough that the land past them does not show, the rain top's revision is held over a run of ticks, the bolt's distance and the fresh pixels allow for the ground's height and the scene's edges, the felling script turns to the acacia now ahead, and the goldens are rewritten and looked at.
+- `5636f1e8` Hold the save tests' dig long enough for stone, look over the treetops for the sky test's fog and hold its frozen clock to a share of the moving one, and record in the plan 006 phase 03 file which tests the new land moved, how each was fixed, and the four playthroughs still failing.
+- `9e469209` Have the four playthroughs that need 9 logs find their tree from the land instead of walking to the one at seed 36's start, now an acacia of 4 since plan 006 phase 03: run_playthrough opens seed 36's climate as a menu world does, finds the start, makes the land in tiles out to about 500 blocks as column jobs make it, and takes the nearest tree of 12 to 64 logs close round its trunk on clear flat ground with a stand that sees its root (a jungle tree 65 blocks off today); each script's @tree line becomes a /tp to the stand, the turn to the root, one cut, a walk in over the logs and a /tp to one place in the trunk's block facing along an axis, and the checks read the tree's log, the feller's count, its wood's stairs and the inventory as at least what the day makes and the same from the save.
+- `6dfbeb2d` Put run_render_distance_live's cube of stone over the highest top under any of its 16 columns, not under its corner alone: on the jungle plan 006 phase 03 put round the default seed's start, a neighbouring column's crown stood in the cube's air and the test refused to place it.
+- (this commit) Issue 16: the playthroughs and run_render_distance_live fixed, the full debug suite, and the ticks.
 
 ## Issues found
 
@@ -489,4 +494,38 @@ Appended as they land:
     The way that survives land changes is the dive's: the test finds a tree of 9 or more logs near the spawn from the
     terrain (with the climate open, as a menu world has it) and the script goes there by `/tp`, facing it; or the four
     scripts gather from two trees. Either is a rewrite of four long scripts worked out from screenshots, left for a
-    follow-up.
+    follow-up. (Done in Issue 16.)
+16. **The four playthroughs and `run_render_distance_live`, fixed; the full suite** (2026-11-13). The branch was already on
+    main's tip (`9ec6bcd0`, plan 008 phase 03 and plan 009 phase 03 in it), so the rebase had nothing to do.
+    - **The tree.** Within about 500 blocks of seed 36's start (8, -8) the only trees of 9 logs or more are jungle trees
+      (64 to 338 logs; 2321 found, against 5 acacias of 11 to 13 out past 330 blocks), as the start is in the equatorial
+      Rainforest family. So `run_playthrough` finds its tree from the land, as the dive finds its sea: it opens seed 36's
+      climate as a menu world does, finds the start with `game_spawn_find`, makes tiles of 48 blocks (with 16 round) square
+      by square out from the start's, chunk by chunk as a column job makes them (climate sample from the chunk's corner),
+      and takes the nearest of the first square's trees with 12 to 64 logs (9 used and 3 to spare; one stack, so hotbar
+      slots 4 to 6, which the scripts use, stay free), every log within 3 blocks across of the root, the root on the ground,
+      no other tree's log within 3, the ground within 3 flat with 2 clear over it, and a stand 2 to 3 blocks off that sees
+      the root. Today that is a jungle tree of 64 logs at -28, -62, 65 blocks off, in the first 9 tiles (in the debug build
+      all 441 tiles when none fits take about 90 s).
+    - **The scripts.** day, stairs, bench and door share their opening; its walk to the old tree and four cuts became a line
+      `@tree`, which the test replaces with a `/tp` to the stand (25 s to wait past 64 blocks, as the dive), the turn to the
+      root from a new world's look (yaw 0.6, pitch -0.3 after the dig, which `/tp` keeps), one cut, a walk in over the logs,
+      and a second `/tp` to one place in the trunk's block facing along an axis: 0.5 of the block ahead and 0.7 to the right.
+      That place was found from screenshots (`MC_PLAYTHROUGH_KEEP=1`): from the block's middle the bench landed one block
+      on and the door's look met the bench (it opened instead); at 0.8 and 0.8 the bench was two on but the look back at its
+      west half crossed its front 0.04 from its edge and dug the ground; at 0.5 and 0.7 every script passes, and the
+      pictures show the jungle tree aimed at and gone, the logs lying, the table, the bench, jungle stairs placed and mined,
+      the door placed beside the bench, opened, shut and mined, and each world reloaded.
+    - **The checks** read the land: the last mined is the tree's log, the mined count is 2 plus `the tree feller felled K`,
+      the stairs are the tree's wood's (`jungle_stairs`), and the inventory is at least what the day makes (7 in 4 stacks;
+      3 in 2 for the bench) and the same again from the save. More logs lie round than 9, and a sapling or stick from the
+      leaves may be picked up (39 to 46 items in 6 stacks seen); the bench test holds one more stack after mining its half,
+      and at least one more item, as more fallen logs are picked up on the way. The stairs test is renamed
+      `the_trees_planks_make_stairs_on_a_bench_that_is_placed_broken_and_all_of_it_saved`.
+    - **`run_render_distance_live`** (plan 009 phase 03's, new on main) failed alone as well as in the suite: its cube of
+      stone 400 blocks east of the eye was put over the top of its corner column only, and on the jungle a neighbouring
+      column's crown stood in the cube's air. It now takes the highest top under all 16 of the cube's columns.
+    **Full debug suite at `-j 2`, 2026-11-13** (through the lock; the GPU guard found Ahmed's game not running before each
+    GPU run): 169 of 170 passed in 1944 s; `run_playthrough` passed (all six), `run_ui_atlas` passed (no load-only failure
+    this time); the one failure was `run_render_distance_live` above, fixed and passing alone since. `standards_lint` and
+    `clang_format` pass. `pgrep -af "$PWD/build"` and `pgrep -a Xvfb` print nothing.
