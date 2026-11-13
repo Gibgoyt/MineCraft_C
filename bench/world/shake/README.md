@@ -51,3 +51,5 @@ Settled, the intervals are the card's time on each picture, as there is no clock
 ## Results
 
 See the plan 008 phase 01 file's results table, which these rows filled.
+
+**Plan 008 phase 05.** `--dynamic-floor <50|70|85|100>` opens each world with dynamic resolution down to that floor (0, the default, is off, so the rows compare with the history before it), and `--scale <25..100>` with a render scale, the ladder's top, drawn smaller and brought up on the card (settled rows draw at it: a shot of a turn at 70 % is `--scale 70 --only =shake-720 --shots <dir>`). `--still-tail <s>` stops the camera for a live row's last s seconds, and the row says how long after stopping the first picture back at the top was begun. Each row prints `rungs 100/85/70/50`, the share of its pictures drawn at each, when any was drawn under the top. A new row, `shake-1440-live-capped-r64`, is the phase file's table's. `history.tsv` gains, at the end of each line, `scale`, `dynamic_floor`, `rung_100`, `rung_85`, `rung_70`, `rung_50` (pictures) and `back_ms` (-1 for none); the header line, written once by the first run, does not name them, as it did not name `card_mcycles`.

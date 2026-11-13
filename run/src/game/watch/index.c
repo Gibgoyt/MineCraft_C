@@ -203,7 +203,7 @@ static const char game_watch_log_header[] =
     "seq,taken_s,interval_ms,ticks_waited,late,idle_ms,upload_ms,lod_plan_ms,fill_ms,draw_cpu_ms,card_wait_ms,p_ms,"
     "ready_to_take_ms,card_ms,coarse_ms,primary_ms,lod_ms,shade_ms,water_ms,surfaces_ms,sun_ms,ao_ms,ao_fresh_ms,"
     "post_ms,readback_ms,fresh,card_mhz,clock_read,turn_deg_s,x_put_ms,x_wait_ms,x_idle_ms,pace,aimed_ms,start_late_ms,"
-    "missed,puts_skipped\n";
+    "missed,puts_skipped,rung\n";
 
 static float64_t game_watch_ms_of(int64_t ns) {
     return (float64_t)ns / (float64_t)TIME_NS_PER_MS;
@@ -432,7 +432,7 @@ static void game_watch_log_line(game_watch_t *watch, const game_watch_take_t *ta
         watch->borrowed_log_text + watch->log_used, GAME_WATCH_LOG_LINE_BYTES,
         "%" PRIu64 ",%.6f,%.3f,%" PRIu64
         ",%u,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,"
-        "%.3f,%.3f,%.3f,%.3f,%.3f,%" PRIu32 ",%.0f,%u,%.1f,%.3f,%.3f,%.3f,%u,%.3f,%.3f,%u,%" PRIu64 "\n",
+        "%.3f,%.3f,%.3f,%.3f,%.3f,%" PRIu32 ",%.0f,%u,%.1f,%.3f,%.3f,%.3f,%u,%.3f,%.3f,%u,%" PRIu64 ",%u\n",
         take->seq, (libc_double_t)(game_watch_ms_of(take->taken_ns - watch->opened_ns) / 1000.0f64),
         (libc_double_t)game_watch_ms_of(interval_ns), take->frame - take->start_frame,
         game_watch_late(take, picture) ? 1u : 0u,
@@ -455,7 +455,7 @@ static void game_watch_log_line(game_watch_t *watch, const game_watch_take_t *ta
         (uint32_t)p->pace_how,
         (libc_double_t)(p->aimed_ns != 0 ? game_watch_ms_of(p->aimed_ns - at[GAME_WATCH_STAMP_START]) : 0.0f64),
         (libc_double_t)(p->start_at_ns != 0 ? game_watch_ms_of(at[GAME_WATCH_STAMP_START] - p->start_at_ns) : 0.0f64),
-        (uint32_t)p->missed, take->puts_skipped);
+        (uint32_t)p->missed, take->puts_skipped, (uint32_t)p->percent);
     if (written > 0 && (uint32_t)written < GAME_WATCH_LOG_LINE_BYTES) {
         watch->log_used += (uint64_t)written;
     }
@@ -592,6 +592,7 @@ bool game_watch_recent_read(const game_watch_t *watch, int64_t now_ns, game_watc
         }
         if (cards == 0u) {
             out->card_mhz = picture->card_mhz;
+            out->percent_last = picture->percent;
         }
         values[cards] = picture->total_ms;
         out->card_most_ms = picture->total_ms > out->card_most_ms ? picture->total_ms : out->card_most_ms;

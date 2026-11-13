@@ -358,14 +358,23 @@ static gpu_status_t frame_passes(frame_gpu_t *frame, frame_slot_t *slot, const f
     if (status == GPU_STATUS_OK) {
         status = frame_mark(frame, slot, FRAME_KERNEL_POST);
     }
+    /* Plan 008 phase 05: drawn smaller, post's picture goes into the hits block, which nothing reads once shade is done, and is brought up
+     * into the target before the overlays: under the overlay's mark, so post's own time is as at the full size. */
+    const traverse_camera_t *const output = args->borrowed_output_camera;
+    const device_block_t *const drawn = output != nullptr ? targets->borrowed_hits : targets->borrowed_xrgb;
     if (status == GPU_STATUS_OK) {
         status =
             post_frame_temporal(&frame->last_error, args->borrowed_post, scene->borrowed_temporal,
                                 (scene->features & SHADE_FEATURE_TAA) != 0u, shafts, camera, targets->borrowed_pixels,
-                                targets->borrowed_xrgb, args->borrowed_weather, args->borrowed_weather_map);
+                                drawn, args->borrowed_weather, args->borrowed_weather_map);
     }
     if (status == GPU_STATUS_OK) {
         status = frame_mark(frame, slot, FRAME_KERNEL_OVERLAY);
+    }
+    if (status == GPU_STATUS_OK && output != nullptr) {
+        ran |= 1u << FRAME_KERNEL_OVERLAY;
+        status = post_upscale(&frame->last_error, drawn, camera->width, camera->height, targets->borrowed_xrgb,
+                              output->width, output->height);
     }
     if (status == GPU_STATUS_OK && entities != nullptr) {
         /* The same with nothing aimed at and nothing to place. */
@@ -376,12 +385,14 @@ static gpu_status_t frame_passes(frame_gpu_t *frame, frame_slot_t *slot, const f
         const bool ghost = preview->count != 0u && preview->pixel_min[0] < preview->pixel_end[0] &&
                            preview->pixel_min[1] < preview->pixel_end[1];
         ran |= lines || ghost ? 1u << FRAME_KERNEL_OVERLAY : 0u;
+        /* Brought up, the picture is the output camera's, which has no jitter. */
         float32_t jitter[2] = {0.0F, 0.0F};
-        if (scene->borrowed_temporal != nullptr) {
+        if (scene->borrowed_temporal != nullptr && output == nullptr) {
             post_temporal_jitter(scene->borrowed_temporal, jitter);
         }
-        status = entity_rays_overlay(&frame->last_error, entities, args->borrowed_world, camera, jitter,
-                                     scene->water_material, targets->borrowed_pixels, targets->borrowed_xrgb);
+        status = entity_rays_overlay_scaled(&frame->last_error, entities, args->borrowed_world,
+                                            output != nullptr ? output : camera, camera->width, camera->height, jitter,
+                                            scene->water_material, targets->borrowed_pixels, targets->borrowed_xrgb);
     }
     /* The picture is whole: the copy stream waits for this. */
     if (status == GPU_STATUS_OK) {
@@ -416,9 +427,19 @@ gpu_status_t frame_gpu_queue(frame_gpu_t *frame, const frame_args_t *args, uint3
         return GPU_STATUS_INVALID_ARGUMENT;
     }
     const traverse_camera_t *const camera = args->borrowed_camera;
-    if (args->borrowed_targets->borrowed_xrgb->bytes < post_xrgb_bytes(camera->width, camera->height)) {
+    /* What goes home is the output's size: the camera's own, or what it is brought up to (plan 008 phase 05). */
+    const traverse_camera_t *const output =
+        args->borrowed_output_camera != nullptr ? args->borrowed_output_camera : camera;
+    if (args->borrowed_targets->borrowed_xrgb->bytes < post_xrgb_bytes(output->width, output->height)) {
         frame->last_error = gpu_error_t{"frame: the picture is too large for its target", nullptr, nullptr, 0,
                                         GPU_STATUS_INVALID_ARGUMENT};
+        return GPU_STATUS_INVALID_ARGUMENT;
+    }
+    if (output != camera &&
+        (args->borrowed_targets->borrowed_hits == nullptr ||
+         args->borrowed_targets->borrowed_hits->bytes < post_xrgb_bytes(camera->width, camera->height))) {
+        frame->last_error = gpu_error_t{"frame: no room in the hits block for the picture drawn smaller", nullptr,
+                                        nullptr, 0, GPU_STATUS_INVALID_ARGUMENT};
         return GPU_STATUS_INVALID_ARGUMENT;
     }
     const uint32_t index = flight->next;
@@ -433,8 +454,8 @@ gpu_status_t frame_gpu_queue(frame_gpu_t *frame, const frame_args_t *args, uint3
     slot->clock = marks != nullptr && marks->clock_due != 0u ? 1u : 0u;
     slot->borrowed_fresh_count = nullptr;
     slot->borrowed_xrgb = args->borrowed_targets->borrowed_xrgb;
-    slot->width = camera->width;
-    slot->height = camera->height;
+    slot->width = output->width;
+    slot->height = output->height;
     if (slot->clock != 0u) {
         marks->clock_due = 0u;
     }

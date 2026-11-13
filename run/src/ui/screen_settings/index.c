@@ -29,6 +29,8 @@ enum : int32_t {
     SETTINGS_BOXES_ROW = 5,
     SETTINGS_VSYNC_WIDTH = 46,
     SETTINGS_HUD_WIDTH = 82,
+    /* The render scale's row: plan 008 phase 05's dynamic resolution beside it, a button that steps its floor and turns it off. */
+    SETTINGS_DYNAMIC_WIDTH = 64,
     SETTINGS_VOLUME_ROW = 6,
     SETTINGS_MAIN_DONE_ROW = 7,
     /* The Effects page's Back, under its two columns of eight. */
@@ -61,6 +63,7 @@ enum : uint32_t {
     SETTINGS_ID_STORM_WARNINGS = 114u,
     SETTINGS_ID_PAUSE_AWAY = 115u,
     SETTINGS_ID_PLACE_PREVIEW = 116u,
+    SETTINGS_ID_DYNAMIC = 117u,
     SETTINGS_ID_EFFECT_0 = 120u,
     SETTINGS_TEXT_COLOR = 0xFFFFFFFFu,
     SETTINGS_ERROR_COLOR = 0xFFFF6060u,
@@ -121,6 +124,41 @@ static void ui_screen_settings_explain(ui_widget_t *widget) {
     }
 }
 
+/* The next of dynamic resolution's choices: off, then each floor from the least up, then off. */
+static void ui_screen_settings_dynamic_step(settings_values_t *values) {
+    const uint32_t next =
+        settings_persist_floor_next(values->dynamic_resolution != 0u ? values->dynamic_floor_percent : 0u);
+    values->dynamic_resolution = next != 0u ? 1u : 0u;
+    values->dynamic_floor_percent = next != 0u ? (uint8_t)next : values->dynamic_floor_percent;
+}
+
+/* The render scale's row: its slider, and beside it plan 008 phase 05's dynamic resolution: "Dyn 50%" is drawn down to half each side while
+ * turning or late, "Dyn off" never. True if either changed. */
+static bool ui_screen_settings_scale_row(ui_widget_t *widget, settings_values_t *values) {
+    const int32_t scale = (int32_t)widget->scale;
+    const ui_rect_t row = ui_screen_settings_row(widget, SETTINGS_RENDER_SCALE_ROW, SETTINGS_ROW_WIDTH);
+    const int32_t dynamic_width = SETTINGS_DYNAMIC_WIDTH * scale;
+    const int32_t slider_width = row.width - dynamic_width - SETTINGS_GAP * scale;
+    char label[SETTINGS_LABEL_BYTES];
+    (void)snprintf(label, sizeof(label), "Render scale: %" PRIu32 "%%", values->render_scale_percent);
+    int32_t now = (int32_t)values->render_scale_percent;
+    bool changed =
+        ui_widget_slider(widget, SETTINGS_ID_RENDER_SCALE, (ui_rect_t){row.x, row.y, slider_width, row.height}, label,
+                         &now, (int32_t)SETTINGS_RENDER_SCALE_MIN, (int32_t)SETTINGS_RENDER_SCALE_MAX);
+    values->render_scale_percent = (uint32_t)now;
+    if (values->dynamic_resolution != 0u) {
+        (void)snprintf(label, sizeof(label), "Dyn %" PRIu32 "%%", (uint32_t)values->dynamic_floor_percent);
+    } else {
+        (void)snprintf(label, sizeof(label), "Dyn off");
+    }
+    const ui_rect_t button = {row.x + row.width - dynamic_width, row.y, dynamic_width, row.height};
+    if (ui_widget_button(widget, SETTINGS_ID_DYNAMIC, button, label, true)) {
+        ui_screen_settings_dynamic_step(values);
+        changed = true;
+    }
+    return changed;
+}
+
 static bool ui_screen_settings_main_page(ui_screen_settings_t *screen, bool *out_done) {
     ui_widget_t *const widget = screen->borrowed_widget;
     settings_values_t *const values = screen->borrowed_values;
@@ -139,10 +177,7 @@ static bool ui_screen_settings_main_page(ui_screen_settings_t *screen, bool *out
     changed |=
         ui_screen_settings_slider(widget, SETTINGS_ID_SENSITIVITY, SETTINGS_SENSITIVITY_ROW, label,
                                   &values->sensitivity_percent, SETTINGS_SENSITIVITY_MIN, SETTINGS_SENSITIVITY_MAX);
-    (void)snprintf(label, sizeof(label), "Render scale: %" PRIu32 "%%", values->render_scale_percent);
-    changed |=
-        ui_screen_settings_slider(widget, SETTINGS_ID_RENDER_SCALE, SETTINGS_RENDER_SCALE_ROW, label,
-                                  &values->render_scale_percent, SETTINGS_RENDER_SCALE_MIN, SETTINGS_RENDER_SCALE_MAX);
+    changed |= ui_screen_settings_scale_row(widget, values);
     const bool workers_later = values->worker_count != screen->workers_running;
     (void)snprintf(label, sizeof(label), "Workers: %" PRIu32 "%s", values->worker_count,
                    workers_later ? " (next start)" : "");

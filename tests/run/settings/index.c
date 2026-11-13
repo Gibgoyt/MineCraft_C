@@ -45,6 +45,8 @@ enum : int32_t {
     AT_BOXES_Y = 308,     /* VSync, HUD... and Effects...: row 5 since plan 009 phase 04 took a slider out */
     AT_MAIN_DONE_Y = 404, /* the main page's Done, row 7 */
     AT_DONE_Y = 452,      /* Back, on the HUD and Effects pages, row 8 */
+    AT_DYNAMIC_X = 456, /* plan 008 phase 05's button, the render scale row's last 2 * 64 */
+    AT_SCALE_ROW_Y = 212,
     AT_EFFECT_LEFT_X = 100,
     AT_EFFECT_RIGHT_X = 340,
 };
@@ -123,6 +125,8 @@ TEST(the_defaults_are_the_plans_and_every_effect_has_its_own_bit) {
     CHECK_EQ_U64(values.vsync, 1u);
     CHECK_EQ_U64(values.show_coordinates, 1u);
     CHECK_EQ_U64(values.climate_hud, SETTINGS_CLIMATE_HUD_ALL);
+    CHECK_EQ_U64(values.dynamic_resolution, 1u); /* plan 008 Q1: on, floor 50 */
+    CHECK_EQ_U64(values.dynamic_floor_percent, 50u);
     CHECK_EQ_U64(SETTINGS_RENDER_DISTANCE_MIN, 2u);
     CHECK_EQ_U64(SETTINGS_RENDER_DISTANCE_MAX, 512u);
     uint32_t seen = 0u;
@@ -146,6 +150,8 @@ TEST(the_file_for_the_defaults_is_exactly_this) {
                                    "render_scale_percent: 100\n"
                                    "worker_count: 16\n"
                                    "sound_volume_percent: 70\n"
+                                   "dynamic_resolution: true\n"
+                                   "dynamic_resolution_floor_percent: 50\n"
                                    "vsync: true\n"
                                    "show_coordinates: true\n"
                                    "show_date: true\n"
@@ -205,7 +211,9 @@ TEST(any_values_written_read_back_the_same) {
                                     .show_date = (uint8_t)((random[7] >> 2u) & 1u),
                                     .climate_hud = (uint8_t)((random[7] >> 3u) & 3u),
                                     .pause_on_focus_loss = (uint8_t)((random[7] >> 5u) & 1u),
-                                    .place_preview = (uint8_t)((random[7] >> 6u) & 1u)};
+                                    .place_preview = (uint8_t)((random[7] >> 6u) & 1u),
+                                    .dynamic_resolution = (uint8_t)((random[7] >> 7u) & 1u),
+                                    .dynamic_floor_percent = (uint8_t)(random[7] >> 16u)};
         settings_persist_clamp(&values);
         CHECK(values.render_distance >= 2u && values.render_distance <= 512u);
         uint8_t text[SETTINGS_TEXT_BYTES];
@@ -219,11 +227,13 @@ TEST(any_values_written_read_back_the_same) {
                                   .show_date = (uint8_t)(values.show_date != 0u ? 0u : 1u),
                                   .climate_hud = (uint8_t)(~values.climate_hud & SETTINGS_CLIMATE_HUD_ALL),
                                   .pause_on_focus_loss = (uint8_t)(values.pause_on_focus_loss != 0u ? 0u : 1u),
-                                  .place_preview = (uint8_t)(values.place_preview != 0u ? 0u : 1u)};
+                                  .place_preview = (uint8_t)(values.place_preview != 0u ? 0u : 1u),
+                                  .dynamic_resolution = (uint8_t)(values.dynamic_resolution != 0u ? 0u : 1u),
+                                  .dynamic_floor_percent = (uint8_t)(values.dynamic_floor_percent == 50u ? 85u : 50u)};
         settings_persist_report_t report;
         settings_persist_parse(text, bytes, &back, &report);
         CHECK_EQ_U64(report.problems, 0u);
-        CHECK_EQ_U64(report.applied, 6u + 5u + 2u + SETTINGS_EFFECT_COUNT);
+        CHECK_EQ_U64(report.applied, 6u + 5u + 2u + 2u + SETTINGS_EFFECT_COUNT);
         CHECK_MEM_EQ(&back, &values, sizeof(values));
     }
 }
@@ -443,6 +453,58 @@ TEST(place_preview_is_on_by_default_kept_and_on_for_a_file_without_it) {
     old.place_preview = 5u;
     settings_persist_clamp(&old);
     CHECK_EQ_U64(old.place_preview, 1u);
+}
+
+/* Plan 008 phase 05: dynamic resolution, on at 50 by default; a floor is a rung or 100, and anything else is told about and ignored. */
+TEST(dynamic_resolution_is_kept_and_a_file_without_it_has_it_on_at_fifty) {
+    settings_values_t values = values_defaults();
+    static const uint8_t floors[] = {50u, 70u, 85u, 100u};
+    for (uint32_t i = 0u; i < 2u * sizeof(floors); i++) {
+        values.dynamic_resolution = (uint8_t)(i & 1u);
+        values.dynamic_floor_percent = floors[i / 2u];
+        uint8_t text[SETTINGS_TEXT_BYTES];
+        uint64_t bytes = 0u;
+        REQUIRE(settings_persist_write(&values, text, sizeof(text) - 1u, &bytes));
+        text[bytes] = 0u;
+        CHECK_CONTAINS((const char *)text,
+                       (i & 1u) != 0u ? "dynamic_resolution: true\n" : "dynamic_resolution: false\n");
+        settings_values_t back = values_defaults();
+        back.dynamic_resolution = (uint8_t)((i & 1u) != 0u ? 0u : 1u);
+        back.dynamic_floor_percent = floors[(i / 2u + 1u) % sizeof(floors)];
+        settings_persist_report_t report;
+        settings_persist_parse(text, bytes, &back, &report);
+        CHECK_EQ_U64(report.problems, 0u);
+        CHECK_MEM_EQ(&back, &values, sizeof(values));
+    }
+    settings_values_t old = values_defaults();
+    CHECK_EQ_U64(parse_text("version: 1\nrender_distance: 12\n", &old).problems, 0u);
+    CHECK_EQ_U64(old.dynamic_resolution, 1u);
+    CHECK_EQ_U64(old.dynamic_floor_percent, 50u);
+    CHECK_EQ_U64(
+        parse_text("version: 1\ndynamic_resolution: false\ndynamic_resolution_floor_percent: 70\n", &old).problems, 0u);
+    CHECK_EQ_U64(old.dynamic_resolution, 0u);
+    CHECK_EQ_U64(old.dynamic_floor_percent, 70u);
+    /* Wrong lines, each told about and ignored: a floor between rungs, past them, below them, not a number; not a bool. */
+    static const char *const wrong[] = {"dynamic_resolution_floor_percent: 60", "dynamic_resolution_floor_percent: 101",
+                                        "dynamic_resolution_floor_percent: 25",
+                                        "dynamic_resolution_floor_percent: half", "dynamic_resolution: sometimes"};
+    for (uint32_t i = 0u; i < sizeof(wrong) / sizeof(wrong[0]); i++) {
+        char line[96];
+        snprintf(line, sizeof(line), "version: 1\n%s\n", wrong[i]);
+        const settings_values_t before = old;
+        CHECK_EQ_U64(parse_text(line, &old).problems, 1u);
+        CHECK_MEM_EQ(&old, &before, sizeof(old));
+    }
+    old.dynamic_resolution = 7u;
+    old.dynamic_floor_percent = 33u;
+    settings_persist_clamp(&old);
+    CHECK_EQ_U64(old.dynamic_resolution, 1u);
+    CHECK_EQ_U64(old.dynamic_floor_percent, 50u);
+    /* The steps the Settings screen's button goes through. */
+    CHECK_EQ_U64(settings_persist_floor_next(0u), 50u);
+    CHECK_EQ_U64(settings_persist_floor_next(50u), 70u);
+    CHECK_EQ_U64(settings_persist_floor_next(85u), 100u);
+    CHECK_EQ_U64(settings_persist_floor_next(100u), 0u);
 }
 
 /* Plan 004 phase 10: the climate line and storm warnings, two lines of one byte. */
@@ -671,11 +733,10 @@ typedef struct screen_rig_t {
     texture_t *texture;       /* 0 */
     ui_t *ui;                 /* 8 */
     settings_values_t values; /* 16 */
-    uint32_t width;           /* 52 */
-    uint32_t height;          /* 56 */
-    int32_t pointer_x;        /* 60 */
-    int32_t pointer_y;        /* 64 */
-    uint8_t _pad0[4];         /* 68 */
+    uint32_t width;           /* 56 */
+    uint32_t height;          /* 60 */
+    int32_t pointer_x;        /* 64 */
+    int32_t pointer_y;        /* 68 */
 } screen_rig_t;
 static_assert(sizeof(screen_rig_t) == 72);
 
@@ -807,6 +868,24 @@ TEST(each_slider_goes_through_every_value_its_setting_has) {
     slider_check(t, rig, 2, &rig->values.sensitivity_percent, 10u, 400u);
     slider_check(t, rig, 3, &rig->values.render_scale_percent, 25u, 100u);
     slider_check(t, rig, 4, &rig->values.worker_count, 1u, MC_THREADS_WORKERS);
+    rig_end(rig);
+}
+
+/* Plan 008 phase 05: the button beside the render scale steps the floor up, then off, then back to 50, and changes nothing else. */
+TEST(the_dynamic_button_steps_the_floor_then_off) {
+    screen_rig_t *const rig = aligned_alloc_64(t, sizeof(screen_rig_t));
+    REQUIRE(rig_begin(t, rig, SHEET_WIDTH, SHEET_HEIGHT));
+    rig->values.dynamic_resolution = 1u;
+    rig->values.dynamic_floor_percent = 50u;
+    static const uint8_t on[] = {1u, 1u, 1u, 0u, 1u};
+    static const uint8_t floors[] = {70u, 85u, 100u, 100u, 50u};
+    for (uint32_t i = 0u; i < sizeof(on); i++) {
+        const settings_values_t before = rig->values;
+        CHECK_EQ_U64(rig_click(rig, AT_DYNAMIC_X, AT_SCALE_ROW_Y), UI_SCREEN_SETTINGS_CHANGED);
+        CHECK_EQ_U64(rig->values.dynamic_resolution, on[i]);
+        CHECK_EQ_U64(rig->values.dynamic_floor_percent, floors[i]);
+        CHECK_EQ_U64(rig->values.render_scale_percent, before.render_scale_percent);
+    }
     rig_end(rig);
 }
 
@@ -1062,16 +1141,25 @@ TEST(a_config_comes_to_this_by_hand) {
     game_view_work_out(&config, 32u, &view);
     CHECK_EQ_U64(view.block_radius, 32u);
     config.block_radius_given = 0u;
-    /* Size, and what cannot be nothing. */
+    /* Size: the pictures are the config's, and the render scale is plan 008 phase 05's top rung, drawn at 960 by 540 and brought up. */
+    CHECK_EQ_U64(view.scale_percent, 100u);
+    CHECK_EQ_U64(view.floor_percent, 0u);
     config.render_scale_percent = 50u;
+    config.dynamic_floor_percent = 70u;
     game_view_work_out(&config, 32u, &view);
-    CHECK_EQ_U64(view.width, 960u);
-    CHECK_EQ_U64(view.height, 540u);
+    CHECK_EQ_U64(view.width, 1920u);
+    CHECK_EQ_U64(view.height, 1080u);
+    CHECK_EQ_U64(view.scale_percent, 50u);
+    CHECK_EQ_U64(view.floor_percent, 70u);
+    CHECK_EQ_U64(post_scaled_side(view.width, view.scale_percent), 960u);
+    CHECK_EQ_U64(post_scaled_side(view.height, view.scale_percent), 540u);
+    /* And what cannot be nothing. */
     config.width = 1u;
     config.height = 1u;
     game_view_work_out(&config, 32u, &view);
     CHECK_EQ_U64(view.width, 1u);
     CHECK_EQ_U64(view.height, 1u);
+    CHECK_EQ_U64(post_scaled_side(view.width, view.scale_percent), 1u);
     config.god_rays = 1u;
     game_view_work_out(&config, 32u, &view);
     CHECK_EQ_U64(view.features, SHADE_FEATURES_EVERY);
@@ -1101,26 +1189,6 @@ TEST(the_field_of_view_and_the_mouse_by_hand) {
     }
     CHECK_EQ_I64(sum, 130);
     CHECK_EQ_I64(sum + game_view_look_scaled(0, 13u, &rest), 130);
-}
-
-TEST(a_small_picture_is_brought_up_by_the_nearest_pixel) {
-    static const uint32_t from[] = {1u, 2u, 3u, 4u, 5u, 6u};
-    uint32_t to[6u * 4u];
-    /* Two by three to four by six: each pixel twice each way. */
-    game_view_bring_up((const uint8_t *)from, 2u, 3u, (uint8_t *)to, 4u, 6u);
-    static const uint32_t doubled[] = {1u, 1u, 2u, 2u, 1u, 1u, 2u, 2u, 3u, 3u, 4u, 4u,
-                                       3u, 3u, 4u, 4u, 5u, 5u, 6u, 6u, 5u, 5u, 6u, 6u};
-    CHECK_MEM_EQ(to, doubled, sizeof(doubled));
-    /* Not a whole number of times: the place each comes from, by the formula in the source. */
-    uint32_t wide[5u];
-    static const uint32_t row[] = {7u, 8u, 9u};
-    game_view_bring_up((const uint8_t *)row, 3u, 1u, (uint8_t *)wide, 5u, 1u);
-    static const uint32_t expected[] = {7u, 7u, 8u, 8u, 9u};
-    CHECK_MEM_EQ(wide, expected, sizeof(expected));
-    /* The same size is a copy. */
-    uint32_t same[6];
-    game_view_bring_up((const uint8_t *)from, 2u, 3u, (uint8_t *)same, 2u, 3u);
-    CHECK_MEM_EQ(same, from, sizeof(from));
 }
 
 /* ---- The workers ------------------------------------------------------------------------------------------------------- */

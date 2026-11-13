@@ -214,8 +214,10 @@ __global__ void post_taa_kernel(const traverse_camera_t camera, const post_tempo
                     }
                 }
             }
+            /* The history is the last frame's picture, at that frame's size (plan 008 phase 05: a rung change is a reprojection like any
+             * other), and x and y are in its pixels. */
             float32_t last[3];
-            post_history_at(history_last, camera.width, camera.height, x, y,
+            post_history_at(history_last, temporal.previous.width, temporal.previous.height, x, y,
                             (temporal.flags & POST_TEMPORAL_FAST) != 0u, last);
             for (uint32_t i = 0u; i < 3u; i += 1u) {
                 const float32_t average = mean[i] / 9.0F;
@@ -315,4 +317,58 @@ gpu_status_t post_frame_temporal(gpu_error_t *error, const post_settings_t *sett
         (post_taa_pixel_t *)(void *)device_memory_pointer(temporal->borrowed_history_next), picture, weather_given,
         weather_on, map);
     return device_memory_check(error, cudaGetLastError(), "post: starting the temporal pass");
+}
+
+/* ---- Plan 008 phase 05: a picture drawn smaller, brought up to the output -------------------------------------------------------- */
+
+/* One output pixel: its middle on the inner picture, and the four inner pixels around it by how near each is, channel by channel in bytes.
+ * The weights are in 1/256ths, so a flat colour comes back as itself to the bit and the sum is integer arithmetic, the same on every run. */
+__global__ void post_upscale_kernel(const uint32_t *inner, uint32_t inner_width, uint32_t inner_height, uint32_t *out,
+                                    uint32_t out_width, uint32_t out_height) {
+    const uint32_t pixel_x = blockIdx.x * blockDim.x + threadIdx.x;
+    const uint32_t pixel_y = blockIdx.y * blockDim.y + threadIdx.y;
+    if (pixel_x >= out_width || pixel_y >= out_height) {
+        return;
+    }
+    /* Where the middle of this pixel is on the inner picture, in 256ths of its pixels, less half of one so that 0 is pixel 0's middle. */
+    const int64_t place_x = (((int64_t)pixel_x * 2 + 1) * inner_width * 128) / out_width - 128;
+    const int64_t place_y = (((int64_t)pixel_y * 2 + 1) * inner_height * 128) / out_height - 128;
+    const int64_t floor_x = place_x >= 0 ? place_x / 256 : -1, floor_y = place_y >= 0 ? place_y / 256 : -1;
+    const uint32_t fx = (uint32_t)(place_x - floor_x * 256), fy = (uint32_t)(place_y - floor_y * 256);
+    const uint32_t x0 = (uint32_t)traverse_clamp((int32_t)floor_x, 0, (int32_t)inner_width - 1);
+    const uint32_t x1 = (uint32_t)traverse_clamp((int32_t)floor_x + 1, 0, (int32_t)inner_width - 1);
+    const uint32_t y0 = (uint32_t)traverse_clamp((int32_t)floor_y, 0, (int32_t)inner_height - 1);
+    const uint32_t y1 = (uint32_t)traverse_clamp((int32_t)floor_y + 1, 0, (int32_t)inner_height - 1);
+    const uint32_t taps[4] = {inner[(uint64_t)y0 * inner_width + x0], inner[(uint64_t)y0 * inner_width + x1],
+                              inner[(uint64_t)y1 * inner_width + x0], inner[(uint64_t)y1 * inner_width + x1]};
+    const uint32_t weights[4] = {(256u - fx) * (256u - fy), fx * (256u - fy), (256u - fx) * fy, fx * fy};
+    uint32_t result = 0u;
+    for (uint32_t shift = 0u; shift < 24u; shift += 8u) {
+        uint32_t sum = 0u;
+        for (uint32_t i = 0u; i < 4u; i += 1u) {
+            sum += ((taps[i] >> shift) & 0xFFu) * weights[i];
+        }
+        result |= ((sum + 32768u) >> 16) << shift;
+    }
+    out[(uint64_t)pixel_y * out_width + pixel_x] = result | (taps[0] & 0xFF000000u);
+}
+
+gpu_status_t post_upscale(gpu_error_t *error, const device_block_t *inner, uint32_t inner_width, uint32_t inner_height,
+                          const device_block_t *out, uint32_t out_width, uint32_t out_height) {
+    if (inner_width == 0u || inner_height == 0u || out_width == 0u || out_height == 0u) {
+        return post_refuse(error, "post: an upscale with no pixels");
+    }
+    if (inner_width > out_width || inner_height > out_height) {
+        return post_refuse(error, "post: an upscale to a smaller picture");
+    }
+    if (!post_block_fits(inner, post_xrgb_bytes(inner_width, inner_height)) ||
+        !post_block_fits(out, post_xrgb_bytes(out_width, out_height))) {
+        return post_refuse(error, "post: an upscale's pictures are missing or too small");
+    }
+    const dim3 grid(traverse_tiles_across(out_width), traverse_tiles_across(out_height));
+    const dim3 tile(TRAVERSE_TILE_PIXELS, TRAVERSE_TILE_PIXELS);
+    post_upscale_kernel<<<grid, tile>>>((const uint32_t *)(const void *)device_memory_pointer(inner), inner_width,
+                                        inner_height, (uint32_t *)(void *)device_memory_pointer(out), out_width,
+                                        out_height);
+    return device_memory_check(error, cudaGetLastError(), "post: starting the upscale");
 }

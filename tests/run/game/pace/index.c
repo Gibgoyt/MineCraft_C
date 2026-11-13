@@ -3,6 +3,7 @@
 
 #include "harness/index.h"
 
+#include <stdio.h>
 #include <string.h>
 
 enum : int64_t {
@@ -285,6 +286,217 @@ TEST(a_picture_waiting_and_on_time_holds_until_main_takes_it) {
     in.next_take_ns = PACE_TICK;
     game_pace_decide(&in, &out);
     CHECK_EQ_I64(out.aimed_ns, 4 * PACE_TICK);
+}
+
+/* ---- Plan 008 phase 05: the rung for each picture ------------------------------------------------------------------------------ */
+
+#define PACE_TURNING_PIXELS                                                                                            \
+    40.0f32 /* 720 degrees a second at 60 pictures and 1080 rows: 12 degrees, about 40 pixels at the centre */
+#define PACE_TURNING_DEGREES 720.0f32
+
+/* A pace with a ladder from 100 to a floor, and the last picture taken p_ms of the gpu thread's work and g_ms of the card's at a rung. */
+static void pace_rung_start(game_pace_t *pace, uint32_t floor_percent) {
+    game_pace_start(pace, true);
+    game_pace_ladder_set(pace, 100u, floor_percent);
+}
+
+static void pace_drawn(game_pace_t *pace, float64_t p_ms, float64_t g_ms, uint32_t percent, bool late) {
+    const int64_t started = pace->last_ready_ns + 1000;
+    const int64_t ready = started + (int64_t)((p_ms + g_ms) * (float64_t)PACE_MS);
+    game_pace_note(pace, started, ready, late ? ready - 1 : ready + 1);
+    game_pace_note_drawn(pace, (int64_t)(g_ms * (float64_t)PACE_MS), percent);
+}
+
+static game_pace_rung_in_t pace_rung_in(float32_t pixels, float32_t degrees, const game_pace_t *pace) {
+    const uint32_t last = (pace->next + GAME_PACE_SAMPLES - 1u) % GAME_PACE_SAMPLES;
+    return (game_pace_rung_in_t){
+        .tick_ns = PACE_TICK,
+        .turn_pixels = pixels,
+        .turn_degrees = degrees,
+        .late = pace->last_aimed_ns != 0 && pace->last_ready_ns > pace->last_aimed_ns ? 1u : 0u,
+        .late_percent = pace->count != 0u ? pace->drawn_percent[last] : 100u,
+    };
+}
+
+TEST(the_ladder_is_the_scale_then_the_rungs_down_to_the_floor) {
+    game_pace_ladder_t ladder;
+    game_pace_ladder(100u, 50u, &ladder);
+    CHECK_EQ_U64(ladder.count, 4u);
+    CHECK(ladder.percent[0] == 100u && ladder.percent[1] == 85u && ladder.percent[2] == 70u &&
+          ladder.percent[3] == 50u);
+    game_pace_ladder(75u, 50u, &ladder); /* a render scale of 75: never above it */
+    CHECK_EQ_U64(ladder.count, 3u);
+    CHECK(ladder.percent[0] == 75u && ladder.percent[1] == 70u && ladder.percent[2] == 50u);
+    game_pace_ladder(100u, 100u, &ladder); /* a floor of 100: on, with nowhere to go */
+    CHECK_EQ_U64(ladder.count, 1u);
+    game_pace_ladder(0u, 0u, &ladder); /* off, and a scale of 0 is 100 */
+    CHECK_EQ_U64(ladder.count, 1u);
+    CHECK_EQ_U64(ladder.percent[0], 100u);
+}
+
+TEST(the_cost_model_scales_the_card_by_its_pixels) {
+    game_pace_t pace;
+    pace_rung_start(&pace, 50u);
+    for (uint32_t i = 0u; i < GAME_PACE_SAMPLES; i++) {
+        pace_drawn(&pace, 1.0f64, 18.0f64 * 0.7225f64, 85u, false); /* 18 ms at 100, drawn at 85 */
+    }
+    CHECK_NEAR(game_pace_predict_ns(&pace, 100u), 19 * PACE_MS, 1000);
+    CHECK_NEAR(game_pace_predict_ns(&pace, 85u), (int64_t)(14.005f64 * (float64_t)PACE_MS), 1000); /* the plan's 14.0 */
+    CHECK_NEAR(game_pace_predict_ns(&pace, 50u), (int64_t)(5.5f64 * (float64_t)PACE_MS), 1000);
+}
+
+TEST(a_late_picture_steps_down_within_two) {
+    game_pace_t pace;
+    pace_rung_start(&pace, 50u);
+    pace_drawn(&pace, 1.0f64, 12.0f64, 100u, false);
+    game_pace_rung_in_t in = pace_rung_in(PACE_TURNING_PIXELS, 90.0f32, &pace); /* slow: only lateness decides */
+    CHECK_EQ_U64(game_pace_rung(&pace, &in), 100u);
+    pace_drawn(&pace, 1.0f64, 16.5f64, 100u, true); /* picture 0, late */
+    in = pace_rung_in(PACE_TURNING_PIXELS, 90.0f32, &pace);
+    CHECK_EQ_U64(game_pace_rung(&pace, &in), 85u);
+    /* A picture still on its way at 100 when it stepped comes in late too: it was drawn at a rung already left, and does not count. */
+    pace_drawn(&pace, 1.0f64, 16.5f64, 100u, true);
+    in = pace_rung_in(PACE_TURNING_PIXELS, 90.0f32, &pace);
+    CHECK_EQ_U64(game_pace_rung(&pace, &in), 85u);
+}
+
+TEST(a_fast_turn_over_the_slot_steps_down_before_a_late_one) {
+    game_pace_t pace;
+    pace_rung_start(&pace, 50u);
+    for (uint32_t i = 0u; i < GAME_PACE_SAMPLES; i++) {
+        pace_drawn(&pace, 1.0f64, 16.0f64, 100u, false); /* 17 ms: over 80 % of the slot, 13.3, and none late (yet) */
+    }
+    game_pace_rung_in_t in = pace_rung_in(PACE_TURNING_PIXELS, PACE_TURNING_DEGREES, &pace);
+    CHECK_EQ_U64(game_pace_rung(&pace, &in), 85u); /* 12.6 fits */
+    in = pace_rung_in(PACE_TURNING_PIXELS, PACE_TURNING_DEGREES, &pace);
+    CHECK_EQ_U64(game_pace_rung(&pace, &in), 85u); /* and stays there */
+    /* Under 180 degrees a second the prediction alone does not step down. */
+    pace_rung_start(&pace, 50u);
+    for (uint32_t i = 0u; i < GAME_PACE_SAMPLES; i++) {
+        pace_drawn(&pace, 1.0f64, 16.0f64, 100u, false);
+    }
+    in = pace_rung_in(PACE_TURNING_PIXELS, 179.0f32, &pace);
+    CHECK_EQ_U64(game_pace_rung(&pace, &in), 100u);
+}
+
+TEST(a_still_camera_returns_to_full_in_fifteen) {
+    game_pace_t pace;
+    pace_rung_start(&pace, 50u);
+    for (uint32_t i = 0u; i < GAME_PACE_SAMPLES; i++) {
+        pace_drawn(&pace, 1.0f64, 40.0f64 * 0.25f64, 50u, false); /* 40 ms at 100: no rung above 50 fits */
+    }
+    pace.rung = 3u;
+    for (uint32_t i = 1u; i <= GAME_PACE_RUNG_STILL; i++) {
+        const game_pace_rung_in_t in = pace_rung_in(0.5f32, 15.0f32, &pace);
+        const uint32_t rung = game_pace_rung(&pace, &in);
+        CHECK_EQ_U64(rung, i < GAME_PACE_RUNG_STILL ? 50u : 100u);
+        pace_drawn(&pace, 1.0f64, 40.0f64 * (float64_t)(rung * rung) / 10000.0f64, rung, rung == 100u);
+    }
+    /* And stays there while still, late or not. */
+    const game_pace_rung_in_t in = pace_rung_in(0.5f32, 15.0f32, &pace);
+    CHECK_EQ_U64(game_pace_rung(&pace, &in), 100u);
+    /* Where the cost allows, it is back before the fifteenth, one rung each GAME_PACE_RUNG_STEP_UP pictures. */
+    pace_rung_start(&pace, 50u);
+    pace.rung = 3u;
+    for (uint32_t i = 0u; i < GAME_PACE_SAMPLES; i++) {
+        pace_drawn(&pace, 1.0f64, 8.0f64 * 0.25f64, 50u, false); /* 9 ms at 100 */
+    }
+    uint32_t rung = 50u;
+    for (uint32_t i = 0u; i < GAME_PACE_RUNG_STEP_UP; i++) {
+        const game_pace_rung_in_t moving = pace_rung_in(PACE_TURNING_PIXELS, PACE_TURNING_DEGREES, &pace);
+        rung = game_pace_rung(&pace, &moving);
+    }
+    CHECK_EQ_U64(rung, 70u);
+}
+
+TEST(a_still_camera_never_steps_down) {
+    game_pace_t pace;
+    pace_rung_start(&pace, 50u);
+    for (uint32_t i = 0u; i < 100u; i++) {
+        pace_drawn(&pace, 1.0f64, 30.0f64, 100u, true);
+        const game_pace_rung_in_t in = pace_rung_in(0.0f32, 0.0f32, &pace);
+        CHECK_EQ_U64(game_pace_rung(&pace, &in), 100u);
+    }
+    /* Under GAME_PACE_RUNG_STILL_PIXELS is still too: a hand resting on the mouse. */
+    pace_drawn(&pace, 1.0f64, 30.0f64, 100u, true);
+    const game_pace_rung_in_t in = pace_rung_in(GAME_PACE_RUNG_STILL_PIXELS * 0.99f32, 0.0f32, &pace);
+    CHECK_EQ_U64(game_pace_rung(&pace, &in), 100u);
+}
+
+TEST(the_floor_holds) {
+    game_pace_t pace;
+    pace_rung_start(&pace, 70u);
+    uint32_t least = 100u;
+    for (uint32_t i = 0u; i < 50u; i++) {
+        const game_pace_rung_in_t in = pace_rung_in(PACE_TURNING_PIXELS, PACE_TURNING_DEGREES, &pace);
+        const uint32_t rung = game_pace_rung(&pace, &in);
+        least = rung < least ? rung : least;
+        pace_drawn(&pace, 1.0f64, 80.0f64 * (float64_t)(rung * rung) / 10000.0f64, rung, true);
+    }
+    CHECK_EQ_U64(least, 70u);
+}
+
+TEST(off_is_off) {
+    game_pace_t pace;
+    game_pace_start(&pace, true);
+    game_pace_ladder_set(&pace, 100u, 0u);
+    for (uint32_t i = 0u; i < 50u; i++) {
+        pace_drawn(&pace, 1.0f64, 80.0f64, 100u, true);
+        const game_pace_rung_in_t in = pace_rung_in(PACE_TURNING_PIXELS, PACE_TURNING_DEGREES, &pace);
+        CHECK_EQ_U64(game_pace_rung(&pace, &in), 100u);
+    }
+    /* Off with a render scale under 100: always the scale. */
+    game_pace_ladder_set(&pace, 60u, 0u);
+    const game_pace_rung_in_t in = pace_rung_in(PACE_TURNING_PIXELS, PACE_TURNING_DEGREES, &pace);
+    CHECK_EQ_U64(game_pace_rung(&pace, &in), 60u);
+}
+
+/* The card's time at 100 % in a direction of a shake about Ahmed's spot, at 600 MHz: phase 01's cost rose at render distance 64 (median
+ * 10.9 ms, p90 16, worst 33 up at the peak), with phase 04's turning costs on it. Phase 01 has no per-picture log at 600 MHz (the card
+ * sat at 148), so this is the shake rebuilt from its numbers: a triangle of +-60 degrees whose dear side reaches 24 ms. */
+static float64_t pace_shake_card_ms(float64_t yaw_degrees) {
+    const float64_t side = (yaw_degrees + 60.0f64) / 120.0f64; /* 0 at -60, 1 at +60 */
+    return 9.0f64 + 15.0f64 * side * side;
+}
+
+TEST(phase_01s_shake_stays_under_the_slot) {
+    game_pace_t pace;
+    pace_rung_start(&pace, 50u);
+    float32_t *const intervals = test_alloc(t, 600u * sizeof(float32_t));
+    float64_t yaw = 0.0f64, direction = 1.0f64;
+    uint32_t rungs[4] = {0u, 0u, 0u, 0u};
+    for (uint32_t i = 0u; i < 600u; i++) {
+        /* What the last picture took sets how far the camera turned before this one. */
+        const float64_t last_ms = i == 0u ? 16.67f64 : (float64_t)intervals[i - 1u];
+        const float64_t turned = 720.0f64 * last_ms / 1000.0f64;
+        yaw += direction * turned;
+        if (yaw > 60.0f64 || yaw < -60.0f64) {
+            direction = -direction;
+            yaw = yaw > 60.0f64 ? 120.0f64 - yaw : -120.0f64 - yaw;
+        }
+        const game_pace_rung_in_t in =
+            pace_rung_in((float32_t)(turned / 0.0648f64), PACE_TURNING_DEGREES, &pace); /* 0.0648 degrees a pixel */
+        const uint32_t rung = game_pace_rung(&pace, &in);
+        rungs[rung == 100u ? 0u : (rung == 85u ? 1u : (rung == 70u ? 2u : 3u))]++;
+        const float64_t g_ms = pace_shake_card_ms(yaw) * (float64_t)(rung * rung) / 10000.0f64;
+        intervals[i] = (float32_t)(1.0f64 + g_ms);
+        pace_drawn(&pace, 1.0f64, g_ms, rung, intervals[i] > 16.67f32);
+    }
+    /* p99 of the predicted intervals: the 594th of 600 sorted. */
+    for (uint32_t i = 1u; i < 600u; i++) {
+        const float32_t value = intervals[i];
+        uint32_t at = i;
+        while (at > 0u && intervals[at - 1u] > value) {
+            intervals[at] = intervals[at - 1u];
+            at--;
+        }
+        intervals[at] = value;
+    }
+    printf("  shake at 600 MHz: p50 %.2f, p99 %.2f, worst %.2f ms; rungs 100/85/70/50: %u/%u/%u/%u of 600\n",
+           (libc_double_t)intervals[300], (libc_double_t)intervals[593], (libc_double_t)intervals[599], rungs[0],
+           rungs[1], rungs[2], rungs[3]);
+    CHECK(intervals[593] <= 16.7f32);
+    CHECK(rungs[0] < 600u); /* it did draw smaller */
 }
 
 TEST_MAIN()

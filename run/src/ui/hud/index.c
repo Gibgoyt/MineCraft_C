@@ -485,8 +485,13 @@ void ui_hud_debug_draw(ui_canvas_t *canvas, const ui_font_t *font, const ui_hud_
         if (debug->skipped != 0u && used > 0 && (uint64_t)used < sizeof(lines[2])) {
             snprintf(lines[2] + used, sizeof(lines[2]) - (uint64_t)used, "  skip %" PRIu32, debug->skipped);
         }
-        snprintf(lines[3], sizeof(lines[3]), "turn %.0f deg/s  %.0f MHz", (libc_double_t)debug->turn_deg_s,
-                 (libc_double_t)debug->card_mhz);
+        const int32_t turn = snprintf(lines[3], sizeof(lines[3]), "turn %.0f deg/s  %.0f MHz",
+                                      (libc_double_t)debug->turn_deg_s, (libc_double_t)debug->card_mhz);
+        /* Plan 008 phase 05: the picture drawn smaller and brought up: "res 70% dyn" while dynamic resolution has it under the scale. */
+        if (debug->rung_percent != 0u && debug->rung_percent < 100u && turn > 0 && (uint64_t)turn < sizeof(lines[3])) {
+            snprintf(lines[3] + turn, sizeof(lines[3]) - (uint64_t)turn, "  res %u%%%s", (uint32_t)debug->rung_percent,
+                     debug->rung_dynamic != 0u ? " dyn" : "");
+        }
     }
     for (uint32_t i = 0u; i < 4u; i++) {
         y += line;

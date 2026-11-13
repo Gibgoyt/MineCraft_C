@@ -1708,7 +1708,7 @@ TEST(the_frame_log_has_one_line_per_picture) {
     printf("  %" PRIu64 " pictures taken in 2 s, %" PRIu64 " lines in the log\n", taken, lines);
     CHECK(taken > 10u);
     CHECK_EQ_U64(lines, taken + 1u);
-    CHECK(strstr((const char *)text, ",pace,aimed_ms,start_late_ms,missed,puts_skipped\n") != nullptr);
+    CHECK(strstr((const char *)text, ",pace,aimed_ms,start_late_ms,missed,puts_skipped,rung\n") != nullptr);
     fr_temp_dir_remove(&dir);
 }
 

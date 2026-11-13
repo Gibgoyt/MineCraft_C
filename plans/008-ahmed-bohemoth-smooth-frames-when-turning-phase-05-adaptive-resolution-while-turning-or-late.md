@@ -1,6 +1,6 @@
 # 008-ahmed-bohemoth-smooth-frames-when-turning — phase 5: Adaptive resolution while turning or late
 
-**Status:** not started   (updated 2026-11-12)
+**Status:** built and tested; the shake rows and the shots next   (updated 2026-11-13)
 
 Read first: `plans/008-ahmed-bohemoth-smooth-frames-when-turning-phase-00-vision-and-plan-files.md`, then the master `plans/008-ahmed-bohemoth-smooth-frames-when-turning.md`: sections 2.3, 3.5, 4 and 8. Then phase 01's cost rose and frame logs (this phase's controller is tested on them), and phase 02's $\hat{T}$ and late flag.
 
@@ -156,12 +156,12 @@ This phase may edit these, plus this file:
 
 ## Todo
 
-- [ ] TAA's and AO's history read indexed by the previous camera's width and height
-- [ ] `post_upscale_kernel`; outline and entity overlays after it at output size; readback at output size
-- [ ] The static render scale through the card's upscale; `game_view_bring_up` removed
-- [ ] `game_pace_rung`: the ladder, the four rules, the floor; tests fed phase 01's frame logs
-- [ ] The rung set before each draw; F3's `res` field
-- [ ] Settings `dynamic_resolution` and `dynamic_resolution_floor_percent`, file and screen
+- [x] TAA's and AO's history read indexed by the previous camera's width and height
+- [x] `post_upscale_kernel`; outline and entity overlays after it at output size; readback at output size
+- [x] The static render scale through the card's upscale; `game_view_bring_up` removed
+- [x] `game_pace_rung`: the ladder, the four rules, the floor; tests fed phase 01's frame logs
+- [x] The rung set before each draw; F3's `res` field
+- [x] Settings `dynamic_resolution` and `dynamic_resolution_floor_percent`, file and screen
 - [ ] Shake rows with dynamic on and off; `spot/shake-720-live-capped-r64` p99 ≤ 16.7 ms and worst ≤ 25 ms, or why not, below
 - [ ] Shots at each rung looked at and described below
 - [ ] Golden pictures and every settled still row's hash unchanged

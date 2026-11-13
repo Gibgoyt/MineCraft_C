@@ -8,6 +8,7 @@
 #include "heap/index.h"
 #include "log/index.h"
 #include "main/index.h"
+#include "settings/persist/index.h"
 #include "tables/biomes/index.h"
 #include "tables/blocks/index.h"
 #include "terrain/index.h"
@@ -55,7 +56,9 @@ enum : uint32_t {
     SH_ROSE_PITCHES = 3u, /* -20, 0 and +15 */
     SH_ROSE_WARM = 8u,
     SH_ROSE_SIZE = 800u, /* the polar plot's PNG, square */
-    SH_ROWS = 18u,
+    SH_ROWS = 19u,
+    SH_RUNGS =
+        4u, /* plan 008 phase 05: 100, then the ladder's three: a picture is counted at the nearest at or under its own */
     SH_PATH_BYTES = 512u,
     SH_NAME_BYTES = 64u,
     SH_PLACE_STEP = 128u,
@@ -105,6 +108,7 @@ static const sh_row_t SH_ROW_LIST[SH_ROWS] = {
     {"shake-0-live-capped-r64", 0.0f64, SH_DISTANCE_FAR, SH_MODE_CAPPED, 0u, {0}},
     {"shake-720-live-capped-r64", 720.0f64, SH_DISTANCE_FAR, SH_MODE_CAPPED, 0u, {0}},
     {"shake-720-live-r64", 720.0f64, SH_DISTANCE_FAR, SH_MODE_UNCAPPED, 0u, {0}},
+    {"shake-1440-live-capped-r64", 1440.0f64, SH_DISTANCE_FAR, SH_MODE_CAPPED, 0u, {0}}, /* plan 008 phase 05's table */
 };
 
 /* What a row came to. Settled, an interval is the card's time on the picture, as there is no clock to show it by. */
@@ -151,8 +155,13 @@ typedef struct sh_result_t {
     float32_t
         latency_p50_ms; /* 456: live: camera to screen, p50: from a picture's start, where its camera is read, to main's take */
     float32_t queue_ms; /* 460: live: the gpu thread's part of a picture, its start to all queued, mean */
+    /* 464: plan 008 phase 05: pictures drawn at 100 % (or the render scale), and at the ladder's 85, 70 and 50 */
+    uint32_t rungs[SH_RUNGS];
+    /* 480: live, with --still-tail: from the camera stopping to the first picture back at the top rung, begun after it; -1 if none */
+    float32_t back_ms;
+    uint8_t _pad1[4]; /* 484 */
 } sh_result_t;
-static_assert(sizeof(sh_result_t) == 464);
+static_assert(sizeof(sh_result_t) == 488);
 
 typedef struct sh_options_t {
     const char *only;         /* 0 */
@@ -173,9 +182,14 @@ typedef struct sh_options_t {
     uint8_t
         serial_frames; /* 76: plan 008 phase 03: each picture finished before the next is begun, as before that phase */
     uint8_t fresh_one; /* 77: plan 008 phase 04, Q2 B: a newly seen pixel sends one AO ray, with no first guess */
-    uint8_t _pad0[2];  /* 78 */
+    uint8_t
+        dynamic_floor; /* 78: plan 008 phase 05: dynamic resolution's floor, of each side; 0 for off, as before it */
+    uint8_t scale;     /* 79: the render scale, the ladder's top; 0 for 100 */
+    uint32_t
+        still_tail; /* 80: live: the last this many seconds of a row the camera stops, to time the way back to the top */
+    uint8_t _pad1[4]; /* 84 */
 } sh_options_t;
-static_assert(sizeof(sh_options_t) == 80);
+static_assert(sizeof(sh_options_t) == 88);
 
 /* One picture of a live row, kept as it is read off the rings. */
 typedef struct sh_sample_t {
@@ -192,7 +206,7 @@ typedef struct sh_sample_t {
     uint8_t late;                         /* 76 */
     uint8_t joined;                       /* 77: its picture was still in the ring */
     uint8_t how;                          /* 78: plan 008 phase 02: how the start rule started it, game_pace_how_t */
-    uint8_t _pad0[1];                     /* 79 */
+    uint8_t percent;                      /* 79: plan 008 phase 05: the rung it was drawn at; 0 if not known */
     float32_t latency;  /* 80: plan 008 phase 03: ms from its start (its camera read) to main's take */
     float32_t queue_ms; /* 84: plan 008 phase 03: from its start to all queued: the gpu thread's own part */
 } sh_sample_t;
@@ -447,6 +461,13 @@ static void sh_samples_sum(sh_t *sh, uint32_t count, sh_result_t *r) {
     for (uint32_t i = 0u; i < count; i++) {
         const sh_sample_t *const s = &samples[i];
         late += s->late;
+        if (s->percent != 0u) {
+            const uint32_t rung = s->percent > GAME_PACE_RUNG_HIGH     ? 0u
+                                  : s->percent > GAME_PACE_RUNG_MIDDLE ? 1u
+                                  : s->percent > GAME_PACE_RUNG_LOW    ? 2u
+                                                                       : 3u;
+            r->rungs[rung]++;
+        }
         if (s->interval > 0.0f32) {
             sort[intervals++] = s->interval;
             const uint32_t bin = (uint32_t)((float64_t)s->interval / SH_SLOT_MS);
@@ -599,6 +620,7 @@ static void sh_settled_sample(const sh_t *sh, sh_sample_t *out, float32_t host_m
         out->mhz = marks->clock_read != 0u ? marks->card_mhz : 0.0f32;
     }
     out->joined = 1u;
+    out->percent = app->render.frame.scale_percent;
 }
 
 static bool sh_row_settled(sh_t *sh, const sh_row_t *row, float64_t heading_deg, sh_result_t *r) {
@@ -649,6 +671,7 @@ static uint32_t sh_rings_take(sh_t *sh, const game_watch_t *watch, uint64_t *tak
             /* Plan 008 phase 02: late is ready after the take the start rule aimed it at, as the frame log says, when it was aimed. */
             s->late = p->aimed_ns != 0 ? p->missed : s->late;
             s->how = p->pace_how;
+            s->percent = p->percent;
             s->joined = 1u;
             s->card_ms = p->total_ms;
             s->p_ms = (float32_t)(time_ns_to_ms(at[GAME_WATCH_STAMP_READY] - at[GAME_WATCH_STAMP_START]) -
@@ -674,8 +697,23 @@ static uint32_t sh_rings_take(sh_t *sh, const game_watch_t *watch, uint64_t *tak
     return count;
 }
 
+/* Plan 008 phase 05: from still_ns, when the camera stopped, to the start of the first picture at the top rung begun after it, which main took.
+ * -1 if none came. */
+static float32_t sh_back_ms(const game_watch_t *watch, uint64_t takes_from, int64_t still_ns, uint32_t top) {
+    const uint64_t made = atomic_load_explicit(&watch->takes_made, memory_order_relaxed);
+    const uint64_t oldest = made > GAME_WATCH_RING ? made - GAME_WATCH_RING : 0u;
+    for (uint64_t i = takes_from > oldest ? takes_from : oldest; i < made; i++) {
+        const game_watch_take_t *const take = &watch->borrowed_takes[i % GAME_WATCH_RING];
+        const game_watch_picture_t *const p = &watch->borrowed_pictures[take->seq % GAME_WATCH_RING];
+        if (p->seq == take->seq && take->start_ns >= still_ns && p->percent >= top) {
+            return (float32_t)time_ns_to_ms(take->start_ns - still_ns);
+        }
+    }
+    return -1.0f32;
+}
+
 static bool sh_row_live(sh_t *sh, const sh_row_t *row, float64_t heading_deg, uint32_t seconds, bool pace,
-                        sh_result_t *r) {
+                        uint32_t still_tail, sh_result_t *r) {
     game_t *const game = &sh->borrowed_app->game;
     display_buffer_t target = sh_target(sh);
     if (!game_loop_start(game, nullptr)) {
@@ -691,9 +729,15 @@ static bool sh_row_live(sh_t *sh, const sh_row_t *row, float64_t heading_deg, ui
     const int64_t total_ns = (int64_t)seconds * TIME_NS_PER_SECOND;
     const int64_t started_ns = time_now_ns();
     int64_t now_ns = started_ns, last_ns = started_ns, next_ns = started_ns;
+    const uint64_t takes_from = takes_read;
+    const int64_t tail_ns = (int64_t)(still_tail < seconds ? still_tail : 0u) * TIME_NS_PER_SECOND;
+    const int64_t still_ns = started_ns + total_ns - tail_ns;
     bool ok = true;
     while (ok && now_ns - started_ns < total_ns) {
-        sh_look(row, heading_deg, (float64_t)(now_ns - started_ns) / (float64_t)TIME_NS_PER_SECOND, &game->camera);
+        /* Plan 008 phase 05: with a still tail, the camera stops where it is for the row's last seconds. */
+        if (tail_ns == 0 || now_ns < still_ns) {
+            sh_look(row, heading_deg, (float64_t)(now_ns - started_ns) / (float64_t)TIME_NS_PER_SECOND, &game->camera);
+        }
         /* Plan 008 phase 02: the tick it sleeps to, as a window says; none with --pace-off. */
         game_loop_next_take(game, pace ? next_ns + frame_ns : 0);
         ok = game_loop_frame(game, &still, (float32_t)((float64_t)(now_ns - last_ns) / (float64_t)TIME_NS_PER_SECOND),
@@ -710,6 +754,7 @@ static bool sh_row_live(sh_t *sh, const sh_row_t *row, float64_t heading_deg, ui
     }
     ok = game_loop_stop(game) && ok;
     count = sh_rings_take(sh, watch, &takes_read, &last_taken_ns, count);
+    r->back_ms = tail_ns != 0 ? sh_back_ms(watch, takes_from, still_ns, game->view.scale_percent) : -1.0f32;
     if (!ok) {
         return false;
     }
@@ -910,6 +955,8 @@ static bool sh_run(sh_t *sh, const sh_row_t *row, const sh_options_t *options, s
                                   .width = SH_WIDTH,
                                   .height = SH_HEIGHT,
                                   .features_off = (uint32_t)SHADE_FEATURE_DAY_CYCLE | options->features_off,
+                                  .render_scale_percent = options->scale,
+                                  .dynamic_floor_percent = options->dynamic_floor,
                                   .uncapped = row->mode == SH_MODE_UNCAPPED ? 1u : 0u};
     if (!game_open(game, &config)) {
         return false;
@@ -927,7 +974,7 @@ static bool sh_run(sh_t *sh, const sh_row_t *row, const sh_options_t *options, s
         ok = row->mode == SH_MODE_SETTLED
                  ? sh_row_settled(sh, row, options->yaw_deg, r)
                  : sh_row_live(sh, row, options->yaw_deg, options->seconds != 0u ? options->seconds : SH_LIVE_SECONDS,
-                               options->pace_off == 0u, r);
+                               options->pace_off == 0u, options->still_tail, r);
     }
     if (ok) {
         r->picture_hash = sh_hash(sh->borrowed_picture, (uint64_t)SH_WIDTH * SH_HEIGHT * 4u);
@@ -979,6 +1026,15 @@ static void sh_row_print(const char *place, const sh_row_t *row, const sh_result
                (libc_double_t)(r->on_way_share * 100.0f32), (libc_double_t)r->latency_p50_ms,
                (libc_double_t)r->queue_ms);
     }
+    const uint32_t drawn = r->rungs[0] + r->rungs[1] + r->rungs[2] + r->rungs[3];
+    if (drawn != 0u && r->rungs[0] != drawn) {
+        printf("    rungs 100/85/70/50: %.0f/%.0f/%.0f/%.0f %% of pictures",
+               (libc_double_t)(100.0f64 * r->rungs[0] / drawn), (libc_double_t)(100.0f64 * r->rungs[1] / drawn),
+               (libc_double_t)(100.0f64 * r->rungs[2] / drawn), (libc_double_t)(100.0f64 * r->rungs[3] / drawn));
+        printf(r->back_ms >= 0.0f32 ? "; back to the top %.0f ms after stopping\n" : "\n", (libc_double_t)r->back_ms);
+    } else if (r->back_ms >= 0.0f32) {
+        printf("    at the top throughout; back to the top %.0f ms after stopping\n", (libc_double_t)r->back_ms);
+    }
     printf("    intervals by slot (8.33 ms each, last is all past):");
     for (uint32_t i = 0u; i < SH_BINS; i++) {
         printf(" %" PRIu32, r->bins[i]);
@@ -1021,7 +1077,8 @@ static bool sh_record(const sh_result_t *results, const sh_options_t *options) {
             "interval_p50_ms\tinterval_p99_ms\tinterval_worst_ms\tlate_share\tpictures_per_s\tcard_mean_ms\t"
             "card_p99_ms\tcard_worst_ms\tcoarse_ms\tprimary_ms\tlod_ms\tshade_ms\tpost_ms\treadback_ms\twater_ms\t"
             "surface_ms\tsun_ms\tao_ms\tao_fresh_ms\tfresh_mean\tfresh_max\tp_ms\tgpu_wait_take_ms\tcard_mhz\t"
-            "card_mhz_low\tcard_mhz_high\tpictures\tseconds\tpicture\tsound\tcard_mcycles\n");
+            "card_mhz_low\tcard_mhz_high\tpictures\tseconds\tpicture\tsound\tcard_mcycles\tscale\tdynamic_floor\t"
+            "rung_100\trung_85\trung_70\trung_50\tback_ms\n");
     }
     char date[32] = "";
     const time_t now = time(nullptr);
@@ -1044,7 +1101,7 @@ static bool sh_record(const sh_result_t *results, const sh_options_t *options) {
             "%s\t%s\t%s\t%s/%s\t%s\t%" PRIX64 "\t%" PRId32 "\t%" PRId32 "\t%" PRId32 "\t%.1f\t%" PRIu32 "\t%" PRIX32
             "\t%.3f\t%.3f\t%.3f\t%.4f\t%.2f\t%.3f\t%.3f\t%.3f\t%.3f\t%.3f\t%.3f\t%.3f\t%.3f\t%.3f\t%.3f\t%.3f\t%.3f\t"
             "%.3f\t%.3f\t%.0f\t%" PRIu32 "\t%.3f\t%.3f\t%.0f\t%.0f\t%.0f\t%" PRIu64 "\t%.2f\t%016" PRIX64
-            "\t%u\t%.3f\n",
+            "\t%u\t%.3f\t%u\t%u\t%" PRIu32 "\t%" PRIu32 "\t%" PRIu32 "\t%" PRIu32 "\t%.1f\n",
             date, options->label != nullptr ? options->label : "-", sh_preset_name(), place, row->name,
             sh_mode_name(row->mode), options->seed, r->place[0], r->place[1], r->place[2],
             (libc_double_t)options->yaw_deg, distance, options->features_off, (libc_double_t)r->interval_p50_ms,
@@ -1059,7 +1116,9 @@ static bool sh_record(const sh_result_t *results, const sh_options_t *options) {
             (libc_double_t)r->fresh_mean, r->fresh_max, (libc_double_t)r->p_ms, (libc_double_t)r->wait_take_ms,
             (libc_double_t)r->card_mhz, (libc_double_t)r->card_mhz_low, (libc_double_t)r->card_mhz_high, r->pictures,
             (libc_double_t)r->seconds, row->mode == SH_MODE_SETTLED ? r->picture_hash : 0u, (uint32_t)r->sound,
-            (libc_double_t)r->card_mcycles);
+            (libc_double_t)r->card_mcycles, options->scale != 0u ? (uint32_t)options->scale : 100u,
+            (uint32_t)options->dynamic_floor, r->rungs[0], r->rungs[1], r->rungs[2], r->rungs[3],
+            (libc_double_t)r->back_ms);
     }
     const bool closed = fclose(file) == 0;
     if (!closed) {
@@ -1088,6 +1147,10 @@ static void sh_usage(const char *program) {
         "  --rose            the cost rose in place of the rows: 72 yaws by 3 pitches, settled\n"
         "  --pace-off        live rows with no next take said: the gpu thread's rule before plan 008 phase 02\n"
         "  --serial-frames   each picture finished on the card before the next is begun: before plan 008 phase 03\n"
+        "  --dynamic-floor <0|50|70|85|100>  plan 008 phase 05's dynamic resolution down to this floor; 0, the "
+        "default, off\n"
+        "  --scale <25..100>  the render scale, the ladder's top, brought up on the card\n"
+        "  --still-tail <s>  live rows: the camera stops for the last s seconds, to time the way back to the top rung\n"
         "  --fresh-ao-rays <1|4>  AO rays a newly seen pixel sends: 1 with no first guess (plan 008 phase 04's Q2 B), "
         "or 4 with\n"
         "                    none either (as before that phase, the same as --features-off 80000); unset, the first "
@@ -1116,6 +1179,20 @@ static bool sh_parse(int32_t argc, char **argv, sh_options_t *out) {
             }
             out->fresh_one = rays == 1u ? 1u : 0u;
             out->features_off |= (uint32_t)SHADE_FEATURE_AO_FIRST_GUESS;
+        } else if (strcmp(argv[i], "--dynamic-floor") == 0 && has_value) {
+            const uint64_t floor_percent = strtoull(argv[++i], nullptr, 10);
+            if (floor_percent != 0u && !settings_persist_floor_good((uint32_t)floor_percent)) {
+                return false;
+            }
+            out->dynamic_floor = (uint8_t)floor_percent;
+        } else if (strcmp(argv[i], "--scale") == 0 && has_value) {
+            const uint64_t percent = strtoull(argv[++i], nullptr, 10);
+            if (percent < SETTINGS_RENDER_SCALE_MIN || percent > SETTINGS_RENDER_SCALE_MAX) {
+                return false;
+            }
+            out->scale = (uint8_t)percent;
+        } else if (strcmp(argv[i], "--still-tail") == 0 && has_value) {
+            out->still_tail = (uint32_t)strtoul(argv[++i], nullptr, 10);
         } else if (strcmp(argv[i], "--only") == 0 && has_value) {
             out->only = argv[++i];
         } else if (strcmp(argv[i], "--record") == 0 && has_value) {

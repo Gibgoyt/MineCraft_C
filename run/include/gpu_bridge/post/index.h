@@ -162,6 +162,38 @@ static inline uint64_t post_xrgb_bytes(uint32_t width, uint32_t height) {
     return (uint64_t)width * height * POST_BYTES_PER_PIXEL;
 }
 
+/* ---- Plan 008 phase 05: pictures drawn smaller than they are shown ----------------------------------------------------------------
+ *
+ * A picture may be drawn at a percent of each side of its output, its rung (run/src/game/pace/ picks it, render/frame draws at it). Every
+ * kernel up to post takes a camera of the drawn size, and every per-pixel block, sized once for the output, is indexed by that camera's
+ * width: the first inner_width * inner_height entries are used. What goes from frame to frame (TAA's history, AO's) is at the size of the
+ * frame that wrote it, so a reader indexes it by post_temporal_t.previous's width and height, and post_reproject maps through both cameras:
+ * a change of rung is a reprojection like any other. post_upscale then brings the tone-mapped picture up to the output, and the overlays are
+ * drawn over that at the output's size. At POST_SCALE_WHOLE none of this runs, and the picture is the same to the byte. */
+enum : uint32_t {
+    POST_SCALE_WHOLE = 100u, /* percent: drawn at the output's size */
+};
+
+/* A side drawn at percent of it: floored, at least 1. 0, or POST_SCALE_WHOLE or more, is the side itself. What the static render scale
+ * always came to (game_view), so a picture at a render scale is the size it was. */
+POST_BOTH_SIDES static inline uint32_t post_scaled_side(uint32_t side, uint32_t percent) {
+    if (percent == 0u || percent >= POST_SCALE_WHOLE) {
+        return side;
+    }
+    const uint32_t scaled = (uint32_t)((uint64_t)side * percent / POST_SCALE_WHOLE);
+    return scaled != 0u ? scaled : 1u;
+}
+
+/* The pixel of a picture inner pixels across under the middle of pixel `at` of one `outer` across: the nearest, so at the same size it is
+ * `at`. For a pass at the output's size that reads what was drawn smaller (the outline's depths). */
+POST_BOTH_SIDES static inline uint32_t post_scaled_under(uint32_t at, uint32_t outer, uint32_t inner) {
+    if (outer == inner || outer == 0u) {
+        return at;
+    }
+    const uint32_t under = (uint32_t)(((uint64_t)at * 2u + 1u) * inner / ((uint64_t)outer * 2u));
+    return under < inner ? under : inner - 1u;
+}
+
 static inline uint64_t post_history_bytes(uint32_t width, uint32_t height) {
     return (uint64_t)width * height * sizeof(post_taa_pixel_t);
 }
@@ -757,6 +789,13 @@ gpu_status_t post_frame_temporal(gpu_error_t *error, const post_settings_t *sett
                                  bool taa, bool shafts, const traverse_camera_t *camera, const device_block_t *pixels,
                                  const device_block_t *xrgb, const post_weather_t *weather,
                                  const device_block_t *weather_map);
+
+/* Plan 008 phase 05: an XRGB8888 picture of inner_width by inner_height, rows side by side in inner, brought up to out_width by out_height
+ * in out, bilinear in its bytes: each output pixel's middle, placed on the inner picture, between the four pixels around it, the edge's
+ * pixel past the edge, rounded to the nearest byte. A flat colour stays that colour. The two blocks must not overlap, and neither size may
+ * be 0 or the inner larger than the out. Starts a kernel and returns; on failure error says why, and nothing was started. */
+gpu_status_t post_upscale(gpu_error_t *error, const device_block_t *inner, uint32_t inner_width, uint32_t inner_height,
+                          const device_block_t *out, uint32_t out_width, uint32_t out_height);
 
 #ifdef __cplusplus
 }

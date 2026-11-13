@@ -368,10 +368,12 @@ static __device__ __forceinline__ float32_t shade_ao_at(const shade_context_t *c
         for (int32_t dy = -1; dy <= 1; dy += 1) {
             for (int32_t dx = -1; dx <= 1; dx += 1) {
                 const int32_t x = last_x + dx, y = last_y + dy;
-                if (x < 0 || y < 0 || x >= (int32_t)camera->width || y >= (int32_t)camera->height) {
+                /* The last frame's AO is at its own size, which a rung change makes another (plan 008 phase 05). */
+                if (x < 0 || y < 0 || x >= (int32_t)temporal->previous.width ||
+                    y >= (int32_t)temporal->previous.height) {
                     continue;
                 }
-                const shade_ao_pixel_t *const one = &ao->last[(uint64_t)y * camera->width + (uint32_t)x];
+                const shade_ao_pixel_t *const one = &ao->last[(uint64_t)y * temporal->previous.width + (uint32_t)x];
                 if (!shade_ao_same_surface(one, face, plane, moved, hit->t)) {
                     continue;
                 }

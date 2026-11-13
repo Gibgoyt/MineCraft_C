@@ -8,7 +8,8 @@
 **Public functions** (`run/include/render/frame/index.h`):
 
 - `render_exchange_start`, `render_exchange_publish`, `render_exchange_take`, `render_exchange_waiting`: a triple buffer's numbers, from one thread to another, without either ever waiting.
-- `render_camera_start`, `render_camera_fly`, `render_camera_to_traverse`: where the eye is, one step of flying, and what kernels take.
+- `render_camera_start`, `render_camera_fly`, `render_camera_to_traverse`: where the eye is, one step of flying, and what kernels take. `render_camera_to_traverse_drawn` (plan 008 phase 05): the same for a picture drawn smaller than it is shown, with the shown picture's field of view and aspect.
+- `render_frame_scale_set`, `render_frame_drawn_size` (plan 008 phase 05): the size the next frames are drawn at, in percent of each side of the output, and what that comes to. See "Drawn smaller" below.
 - `render_frame_texture_table_bytes`, `render_frame_face_table_bytes`, `render_frame_shape_table_bytes`, `render_frame_arena_bytes`: sizes for the parent.
 - `render_frame_init`, `render_frame_deinit`: the tables and textures sent to the card, and the pictures pinned. The face table holds, after its faces, the blocks no ray of shade goes on through, for the far field (`lod_light_t.stops_after_faces`, `lod_stops_offset`) (see `cuda/src/lod/README.md`, "Only where shade will look").
 - `render_frame_features_set`: which effects the next frames draw with. `SHADE_FEATURES_ALL` unless told otherwise, and `game` asks for `SHADE_FEATURES_PLAY`, as the ones with a history do not suit a test that wants one exact picture.
@@ -19,7 +20,7 @@
 - `render_frame_draw`: a whole frame, from world_buffers as they stand and a camera, on the card and home.
 - `render_frame_queue`, `render_frame_finish` (plan 008 phase 03): `render_frame_draw_weather` in two halves. The queue reads the buffers, the camera and the weather, sends the entity lists through the frame's staging, queues the kernels on the device picture of its flight slot (`borrowed_xrgb_second` for slot 1), and moves the temporal state on, as that is about the order of frames. The finish waits for the oldest frame queued, adds it to the books and publishes it. At most two are queued (`on_way`). A frame queued alone goes home into the exchange's back slot at once; with one before it on its way, that one goes home only now, behind this frame's copies and kernels (a copy to the card queued behind a copy home still waiting for its picture waits for it: measured), and this one at the first's finish, into the slot its publish gives back, so the exchange keeps its three slots. `render_frame_oldest_whole` and `render_frame_oldest_done` ask without waiting. `render_frame_draw_weather` is a queue and a finish, after finishing anything on its way.
 - `render_frame_draw_weather`, `render_weather_take` (and `render_weather_take_staged`, which sends the map through the frame's staging), `render_weather_apply`, `render_weather_visibility`, `render_weather_flicker`: the same frame with the weather where the eye is (plan 004 phase 08), what the thread that draws makes of each slot the sim sends (`render_weather_slot_t`) as `render_weather_t`, and the arithmetic of what weather does to the sky, the light and the fog. See "Weather" below.
-- `render_frame_take`, `render_frame_present`, `render_frame_present_full`: the newest picture, and copying it to a display buffer; the last for pixels of the target's own size, whatever size the frame draws at.
+- `render_frame_take`, `render_frame_present`, `render_frame_present_full`: the newest picture, and copying it to a display buffer; the last for pixels of the target's own size. A picture is always the output's size (`width` by `height`), whatever its rung.
 - `render_frame_report`, `render_frame_percentiles`: what the frames took.
 
 **May be called by:** `render` (the Owner) and `render/entities`, `game`, `player` and `player/camera` for `render_camera_t` and the exchange, and `ui/screen_inventory` for `render_exchange_t`.
@@ -48,6 +49,16 @@ The position is `float64_t`, and goes to the kernels as a whole cell and a fract
 ## From frame to frame
 
 `post_temporal_t` holds what goes from one frame to the next: the last frame's camera with no jitter, this one's jitter, a count of frames, and which block of each two the last frame wrote. `render_frame_queue` is what keeps it, and the blocks swap as soon as a frame is queued (the next frame queued reads what this one writes, in the stream's order), and only for an effect that was on. A frame counts as drawn before for the histories once it is queued, finished or not. An effect turned on starts from nothing, as what its blocks hold is from before it was turned off. See `cuda/src/post/README.md` and `cuda/src/shade/README.md`.
+
+## Drawn smaller (plan 008 phase 05)
+
+`render_frame_t.width` and `height` are the output's: what goes home, what main shows, and what every per-pixel block was sized for once. `scale_percent` is the next frame's rung, `POST_SCALE_WHOLE` from `render_frame_init`; the game sets it before each draw (`run/src/game/pace/` picks it: the render scale at the top, and while turning or late a rung under it, down to the floor setting). `render_frame_queue` then:
+
+1. works out the drawn size with `post_scaled_side`, the static render scale's old arithmetic, and the drawn camera with `render_camera_to_traverse_drawn`: the same view, fewer pixels. Jitter stays a fraction of a drawn pixel, so TAA accumulates as at full size.
+2. makes the output's camera too, with no jitter, and hands it to the kernels as `frame_args_t.borrowed_output_camera` when the sizes differ. Post then writes the drawn picture into the hits block (free once shade is done), `post_upscale` brings it up bilinear into the frame's device picture, and the outline and the placing preview are drawn over that by the output's camera, so they stay one output pixel wide (their rectangles, worked out in the drawn camera's pixels, are scaled up and widened by one).
+3. keeps the drawn camera, without jitter, as `temporal.previous`: the next frame reads TAA's and AO's history at that size (see `run/include/gpu_bridge/post/index.h`, "pictures drawn smaller than they are shown"). A change of rung is a reprojection like any other.
+
+At `POST_SCALE_WHOLE` none of it runs: `borrowed_output_camera` is nullptr and a picture is what it was, to the byte. The static render scale is the ladder's top rung and goes the same way; the CPU's nearest-pixel bring-up (`game_view_bring_up`) is gone. Plan 009 phase 07 (temporal upscaling) is to draw at these same rungs and accumulate at the output's size in place of step 2's bilinear.
 
 ## Weather
 

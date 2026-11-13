@@ -14,7 +14,6 @@ typedef struct settings_t {
     arena_t arena;              /* 0: over owned_region: lives as long as this does */
     heap_region_t owned_region; /* 64 */
     settings_values_t values;   /* 80: what the game runs with: change these, and settings_save keeps them */
-    uint8_t _pad0[4];           /* 116 */
     /* 120: from arena: where they are kept, FILE_PATH_BYTES, empty until settings_load; then a file's worth, SETTINGS_TEXT_BYTES,
      * for reading and writing (settings_text). One block, so this is one pointer: app_t has no room for two. */
     char *borrowed_path;

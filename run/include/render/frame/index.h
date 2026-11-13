@@ -94,6 +94,11 @@ void render_camera_fly(render_camera_t *camera, const render_fly_input_t *input,
 /* What the kernels take, for a picture of this size. */
 void render_camera_to_traverse(const render_camera_t *camera, uint32_t width, uint32_t height, traverse_camera_t *out);
 
+/* Plan 008 phase 05: the same for a picture drawn at inner_width by inner_height that is shown at width by height: the field of view and
+ * the aspect are the shown picture's, so a rung draws the same view with fewer pixels. At the same size it is render_camera_to_traverse. */
+void render_camera_to_traverse_drawn(const render_camera_t *camera, uint32_t width, uint32_t height,
+                                     uint32_t inner_width, uint32_t inner_height, traverse_camera_t *out);
+
 /* What the frames took, on the card's clock, since render_frame_init. */
 typedef struct render_frame_stats_t {
     uint64_t frames;                    /* 0 */
@@ -137,7 +142,7 @@ typedef struct render_frame_t {
     uint8_t *borrowed_pictures[RENDER_EXCHANGE_SLOTS]; /* 656: width * height * 4 each */
     float32_t *borrowed_samples;                       /* 680: RENDER_FRAME_SAMPLES of total_ms */
     const device_block_t *borrowed_xrgb_second; /* 688: plan 008 phase 03: the other device picture, written in turn */
-    uint32_t width;                             /* 696 */
+    uint32_t width;                             /* 696: the output's: what goes home and to main, whatever the rung */
     uint32_t height;                            /* 700 */
     const device_block_t *borrowed_shapes;      /* 704: a traverse_shape_t per block */
     post_temporal_t temporal;                   /* 712: what scene.borrowed_temporal points to */
@@ -153,7 +158,8 @@ typedef struct render_frame_t {
     frame_timings_t last_timings; /* 880: what the last frame took, kernel by kernel, on the card's clock */
     float32_t sun_given[3];       /* 944: with sun_from_outside: toward the sun, unit, x east, y north */
     uint8_t sun_from_outside;     /* 956: 1 after render_frame_sun_set, 0 after render_frame_time_set */
-    uint8_t _pad1[3];             /* 957 */
+    uint8_t scale_percent; /* 957: plan 008 phase 05: the next frame's rung, of each side; render_frame_scale_set */
+    uint8_t _pad1[2];      /* 958 */
 } render_frame_t;
 static_assert(sizeof(render_frame_t) == 960);
 static_assert(alignof(render_frame_t) == MC_CPU_CACHE_LINE_BYTES);
@@ -166,6 +172,7 @@ static_assert(offsetof(render_frame_t, borrowed_entities) == 864);
 static_assert(offsetof(render_frame_t, borrowed_lod) == 872);
 static_assert(offsetof(render_frame_t, sun_given) == 944);
 static_assert(offsetof(render_frame_t, sun_from_outside) == 956);
+static_assert(offsetof(render_frame_t, scale_percent) == 957);
 
 /* ---- Weather (plan 004 phase 08) -------------------------------------------------------------------------------------- */
 
@@ -270,6 +277,15 @@ void render_frame_features_set(render_frame_t *frame, uint32_t features);
 /* Plan 008 phase 04, Q2's choice B for comparison: a pixel newly seen sends one AO ray, not SHADE_AO_FRESH_RAYS (bench_world_shake
  * --fresh-ao-rays 1). Kept across render_frame_features_set. Between frames. */
 void render_frame_ao_fresh_one_set(render_frame_t *frame, bool one);
+
+/* Plan 008 phase 05: the size the next frames are drawn at, in percent of each side of the output (width and height): POST_SCALE_WHOLE from
+ * render_frame_init, and any rung below it from 1 up. A frame drawn smaller is brought up on the card (post_upscale), so the picture that goes
+ * home is always the output's size; the history of TAA and AO goes on across a change (gpu_bridge/post). The game sets it before each draw
+ * (run/src/game/pace/ picks it); a still picture at POST_SCALE_WHOLE is what it always was, to the byte. Between frames. */
+void render_frame_scale_set(render_frame_t *frame, uint32_t percent);
+
+/* The size a frame at this percent is drawn at: post_scaled_side of each side of the output. */
+void render_frame_drawn_size(const render_frame_t *frame, uint32_t percent, uint32_t *out_width, uint32_t *out_height);
 
 /* How far off the fog is whole, in blocks, for a render distance that has changed. Between frames, as for render_frame_features_set. */
 void render_frame_fog_set(render_frame_t *frame, float32_t fog_end);

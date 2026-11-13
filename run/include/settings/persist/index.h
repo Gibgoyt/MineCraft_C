@@ -22,6 +22,9 @@ enum : uint32_t {
     SETTINGS_RENDER_SCALE_MIN = 25u,
     SETTINGS_RENDER_SCALE_DEFAULT = 100u,
     SETTINGS_RENDER_SCALE_MAX = 100u,
+    /* Plan 008 phase 05: the least a picture may be drawn at while turning or late, of each side: one of the ladder's rungs
+     * (compile/config/render/resolution/), or 100 for never less than the render scale. */
+    SETTINGS_DYNAMIC_FLOOR_DEFAULT = 50u,
     SETTINGS_WORKERS_MIN = 1u,
     SETTINGS_WORKERS_MAX = MC_THREADS_WORKERS,
     SETTINGS_SOUND_VOLUME_MIN = 0u,
@@ -54,9 +57,13 @@ typedef struct settings_values_t {
     uint8_t climate_hud;         /* 32: SETTINGS_CLIMATE_HUD_* that are on: plan 004 phase 10's lines under the date */
     uint8_t pause_on_focus_loss; /* 33: a window losing the focus pauses the game, as in Minecraft (plan 005 phase 7) */
     uint8_t place_preview; /* 34: a see-through copy of the block in hand where it would go down (plan 005 phase 10) */
-    uint8_t _pad0[1];      /* 35 */
+    /* 35: plan 008 phase 05: pictures are drawn smaller for a moment while turning or late, and brought up; a still picture never is */
+    uint8_t dynamic_resolution;
+    uint8_t dynamic_floor_percent; /* 36: the least they are drawn at, of each side: settings_persist_floor_good */
+    uint8_t _pad0[3];              /* 37 */
 } settings_values_t;
-static_assert(sizeof(settings_values_t) == 36);
+static_assert(sizeof(settings_values_t) == 40);
+static_assert(offsetof(settings_values_t, dynamic_resolution) == 35);
 
 /* Plan 004 phase 10: the lines under the date line, each with its box on the HUD page and its line in the file. */
 enum : uint8_t {
@@ -84,6 +91,12 @@ static_assert(sizeof(settings_persist_report_t) == 8);
 
 /* Every effect, in the order of the screen and the file. */
 const settings_effect_t *settings_persist_effect(uint32_t index);
+
+/* Plan 008 phase 05: whether a floor is one dynamic_resolution_floor_percent may be: a rung of the ladder, or 100. */
+bool settings_persist_floor_good(uint32_t percent);
+
+/* The least floor above percent (0 for the least of all), or 0 past the last: what the Settings screen's button steps through. */
+uint32_t settings_persist_floor_next(uint32_t percent);
 
 /* What a new install runs with. */
 void settings_persist_defaults(settings_values_t *out);

@@ -39,7 +39,8 @@ typedef enum frame_kernel_t : uint32_t {
     FRAME_KERNEL_SHADE = 4,    /* FRAME_PASS_SHADE */
     FRAME_KERNEL_GOD_RAYS = 5, /* FRAME_PASS_POST, from here */
     FRAME_KERNEL_POST = 6,
-    FRAME_KERNEL_OVERLAY = 7,
+    FRAME_KERNEL_OVERLAY =
+        7, /* plan 008 phase 05: with it, before the overlays, the upscale of a picture drawn smaller */
     FRAME_KERNEL_READBACK = 8, /* FRAME_PASS_READBACK */
     FRAME_KERNEL_COUNT = 9,
 } frame_kernel_t;
@@ -86,8 +87,13 @@ typedef struct frame_args_t {
     const lod_light_t *borrowed_lod_light;        /* 64: with it */
     const post_weather_t *borrowed_weather;       /* 72: rain, snow, lightning and weather fog, or nullptr for none */
     const device_block_t *borrowed_weather_map; /* 80: its rain top, post_weather_map_bytes, or nullptr for open sky */
+    /* 88: plan 008 phase 05: the output's camera, with no jitter, when borrowed_camera is drawn smaller (a rung under POST_SCALE_WHOLE), or
+     * nullptr when it is the output's size. Post then writes the drawn picture into the hits block, free once shade is done, post_upscale
+     * brings it up into the target at this camera's size, and the overlays are drawn over that by this camera; the copy home is of this
+     * size. */
+    const traverse_camera_t *borrowed_output_camera;
 } frame_args_t;
-static_assert(sizeof(frame_args_t) == 88);
+static_assert(sizeof(frame_args_t) == 96);
 static_assert(alignof(frame_args_t) == 8);
 static_assert(offsetof(frame_args_t, borrowed_world) == 0);
 static_assert(offsetof(frame_args_t, borrowed_scene) == 8);
@@ -100,6 +106,7 @@ static_assert(offsetof(frame_args_t, borrowed_lod) == 56);
 static_assert(offsetof(frame_args_t, borrowed_lod_light) == 64);
 static_assert(offsetof(frame_args_t, borrowed_weather) == 72);
 static_assert(offsetof(frame_args_t, borrowed_weather_map) == 80);
+static_assert(offsetof(frame_args_t, borrowed_output_camera) == 88);
 
 /* Plan 008 phase 01: what a frame says past its passes, when it is given somewhere to say it. Shade's kernels each on the card's clock,
  * the card's clock speed once in a while, and the fresh AO list's length. The events these are read from are the frame's own (frame_slot_t),
@@ -178,7 +185,7 @@ typedef struct frame_slot_t {
         clock_seen; /* 160: the clock kernel's cycles, copied here on the frame's stream (frame_flight_t is pinned) */
     uint32_t fresh_seen; /* 168: the fresh list's length, the same */
     uint32_t ran;        /* 172: a bit for each frame_kernel_t this frame ran */
-    uint32_t width;      /* 176: what it drew */
+    uint32_t width;      /* 176: what goes home: the output's size, whatever size it drew at */
     uint32_t height;     /* 180 */
     uint8_t state;       /* 184: frame_slot_state_t */
     uint8_t marked;      /* 185: queued with marks */

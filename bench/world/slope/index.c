@@ -661,7 +661,7 @@ static bool sl_run(sl_t *sl, const sl_row_t *row, const sl_options_t *options, s
                                   .block_radius_given = block_radius,
                                   .table_chunks = block_radius,
                                   .fov_degrees = SL_FOV_DEGREES,
-                                  .render_scale_percent = (uint16_t)options->render_scale};
+                                  .render_scale_percent = (uint8_t)options->render_scale};
     if (!game_open(game, &config)) {
         LOG_ERROR("bench_world_slope: the world would not open with level 0 at %" PRIu32 ", render distance %" PRIu32,
                   block_radius, distance);

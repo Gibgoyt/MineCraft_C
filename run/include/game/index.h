@@ -55,9 +55,12 @@ typedef struct game_config_t {
     uint32_t table_chunks;
     uint32_t fov_degrees;         /* 24: the vertical field of view; 0 means RENDER_CAMERA_HALF_FOV_TANGENT_DEFAULT */
     uint32_t sensitivity_percent; /* 28: of RENDER_CAMERA_RADIANS_PER_COUNT; 0 means 100 */
-    /* 32: pictures are drawn this much of width and height, and brought up; 0 means 100. At most 100, so two bytes, which
-     * leaves one for climate_hud with no growth (app_t is at main's frame limit). */
-    uint16_t render_scale_percent;
+    /* 32: pictures are drawn this much of width and height, and brought up on the card; 0 means 100. The top of plan 008 phase 05's
+     * ladder. At most 100, so a byte, which leaves one for dynamic_floor_percent with no growth (app_t is at main's frame limit). */
+    uint8_t render_scale_percent;
+    /* 33: plan 008 phase 05: the least a picture is drawn at while turning or late, of each side (a rung of the ladder, or 100); 0 is
+     * dynamic resolution off, and every picture is drawn at render_scale_percent. */
+    uint8_t dynamic_floor_percent;
     uint8_t
         climate_hud; /* 34: SETTINGS_CLIMATE_HUD_* (plan 004 phase 10): the climate line and storm warnings under the date */
     uint8_t hide_place_preview; /* 35: no see-through copy of the block in hand where it would go (plan 005 phase 10) */
@@ -72,12 +75,15 @@ static_assert(sizeof(game_config_t) == 40);
 typedef struct game_view_t {
     render_lod_plan_t lod; /* 0: no levels if there is no far field */
     uint32_t
-        block_radius;  /* 16: level 0, the map's view radius, in chunks: plan 009 phase 04, worked out from the bands */
-    uint32_t width;    /* 20: what is drawn, before it is brought up to the config's */
-    uint32_t height;   /* 24 */
-    float32_t fog_end; /* 28: in blocks */
-    uint32_t features; /* 32: SHADE_FEATURE_* */
-    uint8_t _pad0[4];  /* 36 */
+        block_radius; /* 16: level 0, the map's view radius, in chunks: plan 009 phase 04, worked out from the bands */
+    uint32_t
+        width; /* 20: of the pictures: the config's, as a smaller one is brought up on the card (plan 008 phase 05) */
+    uint32_t height;       /* 24 */
+    float32_t fog_end;     /* 28: in blocks */
+    uint32_t features;     /* 32: SHADE_FEATURE_* */
+    uint8_t scale_percent; /* 36: the ladder's top rung, of each side: the config's render scale, 100 for 0 */
+    uint8_t floor_percent; /* 37: its least, of each side, while turning or late; 0 for dynamic resolution off */
+    uint8_t _pad0[2];      /* 38 */
 } game_view_t;
 static_assert(sizeof(game_view_t) == 40);
 

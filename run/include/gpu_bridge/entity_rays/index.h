@@ -357,6 +357,16 @@ gpu_status_t entity_rays_overlay(gpu_error_t *error, const entity_rays_scene_t *
                                  const traverse_camera_t *camera, const float32_t jitter[2], uint32_t water_material,
                                  const device_block_t *shaded, const device_block_t *xrgb);
 
+/* Plan 008 phase 05: entity_rays_overlay onto a picture brought up from one drawn smaller. camera is the picture's, at the output's size, and
+ * the mark's and preview's rectangles are in its pixels; shaded and the entity hits were drawn at inner_width by inner_height, and each
+ * output pixel reads the inner pixel under its middle (post_scaled_under). So the outline stays one output pixel wide. At the camera's own
+ * size it is entity_rays_overlay. */
+gpu_status_t entity_rays_overlay_scaled(gpu_error_t *error, const entity_rays_scene_t *scene,
+                                        const traverse_world_t *world, const traverse_camera_t *camera,
+                                        uint32_t inner_width, uint32_t inner_height, const float32_t jitter[2],
+                                        uint32_t water_material, const device_block_t *shaded,
+                                        const device_block_t *xrgb);
+
 #ifdef __cplusplus
 }
 #endif

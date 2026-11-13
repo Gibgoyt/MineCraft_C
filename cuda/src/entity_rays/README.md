@@ -9,6 +9,7 @@
 
 - `entity_rays_frame`: the kernel: per pixel, the nearest box of its tile's list. Nothing starts with no boxes.
 - `entity_rays_overlay`: the preview of placing and then the outline, over a finished picture. Nothing starts with neither.
+- `entity_rays_overlay_scaled` (plan 008 phase 05): the same over a picture brought up from one drawn smaller: the camera and the rectangles are the output's, and each pixel reads the drawn depths and box hits under it (`post_scaled_under`), so the outline stays one output pixel wide. `entity_rays_overlay` is it at the camera's own size.
 - `entity_rays_preview_blend`, `entity_rays_preview_face_light`: a preview's colour over a pixel, by the face it is on.
 - `entity_rays_box_hit`, `entity_rays_to_box`, `entity_rays_normal`, `entity_rays_edge`, `entity_rays_line_pixels`, `entity_rays_outline_pixels`, `entity_rays_hits_bytes`, `entity_rays_starts_offset`, `entity_rays_links_offset`, `entity_rays_textures_offset`: its arithmetic and its layout, inline on host and device, so that a test on the host runs the same lines.
 

@@ -1,0 +1,58 @@
+# Plan 008 phase 05: the resolution ladder, and the controller in run/src/game/pace/ that picks a rung for each picture. See
+# compile/config/README.md for the fields.
+rung_high:
+  value: 85
+  type: u32
+  unit: count
+  min: 51
+  max: 99
+  why: "The ladder's first rung under the top, in percent of each side: 72 % of the pixels. Plan 008 phase 05's 100, 85, 70, 50. GAME_PACE_RUNG_HIGH."
+rung_middle:
+  value: 70
+  type: u32
+  unit: count
+  min: 26
+  max: 98
+  why: "The second rung, in percent of each side: 49 % of the pixels. Below rung_high. GAME_PACE_RUNG_MIDDLE."
+rung_low:
+  value: 50
+  type: u32
+  unit: count
+  min: 25
+  max: 97
+  why: "The lowest rung, in percent of each side: 25 % of the pixels. Below rung_middle. GAME_PACE_RUNG_LOW."
+slot_share:
+  value: 0.8
+  type: f32
+  unit: ratio
+  min: 0.25
+  max: 1.0
+  why: "A rung fits if its predicted picture time is under this share of the slot (two of main's ticks, 16.7 ms at 120 Hz: 13.3 ms). It leaves room for the 90th percentile's misses and for phase 02's 1 ms margin. The plan's 85 % (14.2 ms) gave a p99 of 17.4 ms on phase 01's shake replayed (run_game_pace): the cost changes with direction faster than 16 pictures' 90th percentile follows, and a rung stepped up on the cheap side is late on the dear one; 80 % gives 16.0. GAME_PACE_RUNG_SLOT_SHARE."
+turn_degrees:
+  value: 180.0
+  type: f32
+  unit: degrees
+  min: 0.0
+  max: 100000.0
+  why: "Degrees a second at the picture's centre past which a rung predicted not to fit steps down before any picture is late. Below it a turn is slow enough to see detail on, and a late picture alone decides. GAME_PACE_RUNG_TURN_DEGREES."
+step_up_pictures:
+  value: 8
+  type: u32
+  unit: frames
+  min: 1
+  max: 16
+  why: "Pictures in a row whose prediction at the next rung up fits before the rung steps up one: the hysteresis that keeps the picture from pulsing. At most GAME_PACE_SAMPLES. GAME_PACE_RUNG_STEP_UP."
+still_pictures:
+  value: 15
+  type: u32
+  unit: frames
+  min: 1
+  max: 255
+  why: "Pictures in a row with the camera still (under still_pixels of turn at the centre) after which the rung goes straight back to the top: 250 ms at 60. Plan 008 Q1. GAME_PACE_RUNG_STILL."
+still_pixels:
+  value: 2.0
+  type: f32
+  unit: pixels
+  min: 0.0
+  max: 100.0
+  why: "Under this many pixels of turn at the picture's centre since the last picture, at the output's size, the camera counts as still: phase 04's taa_fast_pixels line. A still camera never steps down. GAME_PACE_RUNG_STILL_PIXELS."

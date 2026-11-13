@@ -119,7 +119,7 @@ What needs only a word goes at once: field of view into the camera, published th
 
 Anything else stops the threads, changes what they use, and starts them again. That is a frame's wait for the gpu thread, against the alternative of those two taking blocks on the card away from each other under a lock neither holds. Between the stop and the start, in order:
 
-1. **Render scale:** the last picture is copied out to `owned_view`, since its memory is about to go and a pause may be showing it. `render_close_frame` and `render_open_frame` at the new size, on the display's size if it comes to that, by `game_view_bring_up` each frame before the HUD. If the card will not have it, the size stays.
+1. **Render scale:** since plan 008 phase 05 the pictures stay the display's size and the frame stays open: the render scale is the top of the resolution ladder (`game_view_t.scale_percent`), and with the dynamic floor it is handed to the frame (`render_frame_scale_set`) and the pace (`game_pace_ladder_set`). The gpu thread asks `game_pace_rung_next` for each picture's rung before it queues it.
 2. **Far field:** a different plan closes the one there is and opens one anew. What it held is rebuilt by workers, from the coarsest level, as at a world's opening: a level still filling makes the picture coarser and never wrong.
 3. **Map:** `world_map_set_view_radius`, with no thread holding it. Columns now out of range leave through the sim's next steps as they do when walking away, and those now in range stream in, nearest first. The columns still in range stay, with whatever has been done to them.
 4. **Fog and effects:** into the frame, for the next one.

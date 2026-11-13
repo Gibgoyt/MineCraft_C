@@ -80,5 +80,6 @@ What main needs of a picture at the take, its number and when it began, goes thr
 | `start_late_ms` | from when the rule last said to start to the start: the sleep's overshoot |
 | `missed` | 1 if it was ready after its aim |
 | `puts_skipped` | X puts skipped since the window opened, both segments being with the server |
+| `rung` | Plan 008 phase 05: the size it was drawn at, in percent of each side (100, the render scale, or a rung of the ladder); 0 if the gpu thread did not say (a run with no threads) |
 
 **How to read it.** Sort by `interval_ms`: every line well over 8.33 ms (16.7, 25.0) is a picture the screen held for more than one slot. On that line, `card_ms` against `p_ms` and `idle_ms` says whether the card, the gpu thread or the wait for main took the time; `fresh` and `turn_deg_s` say whether turning brought the work; `card_mhz` says how fast the card was going; `x_put_ms` and `x_wait_ms` say whether the X server held main.

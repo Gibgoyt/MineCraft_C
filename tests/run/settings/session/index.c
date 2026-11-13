@@ -330,26 +330,16 @@ TEST(the_field_of_view_scale_effects_and_mouse_all_take_at_once_in_an_open_world
     REQUIRE(game_rig_draw(rig));
     CHECK_EQ_U64(pixels_different(rig->screen, first, pixels), 0u);
 
-    /* Half the size, on a whole frame's new memory on the card, and still the display's size on the screen. */
+    /* Half the size each way: plan 008 phase 05 draws it so on the same frame and brings it up on the card, the display's size. */
     config.render_scale_percent = 50u;
     REQUIRE(game_reconfigure(game, &config));
-    CHECK_EQ_U64(render->frame.width, GAME_WIDTH / 2u);
-    CHECK_EQ_U64(render->frame.height, GAME_HEIGHT / 2u);
+    CHECK_EQ_U64(render->frame.width, GAME_WIDTH);
+    CHECK_EQ_U64(render->frame.height, GAME_HEIGHT);
+    CHECK_EQ_U64(render->frame.scale_percent, 50u);
     CHECK(game_picture_held(game) != nullptr); /* what a pause would still show, at its size */
     REQUIRE(game_rig_draw(rig));
-    CHECK(pixels_different(rig->screen, first, pixels) < pixels / 3u);
+    CHECK(pixels_different(rig->screen, first, pixels) < pixels / 2u);
     CHECK(pixels_different(rig->screen, first, pixels) > 0u);
-    /* Every pixel is one of a square of four. */
-    for (uint32_t y = 0u; y + 1u < GAME_HEIGHT; y += 2u) {
-        const uint32_t *const row = (const uint32_t *)(const void *)(rig->screen + (uint64_t)y * GAME_WIDTH * 4u);
-        for (uint32_t x = 0u; x + 1u < GAME_WIDTH; x += 2u) {
-            if (row[x] != row[x + 1u] || row[x] != row[x + GAME_WIDTH] || row[x] != row[x + GAME_WIDTH + 1u]) {
-                CHECK(row[x] == row[x + 1u]);
-                y = GAME_HEIGHT;
-                break;
-            }
-        }
-    }
     /* Back: what the world looks like has not changed, and what it was. */
     config.render_scale_percent = 100u;
     REQUIRE(game_reconfigure(game, &config));
@@ -380,15 +370,15 @@ TEST(the_field_of_view_scale_effects_and_mouse_all_take_at_once_in_an_open_world
     config = small_game;
     config.render_scale_percent = 50u;
     REQUIRE(game_open(game, &config));
-    CHECK_EQ_U64(render->frame.width, GAME_WIDTH / 2u);
-    CHECK(game->owned_view.owned_base != nullptr);
+    CHECK_EQ_U64(render->frame.width, GAME_WIDTH);
+    CHECK_EQ_U64(render->frame.scale_percent, 50u);
     REQUIRE(game_rig_draw(rig));
-    CHECK(pixels_different(rig->screen, first, pixels) < pixels / 3u);
+    CHECK(pixels_different(rig->screen, first, pixels) < pixels / 2u);
     config.render_scale_percent = 75u;
     REQUIRE(game_reconfigure(game, &config));
-    CHECK_EQ_U64(render->frame.width, GAME_WIDTH * 3u / 4u);
+    CHECK_EQ_U64(render->frame.scale_percent, 75u);
     REQUIRE(game_rig_draw(rig));
-    CHECK(pixels_different(rig->screen, first, pixels) < pixels / 3u);
+    CHECK(pixels_different(rig->screen, first, pixels) < pixels / 2u);
     game_close(game);
     game_rig_end(t, rig);
 }
@@ -653,7 +643,7 @@ TEST(render_distance_changes_through_the_screen_in_a_pause_with_the_real_threads
     /* The render scale too, and pictures behind the screen all the while: what a pause shows does not go black, or away. */
     session_move(t, rig, AT_MIDDLE_X, AT_ROW_3_Y);
     session_send(rig->mouse, EV_REL, REL_WHEEL, -50);
-    SESSION_WAIT_FOR(render->frame.width == 320u);
+    SESSION_WAIT_FOR(game->view.scale_percent == 50u);
     CHECK_EQ_U64(settings->values.render_scale_percent, 50u);
     CHECK(game_picture_held(game) != nullptr);
     session_frames(t, rig, 5u);

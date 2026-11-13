@@ -10,6 +10,7 @@
 - `post_frame`: the kernel, with nothing from any other frame.
 - `post_frame_temporal`: the same with god rays on top, and with the temporal pass after it, as asked; and with a `post_weather_t` and its rain top map, or nullptr for none.
 - `post_xrgb_bytes`, `post_history_bytes`, `post_shafts_bytes`, `post_shafts_across`, `post_weather_map_bytes`: what its targets need.
+- `post_upscale` (plan 008 phase 05): a tone-mapped picture drawn smaller brought up to the output, bilinear in its bytes. `post_scaled_side`, `post_scaled_under`: a rung's side, and the drawn pixel under an output pixel. See "Drawn smaller" below.
 - `post_sky`, `post_sky_discs`, `post_fog`, `post_fog_way`, `post_fog_along`, `post_water_fog`, `post_under_water`, `post_tone_map`, `post_xrgb`, `post_jitter`, `post_camera_jitter`, `post_reproject`, `post_taa_squeeze`, `post_taa_unsqueeze`, `post_catmull_rom`, and for the weather `post_weather_hash`, `post_weather_unit`, `post_weather_cells_round`, `post_weather_cell`, `post_weather_tilt`, `post_weather_open_sky`, `post_weather_layer`, `post_weather_drops`, `post_weather_bolt`, `post_weather_fog_colour`, `post_weather_apply`: its arithmetic, inline on host and device, so that a test on the host runs the same lines.
 
 **May be called by:** `render`, `cuda/src/frame/`.
@@ -53,6 +54,12 @@ Cost at 1920 by 1080, under a sea with every pixel water: post 0.251 ms against 
 The result goes to the next history and, unsqueezed, through the tone map. Mixing takes place before the tone map, so it is exact for a flat colour, to within 2 of 255 by test. Nothing about this pass is random, so one script gives one picture. With the setting off no history is read or written and each frame has no jitter, and with it on again the history starts from nothing.
 
 There is no sharpen after it. Blocks at a low angle are softer than one frame's, which is the point: that is the shimmer `cuda/src/shade/README.md` said was left for here.
+
+## Drawn smaller (plan 008 phase 05)
+
+A frame may be drawn at a rung under the output's size (`run/src/render/frame/README.md`, "Drawn smaller"). Every kernel here takes the drawn camera; the history it reads is the last frame's, at the last frame's size, so `post_history_at` is given `temporal.previous.width` and `height`, and `post_reproject` already places a direction in the last camera's pixels. A frame at 50 % after one at 100 % reads the full-size history with Catmull-Rom (or the fast read) as any moved camera does; the next at 100 % reads the half-size one the same way. A still room that drops to 50 % for a frame is back within 2 in 255 of never having dropped after 30 frames (`render_feature_resolution`).
+
+`post_upscale_kernel` then takes the tone-mapped picture, rows of the drawn width, to the output: each output pixel's middle, placed on the drawn picture, between its four pixels by integer weights in 1/256ths, rounded, so a flat colour stays itself to the bit and one script gives one picture. It is in sRGB bytes, after the tone map: cheap, and the history stays in linear light at the drawn size. It runs only below 100 %, under the frame's `FRAME_KERNEL_OVERLAY` mark, before the overlays. Bilinear is the plan's first step (Q9); temporal upscaling (plan 009 phase 07) is to replace it by accumulating at the output's size.
 
 ## God rays
 

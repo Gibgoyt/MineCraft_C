@@ -13,7 +13,9 @@
 uint32_t game_view_table_chunks(const game_config_t *config);
 
 /* What a config comes to, on a table of table_chunks: the bands by the pixel error, the field of view and the picture's rows; level 0's radius,
- * d_1 and a margin (render_lod_block_radius), never more than the table holds; and the far levels by the same bands. */
+ * d_1 and a margin (render_lod_block_radius), never more than the table holds; and the far levels by the same bands. The pictures are the
+ * config's size; its render scale is the top of plan 008 phase 05's ladder (scale_percent), drawn smaller and brought up on the card, and
+ * its floor the ladder's least (floor_percent). The bands are worked out for the rows drawn at the render scale. */
 void game_view_work_out(const game_config_t *config, uint32_t table_chunks, game_view_t *out);
 
 /* The fog of a world drawn this far, in blocks, whole a chunk short of what is loaded: the eye moves about inside a chunk before the map
@@ -26,9 +28,5 @@ float32_t game_view_half_fov_tangent(uint32_t fov_degrees);
 /* Mouse counts at a sensitivity, with what is past a whole count kept in rest for next time, so that a slow hand still turns. At 100 percent or
  * 0 they come back as they went in. */
 int64_t game_view_look_scaled(int64_t counts, uint32_t percent, float64_t *rest);
-
-/* A picture of 4 bytes a pixel, its rows side by side, brought up to a larger one by the nearest pixel. A row that repeats is a copy. */
-void game_view_bring_up(const uint8_t *from, uint32_t from_width, uint32_t from_height, uint8_t *to, uint32_t to_width,
-                        uint32_t to_height);
 
 #endif

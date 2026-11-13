@@ -104,7 +104,10 @@ typedef struct ui_hud_debug_t {
     float32_t card_mhz;   /* 112: the card's clock speed, at its last reading */
     uint32_t late;        /* 116: pictures ready after the take they were aimed at (plan 008 phase 02) */
     uint32_t recent;      /* 120: 0 if there is no last second to speak of, and the four lines say so */
-    uint32_t skipped;     /* 124: X puts skipped, both segments being with the server; shown when not 0 */
+    uint16_t skipped;     /* 124: X puts skipped, both segments being with the server; shown when not 0 */
+    uint8_t
+        rung_percent; /* 126: plan 008 phase 05: the newest picture's size, of each side; shown when not 100 (or 0) */
+    uint8_t rung_dynamic; /* 127: that is under the render scale, a rung dynamic resolution chose */
 } ui_hud_debug_t;
 static_assert(sizeof(ui_hud_debug_t) == 128);
 

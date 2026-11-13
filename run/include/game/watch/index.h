@@ -78,9 +78,9 @@ typedef struct game_watch_picture_t {
     uint8_t clock_read;   /* 124: card_mhz was read on this very picture */
     uint8_t pace_how;     /* 125: plan 008 phase 02: how the start rule started it, a game_pace_how_t */
     uint8_t missed;       /* 126: it was ready after the take it was aimed at */
-    uint8_t _pad0[1];     /* 127 */
-    int64_t aimed_ns;     /* 128: the take the rule aimed it at; 0 for none */
-    int64_t start_at_ns;  /* 136: when the rule said to start it: the start less this is the sleep's overshoot */
+    uint8_t percent;  /* 127: plan 008 phase 05: the rung it was drawn at, of each side; 0 before the gpu thread said */
+    int64_t aimed_ns; /* 128: the take the rule aimed it at; 0 for none */
+    int64_t start_at_ns; /* 136: when the rule said to start it: the start less this is the sleep's overshoot */
 } game_watch_picture_t;
 static_assert(sizeof(game_watch_picture_t) == 144);
 
@@ -125,8 +125,10 @@ typedef struct game_watch_recent_t {
     uint32_t pictures;                   /* 64 */
     uint32_t fresh_mean;                 /* 68 */
     uint64_t puts_skipped;               /* 72: X puts skipped since the window opened */
+    uint32_t percent_last; /* 80: plan 008 phase 05: the rung the newest picture was drawn at, of each side */
+    uint8_t _pad0[4];      /* 84 */
 } game_watch_recent_t;
-static_assert(sizeof(game_watch_recent_t) == 80);
+static_assert(sizeof(game_watch_recent_t) == 88);
 
 /* One line per thread that writes it, as each writes its own all the time. In the game's World arena beside the column jobs
  * (game_watch_of), as game_t is at its size. */

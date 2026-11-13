@@ -44,7 +44,7 @@ typedef struct game_world_parts_t {
     uint8_t _pad1[40];            /* 64472 */
     game_pace_t pace; /* 64512: plan 008 phase 02's start rule: the gpu thread's line, and main's next take */
 } game_world_parts_t;
-static_assert(sizeof(game_world_parts_t) == 64768);
+static_assert(sizeof(game_world_parts_t) == 64896);
 static_assert(offsetof(game_world_parts_t, fill) == 59200);
 static_assert(offsetof(game_world_parts_t, jobs) == 0);
 static_assert(offsetof(game_world_parts_t, weather) == 8192);
@@ -367,7 +367,7 @@ static void game_arenas_stop(game_t *game) {
     arena_deinit(&game->arena_world);
 }
 
-/* A picture at the size it is shown, for one drawn smaller, or one kept while the pictures change. */
+/* A picture at the size it is shown, kept while the pictures change. */
 static bool game_picture_full_room(game_t *game) {
     const uint64_t bytes = (uint64_t)game->config.width * game->config.height * sizeof(uint32_t);
     return game->owned_view.bytes >= bytes || heap_reserve(bytes, &game->owned_view);
@@ -448,6 +448,12 @@ static uint64_t game_level0_pool_bytes(const render_t *render, const game_view_t
     return render_pool_bytes_for(render, side * side);
 }
 
+/* Plan 008 phase 05: the ladder, from the render scale down to the floor, with the next picture at its top. */
+static void game_scale_apply(game_t *game, const game_view_t *view) {
+    render_frame_scale_set(&game->borrowed_render->frame, view->scale_percent);
+    game_pace_ladder_set(game_pace_of(game), view->scale_percent, view->floor_percent);
+}
+
 /* The map, and what the card holds of it. Each says why if it cannot, and whatever came before it is given back. */
 static bool game_open_parts(game_t *game, const game_config_t *config, int32_t chunk_x, int32_t chunk_y) {
     world_t *const world = game->borrowed_world;
@@ -487,11 +493,7 @@ static bool game_open_parts(game_t *game, const game_config_t *config, int32_t c
         }
     }
     render_frame_features_set(&render->frame, game_frame_features(view->features, config->features_off));
-    if ((view->width != config->width || view->height != config->height) && !game_picture_full_room(game)) {
-        render_close(render);
-        world_close(world);
-        return false; /* it has said why */
-    }
+    game_scale_apply(game, view);
     return true;
 }
 
@@ -855,7 +857,6 @@ void game_close(game_t *game) {
 
 /* ---- Changing a world's config while it is open ------------------------------------------------------------------- */
 
-static const uint8_t *game_picture_full(game_t *game, const uint8_t *drawn);
 static bool game_threads_start(game_t *game);
 
 /* The pictures are about to go, and something may be showing the last one in a pause: it stays, at the size it is shown. */
@@ -866,7 +867,7 @@ static bool game_picture_hold(game_t *game) {
     if (!game_picture_full_room(game)) {
         return false; /* it has said why */
     }
-    const uint8_t *const full = game_picture_full(game, game->borrowed_last_picture);
+    const uint8_t *const full = game->borrowed_last_picture;
     if (full != game->owned_view.owned_base) {
         memcpy(game->owned_view.owned_base, full,
                (uint64_t)game->config.width * game->config.height * sizeof(uint32_t));
@@ -930,6 +931,7 @@ static bool game_view_change(game_t *game, game_view_t *now) {
     }
     render_frame_fog_set(&render->frame, now->fog_end);
     render_frame_features_set(&render->frame, game_frame_features(now->features, game->config.features_off));
+    game_scale_apply(game, now);
     return true;
 }
 
@@ -1300,20 +1302,9 @@ static gpu_status_t game_frame_draw(game_t *game, const render_camera_t *camera)
     return status == GPU_STATUS_OK ? game_frame_finish(game) : status;
 }
 
-/* A picture as the frame drew it, at the size of what shows it: itself at a render scale of 100, and owned_view at any other. */
-static const uint8_t *game_picture_full(game_t *game, const uint8_t *drawn) {
-    const game_view_t *const view = &game->view;
-    if (view->width == game->config.width && view->height == game->config.height) {
-        return drawn;
-    }
-    game_view_bring_up(drawn, view->width, view->height, game->owned_view.owned_base, game->config.width,
-                       game->config.height);
-    return game->owned_view.owned_base;
-}
-
 const uint8_t *game_picture_held(game_t *game) {
     if (game->borrowed_last_picture != nullptr) {
-        return game_picture_full(game, game->borrowed_last_picture);
+        return game->borrowed_last_picture; /* the size it is shown at, at any render scale (plan 008 phase 05) */
     }
     return game->view_held != 0u ? game->owned_view.owned_base : nullptr;
 }
@@ -1340,7 +1331,8 @@ static const uint8_t *game_hud_compose(game_t *game, const uint8_t *drawn) {
     const bool walking = game->borrowed_player != nullptr;
     const bool screen_up = game_has_screens(game) && ui_screen_up(ui);
     const bool command_up = game_command_up(game);
-    const uint8_t *const picture = game_picture_full(game, drawn);
+    const uint8_t *const picture =
+        drawn; /* the size it is shown at: the card brings a smaller one up (plan 008 phase 05) */
     if (ui != nullptr && game_atlas_up(game)) {
         return game_atlas_compose(game, picture);
     }
@@ -1566,7 +1558,8 @@ typedef struct game_flying_t {
     int64_t started_ns;            /* 48 */
     int64_t aimed_ns;              /* 56 */
     uint8_t on;                    /* 64: a picture is on its way */
-    uint8_t _pad0[7];              /* 65 */
+    uint8_t percent;               /* 65: plan 008 phase 05: the rung it was drawn at */
+    uint8_t _pad0[6];              /* 66 */
 } game_flying_t;
 static_assert(sizeof(game_flying_t) == 72);
 
@@ -1584,6 +1577,7 @@ static bool game_gpu_land(game_t *game, game_flying_t *flying, int64_t *waited_n
     *waited_ns =
         game_watch_picture_end(game_watch_of(game), flying->picture, &render->frame.last_timings, &flying->camera);
     game_pace_note(game_pace_of(game), flying->started_ns, *waited_ns, flying->aimed_ns);
+    game_pace_note_drawn(game_pace_of(game), (int64_t)(render->frame.last_timings.total_ms * 1e6f32), flying->percent);
     return true;
 }
 
@@ -1701,6 +1695,11 @@ static void game_gpu_thread(void *borrowed_argument) {
         game_fill_step(game_fill_of(game), render);
         game_day_apply(game, camera);
         game_watch_stamp(picture, GAME_WATCH_STAMP_FILL);
+        /* Plan 008 phase 05: the rung this picture is drawn at, while turning or late. */
+        render_frame_scale_set(&render->frame, game_pace_rung_next(pace, &render->frame, camera, started_ns));
+        if (picture != nullptr) {
+            picture->percent = render->frame.scale_percent;
+        }
         status = game_frame_queue(game, camera);
         if (status != GPU_STATUS_OK) {
             gpu_error_log(&render->frame.gpu.last_error);
@@ -1715,8 +1714,12 @@ static void game_gpu_thread(void *borrowed_argument) {
         /* In the slot this picture is going into, for whoever asks what it was drawn from. The publish in its finish hands main both. */
         game->picture_cameras[render->frame.pictures.back] = *camera;
         game_watch_slot_note(watch, render->frame.pictures.back, picture);
-        flying = (game_flying_t){
-            .camera = *camera, .picture = picture, .started_ns = started_ns, .aimed_ns = when.aimed_ns, .on = 1u};
+        flying = (game_flying_t){.camera = *camera,
+                                 .picture = picture,
+                                 .started_ns = started_ns,
+                                 .aimed_ns = when.aimed_ns,
+                                 .on = 1u,
+                                 .percent = render->frame.scale_percent};
         if (serial && !game_gpu_land(game, &flying, &waited_ns)) {
             return;
         }

@@ -3,6 +3,7 @@
 
 #include "assert/index.h"
 #include "log/index.h"
+#include "tuning/render/resolution/index.h"
 
 #include <inttypes.h>
 #include <stdio.h>
@@ -79,7 +80,25 @@ void settings_persist_defaults(settings_values_t *out) {
                                .show_date = 1u,
                                .climate_hud = SETTINGS_CLIMATE_HUD_ALL,
                                .pause_on_focus_loss = 1u,
-                               .place_preview = 1u};
+                               .place_preview = 1u,
+                               .dynamic_resolution = 1u,
+                               .dynamic_floor_percent = SETTINGS_DYNAMIC_FLOOR_DEFAULT};
+}
+
+uint32_t settings_persist_floor_next(uint32_t percent) {
+    static const uint32_t floors[] = {MC_TUNE_RENDER_RESOLUTION_RUNG_LOW, MC_TUNE_RENDER_RESOLUTION_RUNG_MIDDLE,
+                                      MC_TUNE_RENDER_RESOLUTION_RUNG_HIGH, SETTINGS_RENDER_SCALE_MAX};
+    for (uint32_t i = 0u; i < sizeof(floors) / sizeof(floors[0]); i++) {
+        if (floors[i] > percent) {
+            return floors[i];
+        }
+    }
+    return 0u;
+}
+
+bool settings_persist_floor_good(uint32_t percent) {
+    return percent == MC_TUNE_RENDER_RESOLUTION_RUNG_HIGH || percent == MC_TUNE_RENDER_RESOLUTION_RUNG_MIDDLE ||
+           percent == MC_TUNE_RENDER_RESOLUTION_RUNG_LOW || percent == SETTINGS_RENDER_SCALE_MAX;
 }
 
 static uint32_t *settings_number_at(settings_values_t *values, const settings_number_t *number) {
@@ -99,6 +118,10 @@ void settings_persist_clamp(settings_values_t *values) {
     values->climate_hud &= SETTINGS_CLIMATE_HUD_ALL;
     values->pause_on_focus_loss = values->pause_on_focus_loss != 0u ? 1u : 0u;
     values->place_preview = values->place_preview != 0u ? 1u : 0u;
+    values->dynamic_resolution = values->dynamic_resolution != 0u ? 1u : 0u;
+    values->dynamic_floor_percent = settings_persist_floor_good(values->dynamic_floor_percent)
+                                        ? values->dynamic_floor_percent
+                                        : (uint8_t)SETTINGS_DYNAMIC_FLOOR_DEFAULT;
     values->sound_volume_percent = values->sound_volume_percent > SETTINGS_SOUND_VOLUME_MAX
                                        ? (uint8_t)SETTINGS_SOUND_VOLUME_MAX
                                        : values->sound_volume_percent;
@@ -185,6 +208,15 @@ static settings_line_result_t settings_line_apply(const uint8_t *key, uint64_t k
         values->sound_volume_percent = (uint8_t)held;
         return held == parsed ? SETTINGS_LINE_SET : SETTINGS_LINE_HELD;
     }
+    /* Plan 008 phase 05: a rung or nothing, as a floor between two rungs is not one the ladder has. */
+    if (settings_key_is(key, key_length, "dynamic_resolution_floor_percent")) {
+        uint32_t parsed = 0u;
+        if (!settings_number_parse(value, value_length, &parsed) || !settings_persist_floor_good(parsed)) {
+            return SETTINGS_LINE_BAD;
+        }
+        values->dynamic_floor_percent = (uint8_t)parsed;
+        return SETTINGS_LINE_SET;
+    }
     bool on = false;
     uint8_t *flag = nullptr;
     if (settings_key_is(key, key_length, "vsync")) {
@@ -197,6 +229,8 @@ static settings_line_result_t settings_line_apply(const uint8_t *key, uint64_t k
         flag = &values->pause_on_focus_loss;
     } else if (settings_key_is(key, key_length, "place_preview")) {
         flag = &values->place_preview;
+    } else if (settings_key_is(key, key_length, "dynamic_resolution")) {
+        flag = &values->dynamic_resolution;
     }
     if (flag != nullptr) {
         if (!settings_bool_parse(value, value_length, &on)) {
@@ -383,6 +417,13 @@ bool settings_persist_write(const settings_values_t *values, uint8_t *out, uint6
     char volume[16];
     (void)snprintf(volume, sizeof(volume), "%" PRIu32, (uint32_t)values->sound_volume_percent);
     if (!settings_append(out, capacity, &at, "sound_volume_percent", volume)) {
+        return false;
+    }
+    char floor_percent[16];
+    (void)snprintf(floor_percent, sizeof(floor_percent), "%" PRIu32, (uint32_t)values->dynamic_floor_percent);
+    if (!settings_append(out, capacity, &at, "dynamic_resolution",
+                         values->dynamic_resolution != 0u ? "true" : "false") ||
+        !settings_append(out, capacity, &at, "dynamic_resolution_floor_percent", floor_percent)) {
         return false;
     }
     if (!settings_append(out, capacity, &at, "vsync", values->vsync != 0u ? "true" : "false")) {

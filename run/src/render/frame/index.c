@@ -102,6 +102,11 @@ void render_camera_fly(render_camera_t *camera, const render_fly_input_t *input,
 }
 
 void render_camera_to_traverse(const render_camera_t *camera, uint32_t width, uint32_t height, traverse_camera_t *out) {
+    render_camera_to_traverse_drawn(camera, width, height, width, height, out);
+}
+
+void render_camera_to_traverse_drawn(const render_camera_t *camera, uint32_t width, uint32_t height,
+                                     uint32_t inner_width, uint32_t inner_height, traverse_camera_t *out) {
     const float32_t cos_pitch = cosf(camera->pitch), sin_pitch = sinf(camera->pitch);
     const float32_t cos_yaw = cosf(camera->yaw), sin_yaw = sinf(camera->yaw);
     const float32_t forward[3] = {cos_pitch * cos_yaw, cos_pitch * sin_yaw, sin_pitch};
@@ -112,8 +117,8 @@ void render_camera_to_traverse(const render_camera_t *camera, uint32_t width, ui
                              right[0] * forward[1] - right[1] * forward[0]};
     const float32_t across = camera->half_fov_tangent * (float32_t)width / (float32_t)height;
     memset(out, 0, sizeof(*out));
-    out->width = width;
-    out->height = height;
+    out->width = inner_width;
+    out->height = inner_height;
     for (uint32_t i = 0u; i < 3u; i++) {
         const float64_t whole = floor(camera->position[i]);
         out->eye_cell[i] = (int32_t)whole;
@@ -312,6 +317,7 @@ gpu_status_t render_frame_init(render_frame_t *frame, arena_t *arena, device_mem
     frame->height = height;
     frame->borrowed_xrgb_second = blocks->borrowed_xrgb_second;
     frame->fog_end = fog_end;
+    frame->scale_percent = (uint8_t)POST_SCALE_WHOLE;
     frame->targets = (frame_targets_t){
         .borrowed_coarse = blocks->borrowed_coarse,
         .borrowed_hits = blocks->borrowed_hits,
@@ -714,10 +720,41 @@ static gpu_status_t frame_home_oldest(render_frame_t *frame) {
     return frame_gpu_home(&frame->gpu, frame->oldest_slot, frame->borrowed_pictures[frame->pictures.back]);
 }
 
+void render_frame_scale_set(render_frame_t *frame, uint32_t percent) {
+    frame->scale_percent = (uint8_t)(percent == 0u || percent > POST_SCALE_WHOLE ? POST_SCALE_WHOLE : percent);
+}
+
+void render_frame_drawn_size(const render_frame_t *frame, uint32_t percent, uint32_t *out_width, uint32_t *out_height) {
+    *out_width = post_scaled_side(frame->width, percent);
+    *out_height = post_scaled_side(frame->height, percent);
+}
+
+/* Plan 008 phase 05: an entity overlay's rectangle, worked out in the drawn camera's pixels, in the output's: wide enough, as the kernel tests
+ * every pixel in it against the box's edges. */
+static void frame_rectangle_up(uint16_t min[2], uint16_t end[2], const traverse_camera_t *drawn,
+                               const traverse_camera_t *output) {
+    const uint32_t from[2] = {drawn->width, drawn->height}, to[2] = {output->width, output->height};
+    if (min[0] >= end[0] || min[1] >= end[1]) {
+        return; /* nothing to draw stays nothing */
+    }
+    for (uint32_t i = 0u; i < 2u; i++) {
+        const uint64_t low = (uint64_t)min[i] * to[i] / from[i];
+        const uint64_t high = ((uint64_t)end[i] * to[i] + from[i] - 1u) / from[i] + 1u;
+        min[i] = (uint16_t)(low > 0u ? low - 1u : 0u);
+        end[i] = (uint16_t)(high < to[i] ? high : to[i]);
+    }
+}
+
 gpu_status_t render_frame_queue(render_frame_t *frame, const world_buffers_t *buffers, const render_camera_t *camera,
                                 const render_weather_t *weather, const device_block_t *map_block) {
+    /* Plan 008 phase 05: drawn at the rung, shown at the output's size. */
+    uint32_t inner_width = 0u, inner_height = 0u;
+    render_frame_drawn_size(frame, frame->scale_percent, &inner_width, &inner_height);
+    const bool scaled = inner_width != frame->width || inner_height != frame->height;
+    traverse_camera_t output_view;
+    render_camera_to_traverse(camera, frame->width, frame->height, &output_view);
     traverse_camera_t view;
-    render_camera_to_traverse(camera, frame->width, frame->height, &view);
+    render_camera_to_traverse_drawn(camera, frame->width, frame->height, inner_width, inner_height, &view);
     /* What the history is reprojected with has no jitter: otherwise a still camera would see its own picture move. */
     const traverse_camera_t steady = view;
     const uint32_t features = frame->scene.features;
@@ -777,6 +814,10 @@ gpu_status_t render_frame_queue(render_frame_t *frame, const world_buffers_t *bu
             frame->gpu.last_error = frame->borrowed_memory->last_error;
             return sent;
         }
+        if (scaled) {
+            frame_rectangle_up(entities.mark.pixel_min, entities.mark.pixel_end, &steady, &output_view);
+            frame_rectangle_up(entities.preview.pixel_min, entities.preview.pixel_end, &steady, &output_view);
+        }
     }
     lod_scene_t far_scene;
     if (far) {
@@ -818,6 +859,7 @@ gpu_status_t render_frame_queue(render_frame_t *frame, const world_buffers_t *bu
         .borrowed_targets = &targets,
         .borrowed_host_xrgb = nullptr,
         .borrowed_entities = frame->borrowed_entities != nullptr ? &entities : nullptr,
+        .borrowed_output_camera = scaled ? &output_view : nullptr,
     };
     uint32_t slot = 0u;
     gpu_status_t status = frame_gpu_queue(&frame->gpu, &args, &slot);
