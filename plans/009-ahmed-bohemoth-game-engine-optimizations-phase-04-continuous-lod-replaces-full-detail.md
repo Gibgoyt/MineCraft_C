@@ -194,20 +194,24 @@ New keys:
 - [x] Settings screen: five sliders, README click points, golden pictures regenerated after looking
 - [x] `--full-detail` and `RENDER_LOD_FULL_DETAIL_DEFAULT` deleted; `grep -rni "full.detail" run cuda compile bench` finds nothing but this plan's history notes
 - [x] Every existing test that named full detail updated (`run_settings`, `run_settings_session`, `run_game_focus`, `run_save_state_game`, `run_render_distance_live`, `render_feature_lod`)
-- [ ] His spot and the bench rows at E = 2 / 4 / 8 measured; Results filled
+- [x] His spot and the bench rows at E = 2 / 4 / 8 measured; Results filled (E 4 and 8 at his spot only; rows at 32 not like with like, Results)
 - [ ] Ahmed has played and chosen E
 
 ## Results (filled in by this phase)
 
 | Row | E | Card ms (primary / shade / total) | Primary steps a pixel | Error share | Against phase 01 |
 |---|---|---|---|---|---|
-| `ahmed_slope/night-64` | 2 | | | | |
-| `ahmed_slope/night-64` | 4 | | | | |
-| `ahmed_slope/night-64` | 8 | | | | |
-| `jagged_peaks/orbit` at 64 | 2 | | | | |
-| `jungle/orbit` at 64 | 2 | | | | |
-| `deep_ocean/orbit` at 64 | 2 | | | | |
-| Rows at 32 | 2 | | | | ≤ 3 % slower |
+| `ahmed_slope/night-64` | 2 | 14.97 (far 7.48) / 16.78 / 41.80, at 149 MHz: **6.21 Mcycles**, r_0 27 | 8.6 (17.8 M; far 14.1 M) | see Issues 2 | 6.46 Mcycles at 148 MHz: **-3.9 %**; far steps 22.1 M to 14.1 M (-36 %); voxels 2776 to 2425 MiB |
+| `ahmed_slope/night-64` | 4 | 14.63 (far 8.58) / 14.47 / 38.18, at 148 MHz: **5.62 Mcycles**, r_0 15 | 6.9 (14.3 M; far 16.1 M) | | **-13 %**; voxels 1105 MiB |
+| `ahmed_slope/night-64` | 8 | 16.10 (far 11.17) / 14.73 / 39.51, at 141 MHz (65 to 201): **5.53 Mcycles**, r_0 12 (the floor) | 5.3 (11.0 M; far 19.8 M) | | **-14 %**; voxels 836 MiB |
+| `ahmed_slope/night-32` | 2 | 12.88 (far 5.38) / 16.76 / 39.68, at 149 MHz: 5.89 Mcycles | | | 5.46 to 6.31 Mcycles at 356 to 748 MHz: no pair at the same clock |
+| `ahmed_slope/day-64` | 2 | 14.87 / 22.04 / 46.88, at 149 MHz: 6.96 Mcycles | | | 7.61 to 8.09 Mcycles at 261 to 608 MHz |
+| `jagged_peaks/orbit` at 64 | 2 | 36.35 mean, p99 39.52 | | | no earlier row at 64 (`bench/world/history.tsv`, `009 phase 04: continuous LOD, E 2`) |
+| `jungle/orbit` at 64 | 2 | 91.21 mean, p99 97.68 | | | the same |
+| `deep_ocean/orbit` at 64 | 2 | 112.95 mean, p99 121.12 | | | the same |
+| Rows at 32 | 2 | `009 phase 04: rows at 32` | | | 4 to 340 % slower than `009 phase 03` by ms, but that run had the card at 1575 MHz and this one at its floor (~148 MHz, bench_world prints no clock): not like with like. `plains/flight` with the far field on and off, back to back: 42.11 against 41.48 ms (+1.5 %); at 32 the far field is new (r_0 27 < 32) |
+
+All on Ahmed's card, held at its floor (141 to 149 MHz) by the power cap, which is why Mcycles is the figure to read. The bench pictures: `night-64` at E 2 is the phase 01 view with the far slope a little blockier past 386 blocks; at E 4 the far ridge is visibly stepped; at E 8 level 1 starts at 96 blocks, the ridge is clearly blocky, and the band edge falls in the shadowed hollow in the middle, where far-field surfaces (mean colours, no AO, the coarse moon ray) show as a lighter speckled patch through the dither (Issues 2).
 
 ## Tests
 
@@ -284,7 +288,10 @@ His answers are recorded below.
 
 Appended as they land:
 
-- this commit: continuous LOD replaces Full detail: `t_end` in the ray loop, primary and shade rays end at each pixel's dithered d_1, the far field (now the pyramid) takes over from there level by level with no pass-by, r_0 worked out from the bands drives the map, Full detail gone from settings, the screen, the command line and the code; the band tests (`render_feature_lod_bands`) and every test that named it; golden pictures moved after looking.
+- `f390c268` continuous LOD replaces Full detail: `t_end` in the ray loop, primary and shade rays end at each pixel's dithered d_1, the far field (now the pyramid) takes over from there level by level with no pass-by, r_0 worked out from the bands drives the map, Full detail gone from settings, the screen, the command line and the code; the band tests (`render_feature_lod_bands`) and every test that named it; golden pictures moved after looking.
+- this commit: the measurements (Results, Issues found 2), `bench_world`'s history lines `009 phase 04: continuous LOD, E 2` and `009 phase 04: rows at 32`, `bench_world_slope`'s `009 phase 04: continuous LOD, E 2`, `: E 4` and `: E 8`, and a strict-aliasing fix in `cuda_traverse` the profile build found.
+
+**Verification, as run (2026-11-13), on `main` at `9ec6bcd0` (plan 008 phase 03 landed; rebased before the main work):** `pgrep` for Ahmed's game printed nothing before every card run. `cmake --build --preset debug`: clean. `cuda_traverse`, `render_feature_lod`, `render_feature_lod_bands`, `render_feature_water`, `render_feature_post`: pass. `run_settings`, `run_settings_session`, `run_ui_screens`, `run_game_focus`, `run_save_state_game`, `run_render_frame`, `run_render_lod`, `run_profiler`: pass. `run_render_distance_live`: both tests pass (a debug build only reports its deadlines: `rd_64_again` MISSED at 34 % by 1 s, as a debug build's terrain does); the edit at 320 blocks reached level 1 in 13.7 ms and level 2 in 14.7. `standards_lint`, `clang_format`: pass. `cmake --build --preset profile` and `--preset release`: clean. The bench lines above, one wrapper call each. `pgrep -af \"$PWD/build\"` printed nothing at the end. Golden pictures that moved, after looking: `tests/run/ui/screens/fixtures/settings_main.png` and `settings_explain.png` (five sliders, the new line), `tests/cuda/lod/fixtures/hills.png`, `hills_plain.png`, `real_near.png`, `real_far.png` (coarser levels sooner by the bands: E 2 at 180 rows starts level 1 at 64 blocks; more coarse steps on the hand-made hills, a blockier far range from z = 1240).
 
 ## Issues found
 
@@ -310,4 +317,7 @@ Appended as they land:
 - **The near guarantee holds:** 1 030 558 pixels with a surface under 16 blocks over the 24 picture pairs, 0 hits and 0 colours different from level 0 everywhere.
 - **The error bound as written (1 % past E at E 2) does not hold, and cannot by construction.** A level-k surface is up to half its voxel off, which is exactly E at the band's own start, and the dither moves the start 8 % nearer. So flat ground and water just past d_1 sit at E and over (seen as a band of "wrong" right past d_1 on the sea, `place_0_wrong.png`). Measured at E 2, 70 degrees, 320 x 180: past E x 1.08, 0.0 % (looking down), 0.4 %, 0.4 %, 2.5 %, 2.7 % (over water) and 0 % (in the rock); past 2 E, 0.0 to 1.6 %. The test holds 2 % past 2 E and prints both. Master Q6 (a smaller E for grazing pixels) or a margin under E (`d_k` from `s_k / (2 E theta) x (1 + band_dither)`) would close it; not done here.
 - **E 8 at 180 rows** moves 6 to 28 % of pixels past 16 blocks by more than 8 pixels: it is a coarse picture, as the master's section 2.2 said.
+- **E 8 at his spot:** level 1 from 96 blocks puts the dithered band edge in the shadowed hollow, where the far field's surfaces are lit their own way (a face's mean colour, no AO, the far field's own moon ray through the coarse levels) against level 0's: a lighter, speckled patch through the dither in the bench's one picture. At E 2 the edge is at 386 blocks, past it. Phase 06 (secondary rays by level) is where near and far lighting meet.
+- **VRAM went down:** voxels at render distance 64 2776 MiB (phase 01, full detail 32) and 3240 (phase 03, the pyramid beside the far field) to 2425 at E 2, 1105 at E 4 and 836 at E 8: level 0 is held to r_0 and its pool sized for it, and there is one far field.
+- **Not done:** the gate (Ahmed plays E 2, 4 and 8); E stays 2 in the YAML.
 - **Coarse surfaces round up** (the half rule keeps a voxel half full): far water is a block high at level 1. That is phase 03's rule, and what the seam fix above works around at hand-overs.

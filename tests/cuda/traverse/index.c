@@ -1412,7 +1412,7 @@ TEST(a_ray_stops_at_its_t_end_and_says_past) {
     REQUIRE(tw_cast(t, &memory, world, rays, 3u, hits));
     CHECK_EQ_U64(traverse_hit_face(hits[0].info), TRAVERSE_FACE_PAST);
     CHECK(traverse_hit_past(&hits[0]));
-    CHECK_EQ_U64(*(const uint32_t *)(const void *)&hits[0].t, *(const uint32_t *)(const void *)&rays[0].t_end);
+    CHECK(memcmp(&hits[0].t, &rays[0].t_end, sizeof(float32_t)) == 0);
     tw_check_hit(t, &hits[1], TRAVERSE_FACE_NEG_X, 49.5f32, 50, 0, 0, 7u);
     CHECK(memcmp(&hits[1], &hits[2], sizeof(traverse_hit_t)) == 0);
     CHECK(!traverse_hit_past(&hits[1]));
