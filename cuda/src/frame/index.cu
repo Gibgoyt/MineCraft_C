@@ -341,9 +341,13 @@ static gpu_status_t frame_passes(frame_gpu_t *frame, frame_slot_t *slot, const f
             shade_marks.borrowed_events[i] = slot->owned_shade_events[i];
         }
         shade_marks.borrowed_counts = counts;
+        /* Plan 009 phase 07: drawn smaller and gathered by TAA at the output's size, a texture's mip goes by the output's pixel. */
+        const bool gathered_mips =
+            args->borrowed_output_camera != nullptr && (args->borrowed_scene->features & SHADE_FEATURE_TAA) != 0u;
+        const uint32_t mip_rows = gathered_mips ? args->borrowed_output_camera->height : 0u;
         status = shade_frame_marked(&frame->last_error, args->borrowed_scene, args->borrowed_post, args->borrowed_world,
                                     camera, targets->borrowed_hits, targets->borrowed_pixels, entities,
-                                    args->borrowed_lod, slot->marked != 0u ? &shade_marks : nullptr);
+                                    args->borrowed_lod, mip_rows, slot->marked != 0u ? &shade_marks : nullptr);
         slot->borrowed_fresh_count = shade_marks.fresh_count;
     }
     if (status == GPU_STATUS_OK) {

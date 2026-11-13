@@ -1,6 +1,6 @@
 # 009-ahmed-bohemoth-game-engine-optimizations — phase 7: Temporal upscaling
 
-**Status:** built and measured; not all targets met. The upscale kernel, its tests and the ladder hookup are in. The convergence bounds and 75 % ≤ 62 % are not met (Issues found, Results). Checkerboard was not built. Ahmed's gate is still to come   (updated 2026-11-13)
+**Status:** built and measured; not all targets met (mip bias by the output's pixel in, 2026-11-13). The upscale kernel, its tests and the ladder hookup are in. The convergence bounds and 75 % ≤ 62 % are not met (Issues found, Results). Checkerboard was not built. Ahmed's gate is still to come   (updated 2026-11-13)
 
 Read first: the phase 00 file, then the master: sections 3.1 (TSR), 3.5, 4.7, 5 and 7. Then:
 
@@ -111,7 +111,7 @@ A switch `checkerboard` in `render/temporal`. Primary and shade run on half the 
 
 - [x] Plan 008 phase 05 on `main`, or the gap in Issues found
 - [x] `post_taa_upscale_kernel`; jitter of 16 points below 100 %, unchanged at 100 %
-- [ ] Convergence test at 75 % and 50 % (32 frames, mean ≤ 1 / 255, p99.9 ≤ 8 / 255): the test is built and runs, but the bounds are not met. See Issues found
+- [ ] Convergence test at 75 % and 50 % (32 frames, mean ≤ 1 / 255, p99.9 ≤ 8 / 255): the test is built and runs. With the mip by the output's pixel the room's mean meets its bound (0.87) and is held to 1; the p99.9 (23) and the jungle (1.59, 84) do not. See Issues found
 - [x] Moving-camera ghost test
 - [x] 100 % pictures unchanged (golden pictures, settled hashes)
 - [ ] His spot at 100 / 85 / 75 / 50 %: ray passes ms in Results; 75 % ≤ 62 % of 100 %. Measured, in Results: 75 % is 67 % by cycles, so the target is not met, and the bench's saved picture is black (Results)
@@ -211,7 +211,16 @@ Appended as they land:
 | Room (stone, 320 × 180) | mean 0.23, p99.9 5 | mean 1.17, p99.9 23 | mean 2.05, p99.9 31 | mean 2.03, p99.9 51 |
 | Spawn, bamboo jungle (640 × 360) | mean 0.42, p99.9 39 | mean 2.19, p99.9 133 | mean 3.41, p99.9 155 | mean 3.72, p99.9 144 |
 
-Why the bounds are not met:
+**The mip by the output's pixel (2026-11-13, after phase 06 landed).** `shade_frame_marked` takes `mip_rows`, the output's rows when TAA gathers a smaller picture (`cuda/src/frame/` passes the output camera's height, 0 otherwise), and shade's five kernels (water, surfaces, sun, AO, AO's fresh list) choose a texture's mip by `shade_pixel_tangent_rows`. God rays and the far field's own shading keep the drawn pixel's (the far field is plan 008 phase 06's path while it runs). With TAA off, brought up bilinear, the drawn pixel's mip stays. It is a parameter and not a field of `shade_scene_t`, because that struct sits inside `render_frame_t` and `render_t` with pinned offsets. At 100 % it is the camera's own rows and the same bits: every golden picture of `render_feature_*` and `run_render_frame` passes unchanged. Measured in `render_feature_post`:
+
+| Place | 75 % before | 75 % with the mip | 50 % before | 50 % with the mip |
+|---|---|---|---|---|
+| Room | mean 1.17, p99.9 23 | **mean 0.87**, p99.9 23 | mean 2.05, p99.9 31 | mean 1.20, p99.9 31 |
+| Jungle | mean 2.19, p99.9 133 | mean 1.59, p99.9 84 | mean 3.41, p99.9 155 | mean 2.20, p99.9 106 |
+
+So the room's mean at 75 % meets the plan's 1 / 255, and the test now holds it there (≤ 1.0), with 75 % ≤ 2.0 and 50 % ≤ 3.0 everywhere (were 3.0 and 4.5). The p99.9 bound of 8 is still not met: that is edges and thin things, below, not the mip.
+
+Why the bounds were not met before:
 
 - **The mip.** Shade picks a texture's mip by the drawn pixel's size, so textures at 75 % are a mip blurrier than at 100 %. A trial that scaled `shade_pixel_tangent` by 0.75 took the room's mean from 1.14 to 0.85 and the jungle's (before the rebase onto 007-03's terrain) from 1.76 to 1.12. The p99.9 did not move. This is the mip bias that FSR 2 and DLSS ask of an engine. It needs the output's rows in shade's five kernels, which are phase 06's paths while it runs, so it is left for after that lands.
 - **Edges.** At 75 % about nine jittered points fall inside an output pixel over 16 frames. The 100 % picture weighs its own eight points with a 10 % blend, so a hard edge comes out up to an eighth of its contrast apart. That is about the 23 here. Keeping the clamp off while still made no difference (1.14 against 1.17), so the clamp is not the cause.
