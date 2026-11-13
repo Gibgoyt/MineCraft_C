@@ -28,34 +28,9 @@
 +1 button left down
 +22 button left up
 +14 screenshot picked_up.png
-# Back to looking level, out of the hole, and to the tree.
+# Back to looking level, and to the tree the test finds near the start (see ../index.c): there by /tp, facing its root, one cut that brings it all down, a walk in over the logs, and back the way it came, where the ground is clear for a table.
 +1 move 0 -250
-+1 key space down
-+1 key w down
-+4 key space up
-+12 key w up
-+6 screenshot at_tree.png
-# Four logs: the root ahead, then the trunk to its right, up it from the level of the eye, standing still.
-+1 button left down
-+70 button left up
-+1 screenshot log1.png
-+1 move 125 0
-+1 button left down
-+70 button left up
-+1 screenshot log2.png
-+1 move 0 -80
-+1 button left down
-+70 button left up
-+1 screenshot log3.png
-+1 move 0 -70
-+1 button left down
-+70 button left up
-+1 screenshot log4.png
-+1 move 0 150
-+1 key w down
-+15 key w up
-# Back the way it came, where the ground is clear for a table.
-+1 move 628 0
+@tree
 +20 screenshot logs.png
 # The inventory's grid, by clicking: a log in each of its four cells makes a crafting table, which the hands alone make (plan 005 phase 6). It opens with the pointer at 320, 240.
 +1 key e down
