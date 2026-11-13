@@ -402,7 +402,7 @@ static __device__ __forceinline__ float32_t shade_ao_at(const shade_context_t *c
         out->samples = (uint16_t)samples;
         /* Plan 008 phase 04: what it has now, for a pixel that sees this place again after it left the picture. Nothing in this frame
          * reads the cache before shade_ao_fresh_kernel, so what that finds is the same whatever order these come in. */
-        if (cache->words != nullptr) {
+        if (cache->words != nullptr && shade_ao_cache_writes(temporal->flags, temporal->frame)) {
             shade_ao_cache_put(cache, context->view, camera, hit, surface, temporal->frame, out->visible, samples);
         }
     } else {
@@ -828,7 +828,7 @@ shade_ao_fresh_kernel_body(const traverse_view_t *view, const traverse_camera_t 
         }
         visible = seen / (float32_t)rays;
         samples = rays;
-        if (!guess && cache->words != nullptr) {
+        if (!guess && cache->words != nullptr && shade_ao_cache_writes(flags, frame)) {
             shade_ao_cache_put(cache, view, camera, &hit, &surface, frame, visible, samples);
         }
     }

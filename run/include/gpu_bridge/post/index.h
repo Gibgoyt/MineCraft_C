@@ -191,11 +191,25 @@ POST_BOTH_SIDES static inline void post_jitter(uint32_t frame, float32_t out[2])
     }
 }
 
-/* A frame's jitter, as render_frame_queue moved its camera by: post_jitter of its frame with TAA on, none without. The card works it out
- * from the frame's number as the host did, to the bit: each step is a division or a sum of an exact product, which both sides round alike. */
+#ifdef __CUDA_ARCH__
+#define POST_TABLE static __constant__ const
+#else
+#define POST_TABLE static const
+#endif
+
+/* post_jitter of each frame of the eight, as the host's float32 works them out, printed to the bit: a kernel reads one pair here in place of
+ * the loop's divisions in every thread. render_feature_ao holds the table to post_jitter. */
+POST_TABLE float32_t POST_JITTER_TABLE[POST_JITTER_FRAMES][2] = {
+    {F32(0x0.0p+0), -F32(0x1.555554p-3)},  {-F32(0x1.0p-2), F32(0x1.555558p-3)}, {F32(0x1.0p-2), -F32(0x1.8e38e4p-2)},
+    {-F32(0x1.8p-2), -F32(0x1.c71c70p-5)}, {F32(0x1.0p-3), F32(0x1.1c71c8p-2)},  {-F32(0x1.0p-3), -F32(0x1.1c71c8p-2)},
+    {F32(0x1.8p-2), F32(0x1.c71c80p-5)},   {-F32(0x1.cp-2), F32(0x1.8e38e4p-2)},
+};
+
+/* A frame's jitter, as render_frame_queue moved its camera by: post_jitter of its frame with TAA on, none without. */
 POST_BOTH_SIDES static inline void post_temporal_jitter(const post_temporal_t *temporal, float32_t out[2]) {
     if ((temporal->flags & POST_TEMPORAL_JITTER) != 0u) {
-        post_jitter(temporal->frame, out);
+        out[0] = POST_JITTER_TABLE[temporal->frame % POST_JITTER_FRAMES][0];
+        out[1] = POST_JITTER_TABLE[temporal->frame % POST_JITTER_FRAMES][1];
     } else {
         out[0] = F32(0.0);
         out[1] = F32(0.0);

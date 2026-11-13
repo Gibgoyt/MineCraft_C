@@ -76,3 +76,10 @@ ao_cache_samples_cap:
   min: 1
   max: 32
   why: "Plan 008 phase 04: how many samples a newly seen pixel takes its AO from the cache as, at most, so that its own rays still move it. SHADE_AO_CACHE_SAMPLES_CAP."
+ao_cache_still_every:
+  value: 8
+  type: u32
+  unit: count
+  min: 1
+  max: 32
+  why: "Plan 008 phase 04: with the camera still, a pixel's AO ray writes the AO cache on one of this many of its turns (every 32 frames at 4 turns), and on every one while it moves. Writing on every turn made a still picture's AO history pass 16 % dearer at Ahmed's spot. SHADE_AO_CACHE_STILL_EVERY."

@@ -21,7 +21,7 @@ enum : uint32_t {
     AO_WIDTH = 320u,
     AO_HEIGHT = 180u,
     AO_PIXELS = AO_WIDTH * AO_HEIGHT,
-    AO_STILL_FRAMES = 20u,
+    AO_STILL_FRAMES = 40u, /* past SHADE_AO_TURNS * SHADE_AO_CACHE_STILL_EVERY, so every pixel has written the cache */
     AO_AWAY_FRAMES = 10u,
     /* Long enough for every pixel's AO to be the mean of all it may be. */
     AO_CONVERGED_FRAMES = 200u,
@@ -151,6 +151,22 @@ TEST(the_newest_entry_wins_and_then_the_most_samples) {
     const uint64_t key = shade_ao_cache_key(cell, 4u, 0u, 1u, 0u);
     CHECK(shade_ao_cache_word(key, 4u, 101u, 0.9f32, 1u) > shade_ao_cache_word(key, 4u, 100u, 0.1f32, 32u));
     CHECK(shade_ao_cache_word(key, 4u, 100u, 0.1f32, 9u) > shade_ao_cache_word(key, 4u, 100u, 0.9f32, 8u));
+}
+
+/* The kernels read the jitter from a table, and the host moves the camera by post_jitter: the two must be the same bits, or a still camera's
+ * history would not be its own pixel. */
+TEST(the_jitter_table_is_post_jitter_to_the_bit) {
+    for (uint32_t frame = 0u; frame < 2u * POST_JITTER_FRAMES; frame++) {
+        float32_t computed[2], read[2];
+        post_jitter(frame, computed);
+        const post_temporal_t temporal = {.frame = frame, .flags = POST_TEMPORAL_JITTER};
+        post_temporal_jitter(&temporal, read);
+        CHECK_MEM_EQ(read, computed, sizeof(computed));
+    }
+    const post_temporal_t none = {.frame = 3u};
+    float32_t read[2] = {1.0f32, 1.0f32};
+    post_temporal_jitter(&none, read);
+    CHECK(read[0] == 0.0f32 && read[1] == 0.0f32);
 }
 
 TEST(the_turn_at_the_centre_is_in_pixels) {

@@ -135,7 +135,9 @@ enum : uint32_t {
     /* An entry older than this many frames is a miss, and a pixel takes at most this many samples from one: the YAML. */
     SHADE_AO_CACHE_AGE = MC_TUNE_RENDER_SHADE_AO_CACHE_AGE_FRAMES,
     SHADE_AO_CACHE_SAMPLES_CAP = MC_TUNE_RENDER_SHADE_AO_CACHE_SAMPLES_CAP,
+    SHADE_AO_CACHE_STILL_EVERY = MC_TUNE_RENDER_SHADE_AO_CACHE_STILL_EVERY,
 };
+static_assert((uint32_t)SHADE_AO_TURNS * (uint32_t)SHADE_AO_CACHE_STILL_EVERY < (uint32_t)SHADE_AO_CACHE_AGE);
 static_assert(SHADE_AO_CACHE_AGE_SHIFT + SHADE_AO_CACHE_AGE_BITS == 64u);
 static_assert(SHADE_AO_CACHE_AGE < SHADE_AO_CACHE_AGE_MASK / 2u);
 static_assert(SHADE_AO_CACHE_SAMPLES_CAP <= 255u);
@@ -543,6 +545,13 @@ SHADE_BOTH_SIDES static inline bool shade_ao_cache_hit(uint64_t word, uint64_t k
     *out_visible = (float32_t)entry.visible / F32(65535.0);
     *out_samples = entry.samples < SHADE_AO_CACHE_SAMPLES_CAP ? entry.samples : (uint32_t)SHADE_AO_CACHE_SAMPLES_CAP;
     return true;
+}
+
+/* Whether a frame's rays write the cache: every frame while the camera moves, and with it still one turn in SHADE_AO_CACHE_STILL_EVERY, so
+ * that a still camera pays little for it (measured: writing on every turn made AO's history pass 16 % dearer) and what it sees is there, at
+ * most SHADE_AO_TURNS * SHADE_AO_CACHE_STILL_EVERY frames old, when it turns away and back. */
+SHADE_BOTH_SIDES static inline bool shade_ao_cache_writes(uint32_t flags, uint32_t frame) {
+    return (flags & POST_TEMPORAL_MOVED) != 0u || (frame / SHADE_AO_TURNS) % SHADE_AO_CACHE_STILL_EVERY == 0u;
 }
 
 static inline uint64_t shade_ao_cache_bytes(void) {
