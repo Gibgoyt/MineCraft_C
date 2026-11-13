@@ -347,10 +347,19 @@ From `bench_landform` on the 8 seeds and Ahmed's, `bench_biome_map` on Ahmed's, 
 
 Appended as they land:
 
-- `67a8270c` Add terrain/landform, plateaus in two tiers on a 32-block lattice with seaward escarpments and stretched back edges, ranges on a cell of 8192 standing on them, and lift in the profile that biomes read as ground less lift, re-pinning every digest this moved.
-- `a3890727` Write the Atlas goldens, the real-terrain render goldens and the Atlas's plain-terrain hashes again on plan 007 phase 03's plateaus, each picture looked at.
-- `433423cf` Keep hydrology's lattice fill out of a tile's frame, which the lift array pushed past the release build's 16384-byte limit.
-- (the commit that adds this line) Record plan 007 phase 03's measurements, pictures and findings, and bench_terrain's plateau_top place in its README.
+- `8f6130d3` Add terrain/landform, plateaus in two tiers on a 32-block lattice with seaward escarpments and stretched back edges, ranges on a cell of 8192 standing on them, and lift in the profile that biomes read as ground less lift, re-pinning every digest this moved.
+- `dae504c5` Write the Atlas goldens, the real-terrain render goldens and the Atlas's plain-terrain hashes again on plan 007 phase 03's plateaus, each picture looked at.
+- `82fe37ee` Keep hydrology's lattice fill out of a tile's frame, which the lift array pushed past the release build's 16384-byte limit.
+- `85a9bd04` Record plan 007 phase 03's measurements, pictures and findings, and bench_terrain's plateau_top place in its README.
+- (the commit that adds this line) Record plan 007 phase 03's verification after rebasing onto main at `9ec6bcd0`.
+
+### Verification, 2026-11-13, rebased onto main at `9ec6bcd0`
+
+- `cmake --build --preset debug` and `--preset release`: exit 0, `standards_lint: clean`.
+- `ctest --preset debug`, the whole suite: 163 of 171 passed. **Failed: the 8 scripted program tests of Issues found 12** (`render_feature_entities`, `run_audio`, `run_entity_drop`, `run_game_command`, `run_item_inventory`, `run_player_interaction`, `run_player_survival`, `run_playthrough`). Passed among the rest: every `run_terrain_*`, every `run_climate_*`, `run_ui_atlas`, `run_render_frame`, `render_feature_lod`, `run_game_spawn`, `standards_lint`, `clang_format`.
+- `ctest --preset release -R '^run_terrain_.*$'`: 13 of 13, the same pins as debug.
+- `bench_landform` on the 8 seeds in two runs of 4 and on Ahmed's, `bench_world_map --map-only`, `bench_biome_map`, `bench_terrain` (three runs), `bench_lod`, `bench_climate`: before the rebase, which touched no terrain file; numbers in Issues found.
+- `pgrep -af "$PWD/build"` printed nothing at the end; no Xvfb was started.
 
 ## Issues found
 
