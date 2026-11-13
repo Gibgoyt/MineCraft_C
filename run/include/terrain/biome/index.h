@@ -29,13 +29,13 @@ static_assert(sizeof(terrain_biome_t) == 24);
 /* What decides a column's biome (plan 006 phase 03): the family from the climate at the column's own height, then among the
  * family's members the nearest box over the landform axes, variety and wetness. */
 typedef struct terrain_biome_inputs_t {
-    float32_t variety;             /* 0: the field's */
-    float32_t wetness;             /* 4: the field's, biased by the yearly rain: terrain_biome_wetness */
-    float32_t continentalness;     /* 8 */
-    float32_t erosion;             /* 12 */
-    float32_t weirdness;           /* 16 */
-    float32_t ground;              /* 20: terrain_hydrology_column_t's; the box reads terrain_biome_height(ground, lift) */
-    float32_t lift;                /* 24: the same: the plateau under the column (plan 007 phase 03) */
+    float32_t variety;         /* 0: the field's */
+    float32_t wetness;         /* 4: the field's, biased by the yearly rain: terrain_biome_wetness */
+    float32_t continentalness; /* 8 */
+    float32_t erosion;         /* 12 */
+    float32_t weirdness;       /* 16 */
+    float32_t ground;          /* 20: terrain_hydrology_column_t's; the box reads terrain_biome_height(ground, lift) */
+    float32_t lift;            /* 24: the same: the plateau under the column (plan 007 phase 03) */
     terrain_hydrology_kind_t kind; /* 28 */
     uint8_t family;                /* 29: a biome_family_t, terrain_biome_family's */
     uint8_t _pad0[2];              /* 30 */

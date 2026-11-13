@@ -61,7 +61,7 @@ static const uint64_t FEA_DIGEST_OF_GENERATOR[] = {
      * and the biomes read the biome height, ground less lift: the value below, putting back 0x3FDD8CCBDFEA453B. Both are
      * written here for now, while the version stays 1: the joint final check of plan 006 phase 05 and plan 007 phase 06
      * raises it once and gives this value row 2. Meanwhile a world saved on the old land opens on the new. */
-    0x3FDD8CCBDFEA453Bull,
+    0xA73E3EF2016E4EE3ull,
 };
 static_assert(sizeof(FEA_DIGEST_OF_GENERATOR) / sizeof(FEA_DIGEST_OF_GENERATOR[0]) == TERRAIN_GENERATOR_VERSION + 1u);
 /* Plan 003 phase 8 stage 3 moved the coast and the rivers. */
@@ -83,7 +83,7 @@ static_assert(sizeof(FEA_DIGEST_OF_GENERATOR) / sizeof(FEA_DIGEST_OF_GENERATOR[0
 /* Plan 006 phase 03: biomes follow the climate (the family from the climate at the column's height first, then the box within it), so
  * the biomes, and the surface and features they lay, moved; height, density, hydrology, caves and ores did not (their pins hold). */
 /* Plan 007 phase 03: plateaus, escarpments and long ranges moved the land. Its old value 0x703627B51572B80C. */
-static const uint64_t FEA_FOREST_PIN = 0x703627B51572B80Cull;
+static const uint64_t FEA_FOREST_PIN = 0x7745E8634869CCBAull;
 
 static uint64_t fea_digest(uint64_t hash, const void *memory, uint64_t bytes) {
     const uint8_t *const data = memory;
@@ -1310,16 +1310,49 @@ TEST(only_what_is_open_changes_and_no_voxel_outside_the_world) {
     terrain_deinit(&terrain);
 }
 
+/* The square of side by side chunks, among those on a grid of side chunks round (0, 0), whose chunks' middles (every other
+ * chunk's, both ways) are most of them biome: read from the land, so the test finds wide plains wherever the land puts them
+ * (plan 007 phase 03's plateaus left the first plains the search meets a small patch). */
+static fea_place_t fea_find_wide(test_context_t *t, const terrain_t *terrain, biome_id_t biome, uint32_t side) {
+    enum : uint32_t { WINDOWS = 32u };
+    const uint32_t samples = WINDOWS * side / 2u;
+    const int32_t first = -(int32_t)(WINDOWS * side / 2u);
+    uint32_t *const counts = test_alloc(t, (uint64_t)WINDOWS * WINDOWS * sizeof(uint32_t));
+    terrain_biome_column_t *const columns = test_alloc(t, (uint64_t)samples * sizeof(*columns));
+    for (uint32_t row = 0u; row < samples; row++) {
+        const terrain_fields_area_t area = {
+            .origin_x = first * (int32_t)FEA_CHUNK + (int32_t)FEA_CHUNK / 2,
+            .origin_y = (first + 2 * (int32_t)row) * (int32_t)FEA_CHUNK + (int32_t)FEA_CHUNK / 2,
+            .step_x = 2 * (int32_t)FEA_CHUNK,
+            .step_y = 1,
+            .count_x = samples,
+            .count_y = 1u,
+        };
+        terrain_biome_columns_area(terrain->borrowed_biome, nullptr, &area, columns);
+        for (uint32_t i = 0u; i < samples; i++) {
+            counts[(i * 2u / side) + WINDOWS * (row * 2u / side)] += columns[i].biome == biome ? 1u : 0u;
+        }
+    }
+    uint32_t best = 0u;
+    for (uint32_t w = 1u; w < WINDOWS * WINDOWS; w++) {
+        best = counts[w] > counts[best] ? w : best;
+    }
+    return (fea_place_t){
+        .chunk_x = first + (int32_t)((best % WINDOWS) * side),
+        .chunk_y = first + (int32_t)((best / WINDOWS) * side),
+        .found = counts[best] > 0u ? 1u : 0u,
+    };
+}
+
 /* Fractional tries come out as fractions. plains has 0.05 oaks a chunk: over a wide area, far more than none and far fewer than
  * one for every chunk. */
 TEST(fractional_tries_come_out_as_fractions) {
     terrain_t terrain;
     REQUIRE(terrain_init(&terrain, FEA_WORLD));
-    fea_place_t *const places = test_alloc(t, BIOME_COUNT * sizeof(*places));
-    fea_find_places(t, &terrain, places);
-    const fea_place_t *const place = &places[BIOME_ID_PLAINS];
-    REQUIRE(place->found != 0u);
     enum : uint32_t { SIDE = 40u, HIGH = 160u };
+    const fea_place_t wide = fea_find_wide(t, &terrain, BIOME_ID_PLAINS, SIDE);
+    const fea_place_t *const place = &wide;
+    REQUIRE(place->found != 0u);
     const uint64_t voxels = (uint64_t)FEA_COLUMNS * HIGH;
     uint16_t *const blocks = test_alloc(t, voxels * sizeof(uint16_t));
     uint8_t *const opened = test_alloc(t, voxels);

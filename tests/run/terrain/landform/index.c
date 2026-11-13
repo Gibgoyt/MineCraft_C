@@ -482,7 +482,7 @@ TEST(plateau_tops_choose_lowland_biomes) {
             if (!any) {
                 continue;
             }
-            terrain_biome_columns_area(terrain.borrowed_biome, &area, biomes);
+            terrain_biome_columns_area(terrain.borrowed_biome, nullptr, &area, biomes);
             for (uint32_t i = 0u; i < SIDE; i++) {
                 if (water[i].lift < 550.0f32 || water[i].kind != TERRAIN_HYDROLOGY_KIND_LAND ||
                     terrain_biome_height(water[i].ground, water[i].lift) >= 200.0f32) {
