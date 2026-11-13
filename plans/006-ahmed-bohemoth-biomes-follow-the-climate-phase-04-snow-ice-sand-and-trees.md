@@ -1,6 +1,6 @@
 # 006-ahmed-bohemoth-biomes-follow-the-climate — phase 4: Snow, ice, sand and trees from the climate
 
-**Status:** in progress   (updated 2026-11-13)
+**Status:** in progress: steps 1 to 8 done, downstream tests and benches open (updated 2026-11-13)
 
 Read first: `plans/006-ahmed-bohemoth-biomes-follow-the-climate-phase-00-vision-and-plan-files.md`, then the master `plans/006-ahmed-bohemoth-biomes-follow-the-climate.md` (sections 0 "Why it happens", 2.5, 4, 5, 6 and 9). Every number here comes from the master. Where this file adds a number the master does not give, it says so and why.
 
@@ -153,21 +153,21 @@ biome alike.
 
 From the master (section 9, phase 04):
 
-- [ ] The snowline in `surface` and `feature_cold_paint`, with the ragged edge; snow biomes' non-snow tops below it
-- [ ] Ice on water by coldest month
-- [ ] Desert sand only in Desert and Steppe; `snowy_beach` only in Ice and Tundra
-- [ ] Tree and plant rates scaled by rain
-- [ ] The far field uses the same rules
-- [ ] Tests in 5: equator, pole, 45° mountain, and Ahmed's x -68, y 149 place
+- [x] The snowline in `surface` and `feature_cold_paint`, with the ragged edge; snow biomes' non-snow tops below it
+- [x] Ice on water by coldest month
+- [x] Desert sand only in Desert and Steppe; `snowy_beach` only in Ice and Tundra
+- [x] Tree and plant rates scaled by rain
+- [x] The far field uses the same rules
+- [x] Tests in 5: equator, pole, 45° mountain, and Ahmed's x -68, y 149 place
 - [ ] Benches: `bench_terrain` at or above 1000 columns a second, and `bench_lod`
 
 Expanded:
 
-- [ ] The `high: { block: snow_block }` rules of `windswept_hills` (400) and `stony_peaks` (800) obey the snowline
-- [ ] `render_lod_sample_freeze` (`run/src/render/lod/index.c:137`) obeys the snowline
-- [ ] `top_below_snowline` set for every snow-laying biome; table recorded here
-- [ ] The YAML `ice:` rate removed from all 11 biomes; refused by the compiler
-- [ ] Height, density, hydrology, cave and ore digests unchanged; surface and feature digests re-pinned with reasons
+- [x] The `high: { block: snow_block }` rules of `windswept_hills` (400) and `stony_peaks` (800) obey the snowline
+- [x] `render_lod_sample_freeze` (`run/src/render/lod/index.c:137`) obeys the snowline
+- [x] `top_below_snowline` set for every snow-laying biome; table recorded here
+- [x] The YAML `ice:` rate removed from all 11 biomes; refused by the compiler
+- [x] Height, density, hydrology, cave and ore digests unchanged; surface and feature digests re-pinned with reasons
 - [ ] `bench_lod` at or under 40 ms a column (35 today), recorded
 - [ ] `standards_lint`, `clang_format`, the whole debug suite pass; `pgrep -af "$PWD/build"` prints nothing
 
@@ -220,6 +220,41 @@ Ahmed opens a new world, finds a mountain near the equator with `/tp`, flies up 
 
 Appended as they land:
 
+- `WIP plan 006 phase 04: lay permanent snow by the snowline and ice by the coldest month, scale feature rates by rain`:
+  steps 1 to 8 (the surface's snowline with `top_below_snowline` / `filler_below_snowline`, cold paint and the far
+  field's freeze by the climate, the `ice:` / `snow:` rates refused, every feature rate scaled by rain, the
+  `climate_rules` tests). Rebased onto main at 150986d6 (plan 007 phase 03) with no conflict.
+- `WIP plan 006 phase 04: re-pin the terrain digests, keep the wide jungle crown to the leaves the game keeps, ...`:
+  `BIO_DIGEST_PIN`, `BIO_COLUMNS_PIN`, `FEA_FOREST_PIN` and `FEA_DIGEST_OF_GENERATOR[1]` re-pinned with reasons;
+  issues 1 to 3 below.
+
 ## Issues found
 
-None.
+1. **The wide jungle tree's crown crumbled in the game.** Its blob (5 across, 3 tall, round a 2 by 2 trunk) reached
+   7 steps from the trunk at its rim, past the 6 the game's leaf decay allows (`run/src/world/tick/`,
+   `TICK_LEAF_REACH`). In a dense jungle the neighbours' logs held those leaves; once the rain factor thinned the
+   jungles near the default spawn, a 786-tick game run lost 231 jungle leaves to decay. The blob now leaves out any
+   leaf more than `FEATURE_LEAF_REACH` (6) steps from the trunk (`feature_wide_crown_steps`); the same run then
+   dropped none. Recorded in `run/src/terrain/feature/README.md`.
+2. **Tests that counted on the biome's numbers alone.** `a_forest_has_about_the_trees_its_file_asks_for` now asks
+   for the mean of each column's rain-scaled rate (4.80 a chunk where the file says 8; 4.12 stand);
+   `lily_pads_grow_on_a_swamps_standing_water` also looks at the swamps' own places, since a swamp drier than its
+   range's middle grows a third of its pads and the 600 low chunks held 6 swamps (7 pads found there); and sugar
+   cane may stand by water that froze after it grew (ice by the coldest month now reaches biomes with cane).
+3. **`run_terrain_cave_walk` fails, from the harness's fidelity, not from the land.** The game's body and the
+   tool's, on the same blocks (a 9 by 8 by 7 dump at the mouth matched block for block) and the same script, drift
+   apart by tenths of a block from the first steps; the new route near spawn zig-zags up a stair against a wall at
+   x -107.7, where the game's body missed one jump (ticks 405 to 418) and ended 17 blocks short. With the rain
+   factor off the tool chose another cave and the test passed, so the drift was there before and the route decides
+   whether it shows. Open: the game seems to take the script's keys a tick later than the tool's body; to be
+   looked at in `bench/cave_walk/` or `run/src/game/` (outside this phase's paths).
+4. **Downstream tests the new land moved (open).** The full debug suite at -j 2 after the second commit: 166 of 175.
+   Failing besides `run_terrain_cave_walk`: `render_feature_lod_bands`, `render_feature_lod`,
+   `render_feature_under_water` (goldens and the near guarantee over the default world), `run_render_frame`
+   (goldens; the real-threads hit count), `run_playthrough`
+   (`the_trees_planks_make_stairs_on_a_bench_that_is_placed_broken_and_all_of_it_saved`: the tree it finds),
+   `run_profiler` (the aimed-at overlay), `run_ui_hud` (`a_dead_player_is_told_how_to_come_back`'s band colour),
+   and `run_climate_warning` (`it_takes_under_20_ms_on_any_preset`, a time under load). These are the same kind
+   plan 006 phase 03 fixed by having the tests read the land near spawn; not yet done here.
+5. **Benches not yet run.** `bench_terrain` and `bench_lod` need a release build, which the disk (14 GB free) and
+   the lock queue left for after the suite.
