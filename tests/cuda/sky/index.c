@@ -1303,6 +1303,9 @@ TEST(the_cost_is_measured_on_real_terrain_and_under_a_forest) {
     render_t *const render = rig.render;
     render_camera_t camera = game->camera;
     camera.pitch = -0.35f32;
+    /* Over the treetops, so that far ground is in view for the fog to change: since plan 006 phase 03 the spawn may be in a
+     * forest, whose near leaves fill the picture from the eye's own height. */
+    camera.position[2] += 64.0f64;
     render_frame_time_set(&render->frame, (float32_t)GAME_DAY_START);
     sk_cost_row(t, &rig, &camera, "terrain");
     /* What each setting changes, here. */

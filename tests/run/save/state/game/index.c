@@ -816,16 +816,17 @@ TEST(an_autosave_with_no_edits_builds_no_far_column) {
 
 /* Opens the first world on the list, looks down, digs, and goes on until it is killed or a very long way past any save. At 640 by 480, scale 2: see
  * tests/run/ui/menu/fixtures/flow.script for how these clicks were worked out. */
-static const char SS_PLAY_SCRIPT[] = "1 move 0 -40\n"
-                                     "+1 button left down\n+1 button left up\n"
-                                     "+1 move -20 -122\n"
-                                     "+1 button left down\n+1 button left up\n"
-                                     "+1 move -112 318\n"
-                                     "+1 button left down\n+1 button left up\n"
-                                     "+4 move 112 500\n"
-                                     "+4 button left down\n"
-                                     "+70 button left up\n"
-                                     "+200000 end\n";
+static const char SS_PLAY_SCRIPT[] =
+    "1 move 0 -40\n"
+    "+1 button left down\n+1 button left up\n"
+    "+1 move -20 -122\n"
+    "+1 button left down\n+1 button left up\n"
+    "+1 move -112 318\n"
+    "+1 button left down\n+1 button left up\n"
+    "+4 move 112 500\n"
+    "+4 button left down\n"
+    "+200 button left up\n" /* long enough for a hand on whatever the land puts underfoot, stone too */
+    "+200000 end\n";
 /* The same round, for a few ticks, and out. */
 static const char SS_LOOK_SCRIPT[] = "1 move 0 -40\n"
                                      "+1 button left down\n+1 button left up\n"

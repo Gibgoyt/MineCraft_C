@@ -444,3 +444,49 @@ Appended as they land:
     land columns are Ice or Tundra; `variety_and_wetness_spread_like_the_others_and_are_their_own` in `run_terrain_fields`;
     `run_game_command` holds the F3 family to the column's and the biome to its family. "1 and 16 workers choose the same
     biomes" is `one_and_sixteen_workers_give_the_same_bytes`, which runs every stage, biomes included.
+15. **The tests the new land moved, fixed** (2026-11-13, after rebasing on main at `b8b6d822`; the coordinator asked for fixes
+    that survive the next land change, plan 007 phase 03). Each reads the land instead of naming it:
+    - A shared fixture, `tests/run/game/fixtures/report.h`, reads the program's report ("the player mined M blocks and placed
+      P; the last mined was B, and the hand holds N of I") and gives the item a block drops. `run_entity_drop`,
+      `run_item_inventory` and `run_player_interaction` dig at seed 11's spawn and now read which block it was (podzol since
+      this phase, grass before) and hold the counts and the hand's item to it; the drop test's "still mining" look moved
+      from tick 20 to tick 8, which no soil a hand digs is done in. `render_feature_entities` checks one item came out
+      and its pictures, not whether it was picked up by the last tick (that rides on how long the top took to dig).
+    - `render_feature_under_water`: the dive no longer walks from the spawn over a beach (a jungle stands there now). The
+      test finds the deep sea (bed 30 or more down) nearest the world's middle from the terrain itself, the script types
+      `/tp X Y 1`, swims at the surface 25 s while the place is drawn, then sinks; with `--no-outline`, as an aimed kelp's
+      black outline is not the water's. Goldens rewritten and looked at: land is the jungle at the spawn; sea and sea with
+      no air are blue-green sea bed with kelp, not black. `fixtures/dive.script` is gone.
+    - `run_mob_skeleton`, `run_mob_sight`: their pads are cleared 48 high (the canopy over a narrow pad shaded the mobs
+      and a falling tree's drop was counted as the skeleton's); the skeleton test counts drops from what lies there
+      after the clearing; the sight pad is 40 wide and sand, none of the colours counted, so the land past it no longer
+      stands behind the mobs.
+    - `run_player_survival`: runs 45 s, not 15, so its sprinting jumps alone spend the 5 saturation whether or not a trunk
+      stops it, and no fall is asked for (whether there is one to fall off is the land's).
+    - `run_game_weather`: the rain top's "a still tick keeps the revision" is held over a run of up to 40 ticks: wherever
+      the map is unchanged the revision is, and one unchanged tick must come (the world changes on its own: water, leaves);
+      the forced bolt is at least its 300 blocks across and no further than that and the world's height.
+    - `run_render_frame`: the fresh-pixel bounds allow for the scene's edges (a jungle's leaves are mostly edges): a still
+      camera at most 5% (2.6% here, 0.3 to 0.4% on the old grass), and a turn the strip plus the still camera's own share
+      plus 2%. Goldens rewritten and looked at (jungle round the spawn), and `render_feature_lod`'s two.
+    - `run_audio` expects the dug block's own sound family (podzol's, dirt's) instead of grass's.
+    - `run_playthrough`: the night no longer holds the count of all mobs (animals come where the biome has herds; the
+      hostile ones are still held each by its line). The felling script turns to the acacia now ahead and steps to it, and
+      its checks read the report (the hole's block, a log cut, at least 2 more felled).
+    - Found in the full run at `-j 2` after those: `run_save_world` and `run_save_state_game` dig at the default seed's
+      spawn for 70 ticks, and the climate-on-the-lattice change made that ground stone, which a hand needs 150 ticks for:
+      both now hold the button 200 ticks (and the save test prints the program's output if nothing was saved).
+      `render_feature_sky`: the fog's "changes over a thousand pixels" now looks from 64 blocks over the eye, as near leaves
+      filled the picture and no far ground was in view; its program runs with `--no-entities --no-weather`, and the frozen
+      clock is held to a twentieth of what the moving clock changes, or the old 8 pixels where that is more (147 move in a
+      jungle in 198 ticks as leaves come and go, against 57 409 for the sun).
+    **Full debug suite at `-j 2`, 2026-11-13** (through the lock, the GPU guard checked Ahmed's game was not running before
+    each GPU run): 165 of 170 passed; the five failing were `run_ui_atlas` (its lock wait, load: passes alone), the two save
+    tests and the sky test above (fixed and passing alone since), and `run_playthrough` (below).
+    **Still failing: four playthroughs** (`a_first_day...`, `mangrove_planks_make_stairs...`, `a_bench_gives_its_grid_back...`,
+    `a_wooden_door...`, all four on day.script's opening at seed 36). They need 9 logs from the tree at the spawn (4 for a
+    table, 3 for a bench, 2 for planks); the tree there is now an acacia that comes down as 4. No turn or step fixes that.
+    The way that survives land changes is the dive's: the test finds a tree of 9 or more logs near the spawn from the
+    terrain (with the climate open, as a menu world has it) and the script goes there by `/tp`, facing it; or the four
+    scripts gather from two trees. Either is a rewrite of four long scripts worked out from screenshots, left for a
+    follow-up.

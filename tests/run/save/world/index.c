@@ -1847,16 +1847,17 @@ TEST(the_game_saves_a_column_that_leaves_and_finds_it_when_it_comes_back) {
 
 /* Opens the first world on the list, looks down, digs, and goes on digging until the end, which closes it. At 640 by 480, scale 2: see
  * tests/run/ui/menu/fixtures/flow.script for how these clicks were worked out. */
-static const char SW_DIG_SCRIPT[] = "1 move 0 -40\n"
-                                    "+1 button left down\n+1 button left up\n"
-                                    "+1 move -20 -122\n"
-                                    "+1 button left down\n+1 button left up\n"
-                                    "+1 move -112 318\n"
-                                    "+1 button left down\n+1 button left up\n"
-                                    "+4 move 112 500\n"
-                                    "+4 button left down\n"
-                                    "+70 button left up\n"
-                                    "+4 end\n";
+static const char SW_DIG_SCRIPT[] =
+    "1 move 0 -40\n"
+    "+1 button left down\n+1 button left up\n"
+    "+1 move -20 -122\n"
+    "+1 button left down\n+1 button left up\n"
+    "+1 move -112 318\n"
+    "+1 button left down\n+1 button left up\n"
+    "+4 move 112 500\n"
+    "+4 button left down\n"
+    "+200 button left up\n" /* long enough for a hand on whatever the land puts underfoot, stone too */
+    "+4 end\n";
 /* The same round, with nothing dug. */
 static const char SW_LOOK_SCRIPT[] = "1 move 0 -40\n"
                                      "+1 button left down\n+1 button left up\n"
@@ -1904,7 +1905,9 @@ TEST(the_built_program_keeps_what_was_dug_and_a_world_refuses_another_seed) {
     const save_world_region_t *regions = nullptr;
     sw_manifest_read(t, &reader, &header, &regions);
     CHECK_EQ_U64(header.seed, TERRAIN_SEED_DEFAULT);
-    CHECK_EQ_U64(header.generation, 1u);
+    if (!CHECK_EQ_U64(header.generation, 1u)) {
+        printf("%s\n", process.output);
+    }
     REQUIRE(header.region_count >= 1u);
     terrain_t *const terrain = sw_aligned(t, sizeof(terrain_t));
     REQUIRE(terrain_init(terrain, TERRAIN_SEED_DEFAULT));

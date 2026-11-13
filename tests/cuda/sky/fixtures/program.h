@@ -65,25 +65,14 @@ static const char sk_script[] = "0 move 0 120\n"
 
 static void sk_program_run(test_context_t *t, const sk_temp_dir_t *dir, const char *script, const char *flag,
                            test_process_t *out) {
-    char *const argv[] = {t->borrowed_args[0],
-                          (char *)"--headless",
-                          (char *)"--test-world",
-                          (char *)"--render-distance",
-                          (char *)"4",
-                          (char *)"--time-of-day",
-                          (char *)"0.26",
-                          (char *)"--script",
-                          (char *)script,
-                          (char *)"--screenshot-dir",
-                          (char *)dir->path,
-                          (char *)"--width",
-                          (char *)"320",
-                          (char *)"--height",
-                          (char *)"180",
-                          (char *)"--no-taa",
-                          (char *)"--no-ao",
-                          (char *)flag,
-                          nullptr};
+    char *const argv[] = {
+        t->borrowed_args[0], (char *)"--headless", (char *)"--test-world", (char *)"--render-distance", (char *)"4",
+        (char *)"--time-of-day", (char *)"0.26", (char *)"--script", (char *)script, (char *)"--screenshot-dir",
+        (char *)dir->path, (char *)"--width", (char *)"320", (char *)"--height", (char *)"180", (char *)"--no-taa",
+        (char *)"--no-ao",
+        /* Plan 006 phase 03: animals, drops and rain move on their own, more where the land is a savanna or a
+                           * jungle, and what is held here is the sky and the clock. */
+        (char *)"--no-entities", (char *)"--no-weather", (char *)flag, nullptr};
     test_process_run(t, argv, SK_PROGRAM_TIMEOUT_MS, out);
 }
 
@@ -141,11 +130,17 @@ TEST(the_program_takes_the_settings_and_they_change_the_picture) {
     sk_png_compare(t, frozen_early, frozen_early_bytes, frozen_late, frozen_late_bytes, &frozen_off, &frozen_far_off);
     printf("  with the day cycle off, %" PRIu32 " pixels moved between the two, %" PRIu32 " by more than a step\n",
            frozen_off, frozen_far_off);
-    CHECK(frozen_off <= SK_FROZEN_PIXELS_MOST);
-    CHECK(frozen_far_off <= SK_FROZEN_PIXELS_MOST);
     uint32_t moved_off = 0u, moved_far_off = 0u;
     sk_png_compare(t, base_early, base_early_bytes, base_late, base_late_bytes, &moved_off, &moved_far_off);
-    CHECK(moved_far_off > SK_FROZEN_PIXELS_MOST);
+    printf("  with it on, %" PRIu32 " moved, %" PRIu32 " by more than a step\n", moved_off, moved_far_off);
+    /* How much the world itself does in that time is the land's: on the grass that stood here before plan 006 phase 03 a few
+     * pixels, in the jungle since a few hundred, as its leaves come and go. So the frozen clock is held to a small share of what
+     * the moving clock changes, and to the old few where that is less. */
+    const uint32_t frozen_most =
+        moved_far_off / 20u > SK_FROZEN_PIXELS_MOST ? moved_far_off / 20u : SK_FROZEN_PIXELS_MOST;
+    CHECK(frozen_off <= frozen_most);
+    CHECK(frozen_far_off <= frozen_most);
+    CHECK(moved_far_off > 10u * SK_FROZEN_PIXELS_MOST);
     sk_temp_dir_remove(&frozen);
 
     const char *const flags[] = {"--no-sky", "--no-fog", "--no-shadows"};
