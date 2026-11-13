@@ -5,6 +5,19 @@
 #include "shade/index.hu"
 
 #include <math.h>
+#include <string.h>
+
+/* Plan 008 phase 06: what a frame's far rays need of the turn cache. */
+typedef struct lod_turn_args_t {
+    lod_turn_texel_t *texels; /* 0: nullptr for no cache */
+    lod_turn_tally_t *tally;  /* 8 */
+    uint32_t side;            /* 16 */
+    uint32_t generation;      /* 20 */
+    float32_t
+        spread; /* 24: how far apart, as a share of the pixel's own, two rays' starts may be for one to stand for the other */
+    uint32_t reading; /* 28: 1 on a turn */
+} lod_turn_args_t;
+static_assert(sizeof(lod_turn_args_t) == 32);
 
 /* Whether a ray can go on past what it first hit: nothing hit at all, or a face whose texture has anything to see through. */
 static __device__ __forceinline__ bool lod_ray_goes_on(const traverse_hit_t *hit, const shade_texture_t *textures,
@@ -221,6 +234,49 @@ __global__ void lod_past_kernel_counted(const traverse_view_t fine, const traver
                          counts);
 }
 
+/* A warp's far rays into the tally: read from a texel, and traced. One lane adds for all. */
+static __device__ __forceinline__ void lod_turn_count(lod_turn_tally_t *tally, bool read) {
+    const uint32_t active = __activemask();
+    const uint32_t reads = __ballot_sync(active, read);
+    const uint32_t lane = (threadIdx.y * blockDim.x + threadIdx.x) & 31u;
+    if (lane == (uint32_t)(__ffs((int32_t)active) - 1)) {
+        const uint32_t read_count = (uint32_t)__popc(reads);
+        traverse_count_add(&tally->read, read_count);
+        traverse_count_add(&tally->traced, (uint32_t)__popc(active) - read_count);
+    }
+}
+
+/* The far ray of one pixel, from t_from: with the turn cache, its direction's texel if this is a turn and the texel stands for it, or traced
+ * and written to the texel. Two pixels of a frame may write one texel; their answers are a texel apart, and either does. */
+static __device__ __forceinline__ void lod_far_ray(const lod_view_t *view, const lod_reach_t *bands,
+                                                   const lod_origin_t *origin, const float32_t guarded[3],
+                                                   float32_t t_from, bool shadows, const float32_t sun[3],
+                                                   const lod_turn_args_t *turn, lod_hit_t *out,
+                                                   traverse_counts_t *counts, uint32_t pixel) {
+    if (turn->texels == nullptr) {
+        lod_hit_write(view, bands, origin, guarded, t_from, true, shadows, sun, out, counts, pixel);
+        return;
+    }
+    uint4 *const slot = (uint4 *)(void *)&turn->texels[lod_turn_texel_of(guarded, turn->side)];
+    lod_turn_texel_t texel;
+    bool read = false;
+    if (turn->reading != 0u) {
+        const uint4 raw = *slot;
+        memcpy(&texel, &raw, sizeof(texel));
+        read = texel.generation == turn->generation && fabsf(texel.from - t_from) <= turn->spread * t_from;
+    }
+    lod_turn_count(turn->tally, read);
+    if (!read) {
+        lod_hit_write(view, bands, origin, guarded, t_from, true, shadows, sun, &texel.hit, counts, pixel);
+        texel.from = t_from;
+        texel.generation = turn->generation;
+        uint4 raw;
+        memcpy(&raw, &texel, sizeof(raw));
+        *slot = raw;
+    }
+    *out = texel.hit;
+}
+
 /* The second: the far rays lod_past_kernel asked for, and for one past a see-through surface only if shade's own ray, followed as shade
  * follows it, gets past level 0. Each starts where level 0 stopped for it (plan 009 phase 04): the pixel's d_1, or where the ray leaves level
  * 0's square if that is nearer, as a ray that met nothing there may have left by the top. So nothing of level 0's is passed by, as nothing
@@ -230,7 +286,7 @@ lod_frame_kernel_body(const lod_view_t *view, const traverse_view_t *fine, const
                       const shade_texture_t *textures, const uint16_t *faces, const uint8_t *pixels,
                       uint32_t material_count, uint32_t water_material, bool water_tint, bool shadows, float32_t sun_x,
                       float32_t sun_y, float32_t sun_z, const traverse_hit_t *hits, lod_hit_t *out,
-                      traverse_counts_t *counts) {
+                      const lod_turn_args_t *turn, traverse_counts_t *counts) {
     const uint32_t pixel_x = blockIdx.x * blockDim.x + threadIdx.x;
     const uint32_t pixel_y = blockIdx.y * blockDim.y + threadIdx.y;
     if (pixel_x >= camera->width || pixel_y >= camera->height) {
@@ -282,16 +338,16 @@ lod_frame_kernel_body(const lod_view_t *view, const traverse_view_t *fine, const
     const float32_t sun[3] = {sun_x, sun_y, sun_z};
     const float32_t t_from = fminf(fminf(t_out, t_end), lod_square_exit(fine, 0u, &origin, guarded));
     const lod_reach_t bands = {fine->band_base, factor, (float32_t)MC_TUNE_RENDER_LOD_NEAR_GUARANTEE, {0}};
-    lod_hit_write(view, &bands, &origin, guarded, t_from, true, shadows, sun, &out[index], counts, (uint32_t)index);
+    lod_far_ray(view, &bands, &origin, guarded, t_from, shadows, sun, turn, &out[index], counts, (uint32_t)index);
 }
 
 __global__ void lod_frame_kernel(const lod_view_t view, const traverse_view_t fine, const traverse_camera_t camera,
                                  const shade_texture_t *textures, const uint16_t *faces, const uint8_t *pixels,
                                  uint32_t material_count, uint32_t water_material, bool water_tint, bool shadows,
                                  float32_t sun_x, float32_t sun_y, float32_t sun_z, const traverse_hit_t *hits,
-                                 lod_hit_t *out) {
+                                 lod_hit_t *out, const lod_turn_args_t turn) {
     lod_frame_kernel_body(&view, &fine, &camera, textures, faces, pixels, material_count, water_material, water_tint,
-                          shadows, sun_x, sun_y, sun_z, hits, out, nullptr);
+                          shadows, sun_x, sun_y, sun_z, hits, out, &turn, nullptr);
 }
 
 __global__ void lod_frame_kernel_counted(const lod_view_t view, const traverse_view_t fine,
@@ -299,9 +355,9 @@ __global__ void lod_frame_kernel_counted(const lod_view_t view, const traverse_v
                                          const uint16_t *faces, const uint8_t *pixels, uint32_t material_count,
                                          uint32_t water_material, bool water_tint, bool shadows, float32_t sun_x,
                                          float32_t sun_y, float32_t sun_z, const traverse_hit_t *hits, lod_hit_t *out,
-                                         traverse_counts_t *counts) {
+                                         const lod_turn_args_t turn, traverse_counts_t *counts) {
     lod_frame_kernel_body(&view, &fine, &camera, textures, faces, pixels, material_count, water_material, water_tint,
-                          shadows, sun_x, sun_y, sun_z, hits, out, counts);
+                          shadows, sun_x, sun_y, sun_z, hits, out, &turn, counts);
 }
 
 __global__ void lod_rays_kernel(const lod_view_t view, bool shadows, float32_t sun_x, float32_t sun_y, float32_t sun_z,
@@ -326,6 +382,71 @@ __global__ void lod_rays_kernel(const lod_view_t view, bool shadows, float32_t s
     const lod_reach_t no_bands = {0.0F, 1.0F, 0.0F, {0}};
     lod_hit_write(&view, &no_bands, &origin, direction, given.t_start, false, shadows, sun, &out[index], nullptr,
                   TRAVERSE_COUNT_NO_PIXEL);
+}
+
+/* Plan 008 phase 06: the turn cache's state for this frame, and what its kernel needs. A new generation when there was none, the eye has moved
+ * LOD_TURN_EYE_BLOCKS from where this one began, the far field's revision is another, or the sun has moved or its rays come or go. A turn
+ * when the camera's middle moved by more than LOD_TURN_PIXELS since the last frame. The first call zeroes the block, on the stream. */
+static gpu_status_t lod_turn_begin(gpu_error_t *error, lod_turn_cache_t *cache, uint32_t revision,
+                                   const traverse_camera_t *camera, const lod_light_t *light, lod_turn_args_t *out) {
+    const uint64_t bytes = lod_turn_cache_bytes(cache->side);
+    if (cache->side == 0u || cache->borrowed_block == nullptr || cache->borrowed_block->bytes < bytes) {
+        return traverse_refuse(error, "lod: the turn cache's block is missing or too small for its side");
+    }
+    uint8_t *const base = device_memory_pointer(cache->borrowed_block);
+    if (cache->cleared == 0u) {
+        const gpu_status_t cleared =
+            device_memory_check(error, cudaMemsetAsync(base, 0, bytes), "lod: emptying the turn cache");
+        if (cleared != GPU_STATUS_OK) {
+            return cleared;
+        }
+        cache->cleared = 1u;
+        cache->generation = 0u;
+    }
+    float64_t moved = 0.0;
+    for (uint32_t i = 0u; i < 3u; i += 1u) {
+        const float64_t gap = (float64_t)(camera->eye_cell[i] - cache->eye_cell[i]) +
+                              ((float64_t)camera->eye_frac[i] - (float64_t)cache->eye_frac[i]);
+        moved += gap * gap;
+    }
+    const float32_t *const sun = light->sun_direction;
+    const float32_t sun_dot = sun[0] * cache->sun[0] + sun[1] * cache->sun[1] + sun[2] * cache->sun[2];
+    const uint8_t shadows = light->shadows != 0u ? 1u : 0u;
+    if (cache->generation == 0u || moved > (float64_t)LOD_TURN_EYE_BLOCKS * (float64_t)LOD_TURN_EYE_BLOCKS ||
+        revision != cache->revision || shadows != cache->shadows || (shadows != 0u && sun_dot < LOD_TURN_SUN_COSINE)) {
+        cache->generation = cache->generation == UINT32_MAX ? 1u : cache->generation + 1u;
+        for (uint32_t i = 0u; i < 3u; i += 1u) {
+            cache->eye_cell[i] = camera->eye_cell[i];
+            cache->eye_frac[i] = camera->eye_frac[i];
+            cache->sun[i] = sun[i];
+        }
+        cache->revision = revision;
+        cache->shadows = shadows;
+    }
+    /* The angle between the two middles against one pixel's, 2 |up| / (|forward| height), both small enough to take as their sines. */
+    const float32_t *const f = camera->forward;
+    const float32_t *const g = cache->forward;
+    const float32_t cross[3] = {f[1] * g[2] - f[2] * g[1], f[2] * g[0] - f[0] * g[2], f[0] * g[1] - f[1] * g[0]};
+    const float32_t f_length = sqrtf(f[0] * f[0] + f[1] * f[1] + f[2] * f[2]);
+    const float32_t g_length = sqrtf(g[0] * g[0] + g[1] * g[1] + g[2] * g[2]);
+    const float32_t up =
+        sqrtf(camera->up[0] * camera->up[0] + camera->up[1] * camera->up[1] + camera->up[2] * camera->up[2]);
+    const float32_t sine =
+        sqrtf(cross[0] * cross[0] + cross[1] * cross[1] + cross[2] * cross[2]) / fmaxf(f_length * g_length, 1e-20F);
+    const float32_t dot = f[0] * g[0] + f[1] * g[1] + f[2] * g[2];
+    const float32_t pixel = 2.0F * up / (fmaxf(f_length, 1e-20F) * (float32_t)camera->height);
+    cache->turning = g_length > 0.0F && (dot < 0.0F || sine > LOD_TURN_PIXELS * pixel) ? 1u : 0u;
+    for (uint32_t i = 0u; i < 3u; i += 1u) {
+        cache->forward[i] = f[i];
+    }
+    const uint64_t texels = (uint64_t)LOD_TURN_FACES * cache->side * cache->side;
+    *out = lod_turn_args_t{(lod_turn_texel_t *)(void *)base,
+                           (lod_turn_tally_t *)(void *)(base + texels * sizeof(lod_turn_texel_t)),
+                           cache->side,
+                           cache->generation,
+                           0.0F,
+                           cache->turning};
+    return GPU_STATUS_OK;
 }
 
 gpu_status_t lod_frame(gpu_error_t *error, const lod_scene_t *scene, const lod_light_t *light,
@@ -378,6 +499,15 @@ gpu_status_t lod_frame_counted(gpu_error_t *error, const lod_scene_t *scene, con
     /* Plan 009 phase 01: with counts, the counted copies; the same work and the same hits. */
     traverse_counts_t *const counts =
         counts_block != nullptr ? (traverse_counts_t *)(void *)device_memory_pointer(counts_block) : nullptr;
+    /* Plan 008 phase 06: checked, and its generation worked out, before anything starts. */
+    lod_turn_args_t turn = {nullptr, nullptr, 0u, 0u, 0.0F, 0u};
+    if (scene->borrowed_turn != nullptr) {
+        status = lod_turn_begin(error, scene->borrowed_turn, scene->revision, camera, light, &turn);
+        if (status != GPU_STATUS_OK) {
+            return status;
+        }
+        turn.spread = 2.0F * fine.band_dither + 0.02F;
+    }
     if (counts != nullptr) {
         lod_past_kernel_counted<<<grid, tile>>>(fine, *camera, textures, faces, pixels, light->material_count,
                                                 light->water_material, stops, primary, out, counts);
@@ -394,11 +524,11 @@ gpu_status_t lod_frame_counted(gpu_error_t *error, const lod_scene_t *scene, con
     if (counts != nullptr) {
         lod_frame_kernel_counted<<<grid, tile>>>(view, fine, *camera, textures, faces, pixels, light->material_count,
                                                  light->water_material, water_tint, shadows, sun[0], sun[1], sun[2],
-                                                 primary, out, counts);
+                                                 primary, out, turn, counts);
     } else {
         lod_frame_kernel<<<grid, tile>>>(view, fine, *camera, textures, faces, pixels, light->material_count,
                                          light->water_material, water_tint, shadows, sun[0], sun[1], sun[2], primary,
-                                         out);
+                                         out, turn);
     }
     return device_memory_check(error, cudaGetLastError(), "lod: starting the rays of a frame");
 }

@@ -159,7 +159,9 @@ typedef struct sh_result_t {
     uint32_t rungs[SH_RUNGS];
     /* 480: live, with --still-tail: from the camera stopping to the first picture back at the top rung, begun after it; -1 if none */
     float32_t back_ms;
-    uint8_t _pad1[4]; /* 484 */
+    /* 484: plan 008 phase 06: of the far rays the row's pictures sent, the share read from the turn cache in place of traced; -1 with no
+     * cache */
+    float32_t turn_read_share;
 } sh_result_t;
 static_assert(sizeof(sh_result_t) == 488);
 
@@ -623,10 +625,26 @@ static void sh_settled_sample(const sh_t *sh, sh_sample_t *out, float32_t host_m
     out->percent = app->render.frame.scale_percent;
 }
 
+/* Plan 008 phase 06: the far field's turn cache's tally now, both 0 with none. On the gpu thread, or with it stopped: it waits for the card. */
+static lod_turn_tally_t sh_turn_tally(game_t *game) {
+    lod_turn_tally_t tally = {0u, 0u};
+    render_lod_t *const lod = game->borrowed_render->borrowed_lod;
+    if (lod != nullptr) {
+        (void)render_lod_turn_tally(lod, &tally);
+    }
+    return tally;
+}
+
+static float32_t sh_turn_share(const lod_turn_tally_t *before, const lod_turn_tally_t *after) {
+    const uint64_t read = after->read - before->read, all = read + (after->traced - before->traced);
+    return all != 0u ? (float32_t)((float64_t)read / (float64_t)all) : -1.0f32;
+}
+
 static bool sh_row_settled(sh_t *sh, const sh_row_t *row, float64_t heading_deg, sh_result_t *r) {
     game_t *const game = &sh->borrowed_app->game;
     display_headless_scene_t scene;
     game_headless_scene(game, &scene);
+    lod_turn_tally_t turn_before = {0u, 0u};
     const int64_t started_ns = time_now_ns();
     for (uint32_t frame = 0u; frame < SH_WARM_FRAMES + SH_MEASURED_FRAMES; frame++) {
         sh_look(row, heading_deg, (float64_t)frame / (float64_t)SH_SETTLED_HZ, &game->camera);
@@ -638,8 +656,13 @@ static bool sh_row_settled(sh_t *sh, const sh_row_t *row, float64_t heading_deg,
             sh_settled_sample(sh, &sh->borrowed_samples[frame - SH_WARM_FRAMES],
                               (float32_t)time_ns_to_ms(time_now_ns() - draw_ns));
         }
+        if (frame + 1u == SH_WARM_FRAMES) {
+            turn_before = sh_turn_tally(game);
+        }
     }
     r->seconds = time_ns_to_ms(time_now_ns() - started_ns) / 1000.0f64;
+    const lod_turn_tally_t turn_after = sh_turn_tally(game);
+    r->turn_read_share = sh_turn_share(&turn_before, &turn_after);
     sh_samples_sum(sh, SH_MEASURED_FRAMES, r);
     r->late_share = 0.0f64;
     r->pictures_per_s = r->card_mean_ms > 0.0f64 ? 1000.0f64 / r->card_mean_ms : 0.0f64;
@@ -716,6 +739,7 @@ static bool sh_row_live(sh_t *sh, const sh_row_t *row, float64_t heading_deg, ui
                         uint32_t still_tail, sh_result_t *r) {
     game_t *const game = &sh->borrowed_app->game;
     display_buffer_t target = sh_target(sh);
+    const lod_turn_tally_t turn_before = sh_turn_tally(game);
     if (!game_loop_start(game, nullptr)) {
         return false;
     }
@@ -753,6 +777,8 @@ static bool sh_row_live(sh_t *sh, const sh_row_t *row, float64_t heading_deg, ui
         }
     }
     ok = game_loop_stop(game) && ok;
+    const lod_turn_tally_t turn_after = sh_turn_tally(game);
+    r->turn_read_share = sh_turn_share(&turn_before, &turn_after);
     count = sh_rings_take(sh, watch, &takes_read, &last_taken_ns, count);
     r->back_ms = tail_ns != 0 ? sh_back_ms(watch, takes_from, still_ns, game->view.scale_percent) : -1.0f32;
     if (!ok) {
@@ -1034,6 +1060,10 @@ static void sh_row_print(const char *place, const sh_row_t *row, const sh_result
         printf(r->back_ms >= 0.0f32 ? "; back to the top %.0f ms after stopping\n" : "\n", (libc_double_t)r->back_ms);
     } else if (r->back_ms >= 0.0f32) {
         printf("    at the top throughout; back to the top %.0f ms after stopping\n", (libc_double_t)r->back_ms);
+    }
+    if (r->turn_read_share >= 0.0f32) {
+        printf("    far turn cache: %.1f %% of far rays read from it\n",
+               (libc_double_t)(r->turn_read_share * 100.0f32));
     }
     printf("    intervals by slot (8.33 ms each, last is all past):");
     for (uint32_t i = 0u; i < SH_BINS; i++) {

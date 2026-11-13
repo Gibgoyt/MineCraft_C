@@ -364,6 +364,8 @@ gpu_status_t render_lod_init(render_lod_t *lod, arena_t *arena, device_memory_t 
     lod->borrowed_sample_context = sample_context;
     lod->pixel_error = RENDER_LOD_PIXEL_ERROR;
     lod->band_dither = RENDER_LOD_BAND_DITHER;
+    lod->borrowed_memory = memory;
+    lod->turn.side = RENDER_LOD_TURN_CACHE_SIDE;
     lod->borrowed_jobs = arena_alloc_array(arena, RENDER_LOD_JOBS, sizeof(render_lod_job_t), alignof(render_lod_job_t));
     for (uint32_t i = 0u; i < RENDER_LOD_JOBS; i++) {
         render_lod_job_t *const each = &lod->borrowed_jobs[i];
@@ -550,6 +552,10 @@ void render_lod_deinit(render_lod_t *lod) {
     job_group_deinit(&lod->group);
     for (uint32_t i = 0u; i < lod->level_count; i++) {
         world_buffers_deinit(&lod->levels[i].buffers);
+    }
+    if (lod->borrowed_memory != nullptr &&
+        device_memory_free(lod->borrowed_memory, &lod->owned_turn_block) != GPU_STATUS_OK) {
+        gpu_error_log(&lod->borrowed_memory->last_error);
     }
     memset(lod, 0, sizeof(*lod));
 }
@@ -1130,6 +1136,57 @@ static void render_lod_jobs_request(render_lod_t *lod) {
     }
 }
 
+/* Plan 008 phase 06: the revision moves on when any level's square shown or anything put in its table has changed since it was last worked
+ * out. A column sent counts even outside the square, which only costs the turn cache a frame's texels while the far field is still filling. */
+static void render_lod_revise(render_lod_t *lod) {
+    uint64_t key = 0xCBF29CE484222325ull;
+    for (uint32_t i = 0u; i < lod->level_count; i++) {
+        const render_lod_level_t *const level = &lod->levels[i];
+        const uint32_t words[4] = {(uint32_t)level->shown_min_x, (uint32_t)level->shown_min_y, level->shown_side,
+                                   level->generation};
+        for (uint32_t w = 0u; w < 4u; w++) {
+            key = (key ^ words[w]) * 0x100000001B3ull;
+        }
+    }
+    if (key != lod->revision_key) {
+        lod->revision_key = key;
+        lod->revision++;
+    }
+}
+
+/* Plan 008 phase 06: the turn cache's block, the first frame it is wanted, so that a far field replanned never holds two. If the voxels' pool
+ * has no room, the far field goes on without one, and says so once. */
+static void render_lod_turn_take(render_lod_t *lod) {
+    if (lod->turn.side == 0u || lod->owned_turn_block.owned_address != 0u || lod->turn_given_up != 0u ||
+        lod->borrowed_memory == nullptr) {
+        return;
+    }
+    const uint64_t bytes = lod_turn_cache_bytes(lod->turn.side);
+    if (device_memory_alloc(lod->borrowed_memory, DEVICE_POOL_VOXELS, bytes, "far turn cache",
+                            &lod->owned_turn_block) != GPU_STATUS_OK) {
+        LOG_WARN("render: no room for the far field's turn cache (%" PRIu64 " MiB), so turning traces every far ray",
+                 bytes >> 20);
+        lod->turn_given_up = 1u;
+        return;
+    }
+    lod->turn.borrowed_block = &lod->owned_turn_block;
+    lod->turn.cleared = 0u;
+}
+
+gpu_status_t render_lod_turn_tally(render_lod_t *lod, lod_turn_tally_t *out) {
+    memset(out, 0, sizeof(*out));
+    if (lod->turn.borrowed_block == nullptr || lod->turn.cleared == 0u) {
+        return GPU_STATUS_OK;
+    }
+    const uint64_t at = lod_turn_cache_bytes(lod->turn.side) - sizeof(lod_turn_tally_t);
+    const gpu_status_t status =
+        device_memory_read(lod->borrowed_memory, lod->turn.borrowed_block, at, out, sizeof(*out));
+    if (status != GPU_STATUS_OK) {
+        gpu_error_log(&lod->borrowed_memory->last_error);
+    }
+    return status;
+}
+
 gpu_status_t render_lod_frame(render_lod_t *lod, const float64_t position[3]) {
     bool moved = false;
     /* The levels' copies go through the frame's staging, levels made since included. */
@@ -1167,6 +1224,8 @@ gpu_status_t render_lod_frame(render_lod_t *lod, const float64_t position[3]) {
             return status;
         }
     }
+    render_lod_revise(lod);
+    render_lod_turn_take(lod);
     return GPU_STATUS_OK;
 }
 
@@ -1183,10 +1242,12 @@ bool render_lod_idle(const render_lod_t *lod) {
     return true;
 }
 
-void render_lod_scene(const render_lod_t *lod, lod_scene_t *out) {
+void render_lod_scene(render_lod_t *lod, lod_scene_t *out) {
     memset(out, 0, sizeof(*out));
     out->borrowed_hits = lod->borrowed_hits;
     out->level_count = lod->level_count;
+    out->borrowed_turn = lod->turn.borrowed_block != nullptr ? &lod->turn : nullptr;
+    out->revision = lod->revision;
     int32_t top = 0;
     for (uint32_t i = 0u; i < lod->level_count; i++) {
         const render_lod_level_t *const level = &lod->levels[i];

@@ -2,7 +2,7 @@
 
 **Purpose:** builds the far field's coarse grids on workers and sends them to the card: each a level of voxels of 2 to 64 blocks, in a table that follows the eye.
 **Tier:** Arena. Takes what it holds from the arena its parent gives it, once. Each column's working memory is its worker's Job arena. The levels' blocks on the card are the Owner's.
-**Owns:** nothing of its own. In its arena: the jobs, what each has encoded, and each level's host copy of its table.
+**Owns:** in its arena: the jobs, what each has encoded, and each level's host copy of its table. On the card, the turn cache's block (plan 008 phase 06), from the voxels' pool of the `device_memory_t` it was given.
 **Lifetime:** from `render_open_lod` to `render_close_lod`, within one world's frame.
 **Threads:** the `gpu` thread for everything here, or whichever one thread a run has. The columns are made on workers, which read the terrain and, through an overlay if one is set, what is saved, and touch nothing but their own job and staging until `done`.
 **Public functions** (`run/include/render/lod/index.h`):
@@ -21,7 +21,8 @@
 - `render_lod_quiesce`, `render_lod_level_matching`, `render_lod_level_adopt`: for `render_replan_lod` in `run/src/render/`, a level that stays the same when the levels change is taken over by the new far field, with its blocks, its table on the card and every column it has built.
 - `render_lod_frame`: one frame's worth: follows the eye, sends what is finished, up to a budget, and asks for what is next. Never waits.
 - `render_lod_idle`: whether all that is wanted is on the card.
-- `render_lod_scene`: what this frame's kernels read.
+- `render_lod_scene`: what this frame's kernels read, with the turn cache (plan 008 phase 06) and the far field's `revision`.
+- `render_lod_turn_tally`: the turn cache's far rays traced and read, read back from the card, for a test or a bench.
 - `render_lod_column_of`: which of a level's columns a place is in.
 
 **May be called by:** `run/src/render/`, which starts and stops it, `run/src/game/`, which calls `render_lod_frame`, and `run/src/render/frame/`, which calls `render_lod_scene` and sets `pixel_error`'s bands' `band_base` on it each frame.
@@ -58,6 +59,8 @@ Nothing about the terrain is written for this: a voxel is a pure function of the
 **When the levels change.** A change of render distance or of the bands is `render_replan_lod`: each level whose shift and radius stay the same keeps its columns, shown as they were, and only the levels that are new are built, nearest first. So a far column at the old setting stays until its own replacement is there. With `render_lod_frame` on the gpu thread nothing in the sim knows about any of this, and the map is not touched.
 
 **Budget.** What one frame sends is held to `RENDER_LOD_FRAME_BYTES`. A column that finds no room in its pool is given up on, once and with a warning, until it leaves the window: what is shown stops at it.
+
+**The turn cache (plan 008 phase 06).** `render_lod_t.turn` is the far field's cache of far rays by direction, which `cuda/src/lod/` reads and keeps (its README says how). Here it gets its block, `lod_turn_cache_bytes(turn_cache_side)` (96 MiB at 1024, `compile/config/render/lod/index.yaml`), from the voxels' pool at the first `render_lod_frame` and not at init, so a far field replanned gives the old one's back before the new one takes its own; with no room it says so once and the far field goes on without it. `render_lod_deinit` gives it back. Each frame `revision` moves on if any level's square shown or anything sent to its table (`generation`) has changed since the last: every change to what a level shows goes through one or the other, and a texel written under an older revision is never read. A test sets `turn.side` (0 for none) after `render_open_lod`, before the first frame. `run/src/render/frame/` leaves it out of a frame without `SHADE_FEATURE_LOD_TURN_CACHE`.
 
 ## What it does not do
 

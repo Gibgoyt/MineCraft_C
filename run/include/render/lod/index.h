@@ -46,6 +46,8 @@ enum : uint32_t {
 /* Plan 009 phase 04: the pixel error and the band dither a far field starts with: compile/config/render/lod/index.yaml. */
 #define RENDER_LOD_PIXEL_ERROR MC_TUNE_RENDER_LOD_PIXEL_ERROR
 #define RENDER_LOD_BAND_DITHER MC_TUNE_RENDER_LOD_BAND_DITHER
+/* Plan 008 phase 06: texels along a face of the turn cache: compile/config/render/lod/index.yaml. */
+#define RENDER_LOD_TURN_CACHE_SIDE MC_TUNE_RENDER_LOD_TURN_CACHE_SIDE
 enum : uint64_t {
     /* What a level's pool gives each of its columns, and what one frame may send of finished columns: compile/config/render/budget/index.yaml.
      * The pool's numbers are in the stage file's cost section. */
@@ -183,9 +185,21 @@ typedef struct render_lod_t {
     /* 2040: the last frame's traverse_world_t band_base, or 0 before one: a column nearer than any ray of its level starts, over loaded
      * blocks, is asked for last */
     float32_t band_base;
-    uint8_t _pad2[4]; /* 2044 */
+    /* 2044: plan 008 phase 06: changes whenever what any level shows does, a column sent or the square shown moved; the turn cache's texels
+     * of an older one are invalid */
+    uint32_t revision;
+    /* 2048: the turn cache, which lod_frame keeps. Its side starts as the tuning file says; a test may set another, or 0 for none, before
+     * the first render_lod_frame, which takes its block from the voxels' pool. */
+    lod_turn_cache_t turn;
+    device_block_t owned_turn_block;  /* 2120 */
+    device_memory_t *borrowed_memory; /* 2144 */
+    uint64_t revision_key;            /* 2152: what revision was last worked out from */
+    uint8_t turn_given_up;            /* 2160: its block could not be had, which has been said */
+    uint8_t _pad2[15];                /* 2161 */
 } render_lod_t;
-static_assert(sizeof(render_lod_t) == 2048);
+static_assert(sizeof(render_lod_t) == 2176);
+static_assert(offsetof(render_lod_t, turn) == 2048);
+static_assert(offsetof(render_lod_t, revision_key) == 2152);
 static_assert(alignof(render_lod_t) == MC_CPU_CACHE_LINE_BYTES);
 static_assert(offsetof(render_lod_t, levels) == 64);
 static_assert(offsetof(render_lod_t, stats) == 1840);
@@ -287,8 +301,13 @@ gpu_status_t render_lod_frame(render_lod_t *lod, const float64_t position[3]);
 /* Whether nothing is wanted that is not already there. */
 bool render_lod_idle(const render_lod_t *lod);
 
-/* What this frame's kernels read. */
-void render_lod_scene(const render_lod_t *lod, lod_scene_t *out);
+/* What this frame's kernels read. Plan 008 phase 06: with the turn cache's block, its state, which lod_frame changes, so lod is not const;
+ * the caller clears out->borrowed_turn for a frame without SHADE_FEATURE_LOD_TURN_CACHE. */
+void render_lod_scene(render_lod_t *lod, lod_scene_t *out);
+
+/* Plan 008 phase 06: the turn cache's far rays since its block was cleared, traced and read from a texel, read back from the card after
+ * waiting for it. Both 0 with no cache. For a test or a bench, not a frame. */
+gpu_status_t render_lod_turn_tally(render_lod_t *lod, lod_turn_tally_t *out);
 
 /* Which of a level's columns a place along x or y is in. */
 int32_t render_lod_column_of(float64_t blocks, uint32_t shift);

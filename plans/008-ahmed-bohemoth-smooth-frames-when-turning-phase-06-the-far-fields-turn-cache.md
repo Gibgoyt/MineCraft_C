@@ -1,6 +1,6 @@
 # 008-ahmed-bohemoth-smooth-frames-when-turning — phase 6: The far field's turn cache (conditional)
 
-**Status:** not started   (updated 2026-11-12)
+**Status:** in progress: built (the decision says build), tests pass; the shake rows to measure   (updated 2026-11-13)
 
 Read first: `plans/008-ahmed-bohemoth-smooth-frames-when-turning-phase-00-vision-and-plan-files.md`, then the master `plans/008-ahmed-bohemoth-smooth-frames-when-turning.md`: section 1 (C5), 3.6, 6 and Q7. Then `cuda/src/lod/README.md` (all of it), phase 01's cost rose at render distance 64, and phase 05's results (how often the floor was hit at 64).
 
@@ -115,20 +115,20 @@ This phase may edit these, plus this file:
 
 ## Todo
 
-- [ ] The decision table below filled in from phase 01's rose and phase 05's results; built or closed as it says
-- [ ] (If built) direction-to-texel addressing, with host tests
-- [ ] (If built) the turn cache in `lod_frame_kernel`; generation by eye distance; revision from `render_lod_t`
-- [ ] (If built) `SHADE_FEATURE_LOD_TURN_CACHE`; 96 MiB in `render_lod`'s budget, measured
+- [x] The decision table below filled in from phase 01's rose and phase 05's results; built or closed as it says
+- [x] (If built) direction-to-texel addressing, with host tests
+- [x] (If built) the turn cache in `lod_frame_kernel`; generation by eye distance; revision from `render_lod_t`
+- [x] (If built) `SHADE_FEATURE_LOD_TURN_CACHE`; 96 MiB in `render_lod`'s budget, measured
 - [ ] (If built) a still eye's pictures byte for byte as before; shake rows' far-field ms ≤ 0.4 × today
-- [ ] (If built) READMEs
+- [x] (If built) READMEs
 
 ## Decision (filled in by this phase)
 
 | Measure | Value | Bar | Met? |
 |---|---|---|---|
-| Far field ms in the worst direction of the rose, render distance 64, capped | | ≥ 1.5 ms | |
-| `spot/shake-720-live-capped-r64` p99 after phase 05 | | > 16.7 ms | |
-| Share of its pictures at the 50 % floor after phase 05 | | > 20 % | |
+| Far field ms in the worst direction of the rose, render distance 64, capped | 1.0 to 1.6 Mcycles a picture at r64 (phase 01: 15 to 23 % of 6.5 to 7.2 Mcycles), 1.7 to 2.7 ms at 600 MHz; and since plan 009 phase 04 the far field starts at d_1 (385 blocks at 100 %, 193 at 50 %) in place of 512, so it has only grown | ≥ 1.5 ms | yes |
+| `spot/shake-720-live-capped-r64` p99 after phase 05 | 25.03 ms (dynamic on, 182 MHz; phase 05's table) | > 16.7 ms | yes (on a card at a quarter of 600 MHz; the replay at 600 MHz gave 16.0) |
+| Share of its pictures at the 50 % floor after phase 05 | 99 % | > 20 % | yes |
 
 **Built** only if the first row and one of the other two are met.
 
@@ -190,4 +190,11 @@ Appended as they land:
 
 ## Issues found
 
-None.
+- **The far field is plan 009's pyramid now.** Since plan 009 phase 04 there is no Full detail: level 0 ends at each pixel's d_1 (`band_base` 2^1 by a dithered factor, 385 blocks at E 2 and 1080 rows, 193 at the 50 % rung) and the levels take over from there. So "the far field" this phase caches is every ray past level 0, from where level 0 stopped for that pixel. The texel therefore also holds `from`, where its ray started, and a pixel takes a texel only if its own ray starts within `2 band_dither + 2 %` (18 %) of that: the dither of d_1 frame to frame is allowed, a pixel whose ray leaves level 0 somewhere else (a hole in level 0, shade's ray through water, a rung that moved d_1 by half) traces. The 0.25 block rule was argued for 512 blocks; at d_1 = 193 it is 0.074 degrees against 0.13 a pixel at 540 rows, still under one.
+- **Only a turn reads the cache** (`LOD_TURN_PIXELS`: the camera's middle moved by more than 2 pixels since the last frame; TAA's jitter moves it by under one). The plan had every frame read, and said a still eye's pictures would be byte for byte because the jitter repeats; they would not be, as a texel is written by whichever pixel last fell in it, at its own jittered direction and its own dithered d_1, and read by another. Every frame still writes, so a turn's first frame reads what the still ones wrote. The still picture is then the same to the bit by construction, as with plan 008 phase 04's first guess.
+- **A texel holds `lod_hit_t` (8 bytes) + `from` + generation = 16 bytes**, not a colour: shade works the colour out from `lod_hit_t` as before, so a texel stays right as the day goes on. Its sun bit is kept, so a generation also ends when the sun moves a quarter of a degree or shadows come or go.
+- **The generation** is one counter for all that ends it: the eye 0.25 blocks from where it began, the far field's `revision`, the sun. `revision` moves on in `render_lod_frame` (not inside `render_lod_level_show`, which returns early when nothing is stale) whenever a hash of every level's shown square and `generation` (bumped by every column sent) changes.
+- **Memory**: the block is taken from the voxels' pool at the first `render_lod_frame` (not at init: `render_replan_lod` inits the new far field before giving back the old one's, so at init the card would briefly hold two). Measured by `the_cache_takes_what_its_side_says_from_the_voxels`: 96.0 MiB beside 66.2 MiB the test's far field and world held of the 6144 MiB pool. The side is `turn_cache_side` in `compile/config/render/lod/index.yaml` (768 the fallback, 0 none).
+- **The feature bit** is `1u << 20`, asked for by `game_frame_features` unless `features_off` has it, like `SHADE_FEATURE_AO_FIRST_GUESS`; `render_frame_features_set` keeps it beside `SHADE_FEATURES_EVERY`, and `run/src/render/frame/` drops the cache from a frame without it (two lines in that shared file, one in `run/src/game/`). It is not in `SHADE_FEATURES_PLAY`, so a settings file saved before it does not turn it off. Plan 009's parallel phases may take bit 20 too; whoever lands second moves theirs.
+- **Tests are their own ctest, `render_feature_lod_turn` (`tests/cuda/lod/turn/`)**: `render_feature_lod`'s file is at 1517 lines. The addressing tests are in `run_render_lod`, as they need no card. The turn tests use a side of 256, a texel about a pixel of the test's 180 rows, as 1024 is of 1080. `moving_a_quarter_block_retraces` and `a_far_change_retraces` are one test, `moving_a_quarter_block_or_a_far_change_retraces`. Results (debug build): still eye, 60 frames with TAA, 0 of 60 pictures differ, 0 texels read; turn back, 37181 far rays traced on the way out and 273 on the way back (0.7 %), with 0.08 % of the way back's pixels off by more than 24 from the same camera traced; same eye 359 traced / 15286 read, 0.3 blocks off and a far change 0 read.
+- **`bench_world_shake`** prints `far turn cache: N % of far rays read from it` for each row (a field in the place of its result's last padding); `--features-off 100000` is the cache off.

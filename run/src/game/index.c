@@ -416,9 +416,10 @@ static gpu_status_t game_lod_replan(game_t *game, const render_lod_plan_t *plan,
 }
 
 /* What a frame is drawn with, past what the view says: a last surface's sun ray apart, and AO's first guess for newly seen pixels (plan 008
- * phase 04) unless features_off has it, which no setting does: bench_world_shake's --features-off is how it is turned off. */
+ * phase 04) and the far field's turn cache (phase 06) unless features_off has them, which no setting does: bench_world_shake's --features-off is how it is turned off. */
 static uint32_t game_frame_features(uint32_t view_features, uint32_t features_off) {
-    return view_features | (uint32_t)SHADE_FEATURE_SUN_APART | ((uint32_t)SHADE_FEATURE_AO_FIRST_GUESS & ~features_off);
+    return view_features | (uint32_t)SHADE_FEATURE_SUN_APART |
+           ((uint32_t)(SHADE_FEATURE_AO_FIRST_GUESS | SHADE_FEATURE_LOD_TURN_CACHE) & ~features_off);
 }
 
 void game_far_changes_take(game_t *game) {

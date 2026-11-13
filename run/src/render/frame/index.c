@@ -502,7 +502,7 @@ static void frame_settings_apply(render_frame_t *frame) {
 }
 
 void render_frame_features_set(render_frame_t *frame, uint32_t features) {
-    frame->scene.features = features & SHADE_FEATURES_EVERY;
+    frame->scene.features = features & (SHADE_FEATURES_EVERY | SHADE_FEATURE_LOD_TURN_CACHE);
     frame->temporal.sun_apart = (features & SHADE_FEATURE_SUN_APART) != 0u ? 1u : 0u;
     frame->temporal.flags =
         (uint8_t)((frame->temporal.flags & ~(uint32_t)POST_TEMPORAL_FIRST_GUESS) |
@@ -825,6 +825,7 @@ gpu_status_t render_frame_queue(render_frame_t *frame, const world_buffers_t *bu
     lod_scene_t far_scene;
     if (far) {
         render_lod_scene(frame->borrowed_lod, &far_scene);
+        far_scene.borrowed_turn = (features & SHADE_FEATURE_LOD_TURN_CACHE) != 0u ? far_scene.borrowed_turn : nullptr;
         frame->borrowed_lod->band_base = band_base;
     }
     const shade_sun_t *const sun = &scene.sun;

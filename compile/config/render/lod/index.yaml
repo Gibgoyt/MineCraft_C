@@ -76,3 +76,10 @@ block_radius_max_chunks:
   min: 8
   max: 64
   why: "Level 0 is never held wider than this: the table is sized at world open for the narrowest field of view, up to here (master Q4). A narrower view past it gets the coarser level sooner."
+turn_cache_side:
+  value: 1024
+  type: u32
+  unit: count
+  min: 0
+  max: 2048
+  why: "Plan 008 phase 06: texels along each of the six faces of the far field's turn cache, a cube round the eye holding each direction's far ray. 1024 is 0.088 degrees a texel at a face's middle against 0.065 a pixel at the middle of 1080 rows of 70 degrees, so about a pixel; 6 x 1024^2 x 16 bytes is 96 MiB of the voxels' pool. 768 (54 MiB) is the fallback if that is too much; 0 is no cache."

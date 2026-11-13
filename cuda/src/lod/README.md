@@ -9,6 +9,7 @@
 
 - `lod_frame`: one `lod_hit_t` per pixel of a camera, into what `cuda/src/shade/` reads.
 - `lod_rays`: the same trace over a list of rays, with no bands, for a test.
+- With `lod_scene_t.borrowed_turn`, `lod_frame` keeps the turn cache (plan 008 phase 06, below): its state on the host, its texels on the card.
 - `lod_frame_counted` (plan 009 phase 01): `lod_frame` with every traversal's steps in a counts block, by second copies of its two kernels: far rays (`TRAVERSE_COUNT_FAR`) and their sun rays (`TRAVERSE_COUNT_FAR_SUN`) by level, in blocks along the ray, and the ask past level 0 (`TRAVERSE_COUNT_PAST`).
 
 **May be called by:** `cuda/src/frame/`, and tests.
@@ -63,3 +64,15 @@ Out in the levels anything a voxel holds stops a shadow ray: a far surface is it
 ## What is simple about it
 
 A far surface is its face's mean colour and has no texture: a voxel is many blocks, and `mean_rgba` is what `compile/*/texture_vector` made for this. Water out there is what near water comes to when deep: the sky reflected for how square a ray meets it, the texture's mean as far as that covers, and what deep water gives back, with no ray to its bottom. It has no sides, as a side is only where a level rounds the surface, and a ray that came in through near water sees only more water. A far surface takes no AO and no reflections, and has no shape but a cube.
+
+## The turn cache (plan 008 phase 06)
+
+Turning in place sends the same far rays over and over: the far field is past d_1 (193 blocks at 50 % of 1080 rows, 385 at 100 %), so from an eye that has not moved a direction's answer does not change. `lod_scene_t.borrowed_turn` is a cube round the eye, `lod_turn_cache_t`, of 6 faces of `side` texels each way (1024 in the game, `compile/config/render/lod/index.yaml`: about a pixel of 1080 rows at a face's middle, 96 MiB), each a `lod_turn_texel_t`: the `lod_hit_t` a far ray found, the `t` it started from, and the generation it was written under. `lod_turn_texel_of` and `lod_turn_texel_direction` (`run/include/gpu_bridge/lod/`) number them, the same on both sides.
+
+- **Every far ray traced writes its texel**, whole, in 16 bytes. Two pixels of a frame may write one; their answers are a texel apart, and either does.
+- **On a turn a pixel reads its texel instead of tracing**, if the texel is of this generation and its ray started within `2 band_dither + 2 %` of where the pixel's starts: so the dither of a pixel's d_1 is allowed, and a pixel whose ray leaves level 0 elsewhere (a hole in it, a change of render scale that moves d_1, shade's ray through water) traces. It takes the texel's sun too.
+- **A frame is a turn** when the camera's middle moved by more than `LOD_TURN_PIXELS` (2) pixels since the last frame; TAA's jitter moves it by under one. A frame that is not a turn traces every far ray, as before, and writes them: so a still camera's pictures are the same to the bit with the cache or without, and the first frame of a turn already reads what the still ones wrote. (The plan had every frame read; this keeps the still picture exact, as plan 008 phase 04's first guess does.)
+- **A generation** begins when the eye has moved `LOD_TURN_EYE_BLOCKS` (0.25) from where the last began, the far field's `revision` changed (`run/src/render/lod/`: any level's square shown, or a column sent), the sun moved by a quarter of a degree, or the sun's rays came or went. All texels of an older one are invalid at once, with no pass to clear them; the block is zeroed once on the card, on the first frame. Walking passes 0.25 blocks every few frames and traces nearly as before; standing and turning traces almost nothing twice.
+- **The tally**, two counters after the texels, counts far rays traced and read, one atomic add a warp. `render_lod_turn_tally` reads it for a test or a bench.
+
+What it does not do: reproject with parallax as the eye moves, or cache level 0's rays, which change with the slightest movement.

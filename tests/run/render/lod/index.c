@@ -430,4 +430,73 @@ TEST(assembled_level_1_equals_direct_reduction) {
     heap_release(&region);
 }
 
+/* ---- Plan 008 phase 06: the turn cache's addressing ------------------------------------------------------------------------ */
+
+static float64_t lod_test_unit(uint64_t *state) {
+    *state = *state * 6364136223846793005ull + 1442695040888963407ull;
+    return (float64_t)(*state >> 11) * (1.0f64 / 9007199254740992.0f64) * 2.0f64 - 1.0f64;
+}
+
+/* A million random unit directions, at the game's side and at a small one: each falls in a texel of the cube, and the middle of that texel is
+ * within one texel's angle of it (2 / side radians, a texel's width at a face's middle, where texels are widest). */
+TEST(every_direction_has_one_texel) {
+    static const uint32_t sides[2] = {RENDER_LOD_TURN_CACHE_SIDE, 7u};
+    for (uint32_t s = 0u; s < 2u; s++) {
+        const uint32_t side = sides[s];
+        const uint64_t texels = (uint64_t)LOD_TURN_FACES * side * side;
+        uint64_t state = 0x5EEDull + s, outside = 0u, far = 0u;
+        float64_t worst = 0.0f64;
+        for (uint32_t i = 0u; i < 1000000u; i++) {
+            float64_t d[3], length = 0.0f64;
+            do {
+                length = 0.0f64;
+                for (uint32_t a = 0u; a < 3u; a++) {
+                    d[a] = lod_test_unit(&state);
+                    length += d[a] * d[a];
+                }
+            } while (length > 1.0f64 || length < 1e-6f64);
+            float32_t direction[3];
+            for (uint32_t a = 0u; a < 3u; a++) {
+                direction[a] = (float32_t)(d[a] / sqrt(length));
+            }
+            const uint32_t texel = lod_turn_texel_of(direction, side);
+            if (texel >= texels) {
+                outside++;
+                continue;
+            }
+            float32_t middle[3];
+            lod_turn_texel_direction(texel, side, middle);
+            const float64_t dot = (float64_t)direction[0] * (float64_t)middle[0] +
+                                  (float64_t)direction[1] * (float64_t)middle[1] +
+                                  (float64_t)direction[2] * (float64_t)middle[2];
+            const float64_t angle = acos(dot > 1.0f64 ? 1.0f64 : dot);
+            worst = angle > worst ? angle : worst;
+            far += angle > 2.0f64 / (float64_t)side ? 1u : 0u;
+        }
+        printf("  side %" PRIu32 ": %" PRIu64 " outside, %" PRIu64
+               " further than a texel, at worst %.5f rad (a texel %.5f)\n",
+               side, outside, far, (libc_double_t)worst, (libc_double_t)(2.0f64 / (float64_t)side));
+        CHECK_EQ_U64(outside, 0u);
+        CHECK_EQ_U64(far, 0u);
+    }
+}
+
+/* The six axes go to their own faces, at the face's middle, and the middle texels point back along them. */
+TEST(the_six_face_centres_map_to_their_own_face) {
+    const uint32_t side = RENDER_LOD_TURN_CACHE_SIDE;
+    for (uint32_t face = 0u; face < LOD_TURN_FACES; face++) {
+        float32_t direction[3] = {0.0f32, 0.0f32, 0.0f32};
+        direction[face >> 1] = (face & 1u) != 0u ? -1.0f32 : 1.0f32;
+        const uint32_t texel = lod_turn_texel_of(direction, side);
+        CHECK_EQ_U64(texel / (side * side), face);
+        CHECK_EQ_U64(texel % (side * side), (side / 2u) * side + side / 2u);
+        float32_t middle[3];
+        lod_turn_texel_direction(texel, side, middle);
+        CHECK(middle[face >> 1] * direction[face >> 1] > 0.999999f32);
+        /* A long way down one axis, a hair off the others, stays on that face. */
+        direction[(face >> 1) == 0u ? 1u : 0u] = 1e-7f32;
+        CHECK_EQ_U64(lod_turn_texel_of(direction, side) / (side * side), face);
+    }
+}
+
 TEST_MAIN()
