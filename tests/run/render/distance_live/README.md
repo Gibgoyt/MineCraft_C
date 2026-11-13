@@ -16,7 +16,7 @@ On Ahmed's seed, `11107447384583428913`, at 640 by 360, with the day standing st
 | Step | What | Held to |
 |---|---|---|
 | `open_32` | A world opening, from cold, at render distance 32, level 0 as the game works it out | the 5 nearest rings (out to 4 chunks) under 2 s, all of it under 15 s |
-| `log_32_before`, `log_32_mined` | The eye moves to stand 5 blocks from the nearest log with open sky in front of it and looks at it square on for 2 s; the log is mined through `world/edit`, with the threads stopped for that moment, as the hands would mine it on the sim; the eye goes back | the square round the crosshair, 24 pixels, at least 30% changed from before, in under 1 s |
+| `log_32_before`, `log_32_mined` | The eye moves to stand 5 blocks from the nearest log with open sky in front of it and no log right behind it (a jungle tree's 2 x 2 trunk would show the same bark once mined) and looks at it square on for 2 s; the log is mined through `world/edit`, with the threads stopped for that moment, as the hands would mine it on the sim; the eye goes back | the square round the crosshair, 24 pixels, at least 30% changed from before, in under 1 s |
 | `rd_64` | Render distance 32 to 64 | starts showing under 1 s, all drawn under 15 s |
 | `rd_16` | 64 to 16 | the same |
 | `rd_64_again` | 16 to 64 | the same |
