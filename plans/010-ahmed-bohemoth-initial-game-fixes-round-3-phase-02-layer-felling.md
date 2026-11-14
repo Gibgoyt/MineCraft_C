@@ -192,7 +192,7 @@ Expanded:
 - [x] The find is under 1 ms on the biggest tree of every kind (100 cuts timed)
 - [x] No heap, the same bytes for the same cuts (existing `the_same_cut_gives_the_same_bytes_and_no_heap`)
 - [x] The pictures from `run_playthrough` looked at and described here
-- [ ] `standards_lint`, `clang_format`, the whole debug suite pass; `pgrep -af "$PWD/build"` prints nothing
+- [x] `standards_lint`, `clang_format`, the whole debug suite pass; `pgrep -af "$PWD/build"` prints nothing
 
 ## Tests
 
@@ -250,7 +250,10 @@ Ahmed, in a new world:
 
 Appended as they land:
 
-- (none yet)
+- `fb28c504` Fell a tree only when a whole layer of its trunk is cut (the feller, its tests and README)
+- `02f4460c` WIP: run_playthrough cuts the found tree's whole trunk layer, nearest log first, each aimed from the stand
+- `050f2c71` Make run_playthrough fell seed 36's tree layer by layer (after phase 01's roots)
+- this commit: `run_item_equipment`'s trees rooted in the floor; the full suite recorded
 
 ## Issues found
 
@@ -273,5 +276,7 @@ Appended as they land:
   - **Aim low on the near side.** A back log's middle is hidden by the trunk over the gap the front cut leaves, which stands until the last cut, so the mangrove was refused as unseen. The scripts now aim `PT_AIM_LOW` (0.2) over the log's floor, `PT_AIM_IN` (0.4) in from its middle toward the stand, under the standing trunk; the order is nearest first where every log is seen, else the first order found that is.
   - **The walk in starts at once** (4 ticks after the last cut, not 40): with 4 hand cuts, their drops merged in those 40 ticks and the walk picked up a mangrove propagule first, into hotbar slot 2 where the scripts look for logs. Walking in at once takes the layer's logs off the stump first; the felled logs land round the trunk while it stands there.
   - `pt_tree_t` gained no `cut_z`: it is `ground_z + 1`, the cut point's height.
+- **`run_item_equipment`'s real-game trees** were logs stood on the floor, with no root, so the new feller took them for no tree (`in_a_real_game_an_axe_fells_a_tree_taller_than_its_uses_...` and `..._an_axe_that_breaks_on_the_cut_...` failed: nothing felled). `ie_tree` now draws the trunk 2 logs into the floor, as a generated tree's; every expectation stands as it was (the stump is under `ie_logs_in`'s count). The one edit outside the owned paths besides the arena line, the test's own fixture.
+- **The whole debug suite, -j 2**, after the rebase onto phase 01 (`58a8411e`): 176 of 178 at first; `run_item_equipment` (above, fixed, then passing alone) and `run_climate_warning`'s 20 ms (passing alone, the load flake the master notes). Release: built whole, `run_player_felling` 37 of 37 (`the_find_takes_under_a_millisecond` worst 41 µs); the release build then deleted. `pgrep -af "$PWD/build"` prints nothing.
 - **The find's time, release** (`-O3`, CPU only, 2026-11-14): worst 40 µs (jungle, 101 logs, mean 26 µs); every kind under 1 ms.
 - **The find's time, debug** (`-O0`, CPU only, 2026-11-14), 100 cuts at the first log over the ground of the biggest tree of each kind: oak 8 logs found 12 µs mean / 15 µs worst, birch 9: 15 / 58, spruce 12: 19 / 62, jungle 101: 170 / 257, acacia 9: 15 / 57, dark oak 44: 73 / 87, mangrove 51: 85 / 99, cherry 14: 22 / 25. Release to come.

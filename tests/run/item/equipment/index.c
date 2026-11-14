@@ -1517,10 +1517,15 @@ TEST(in_a_real_game_a_chest_spills_a_worn_tool_as_worn_and_gold_mines_at_its_own
     ie_script_end(t, rig);
 }
 
-/* A trunk one cell ahead of the body, the way it looks with a yaw of 0, on the floor, with leaves on top. */
+/* A trunk one cell ahead of the body, the way it looks with a yaw of 0, on the floor, with leaves on top. It goes on 2 logs into the
+ * floor as a generated tree's does (plan 010 phase 01), so that the feller takes it for a tree (plan 010 phase 02: a root log set in
+ * the ground); those roots stay as the stump. */
 static void ie_tree(test_context_t *t, ie_script_game_t *rig, int32_t y, int32_t tall) {
     world_edit_t *const edit = &rig->world->edit;
     const int32_t x = rig->pad_cell[0] + 1, floor_above = rig->pad_cell[2] + 1;
+    for (int32_t z = floor_above - 2; z < floor_above; z++) {
+        CHECK(world_edit_block_set(edit, x, y, z, BLOCK_ID_OAK_LOG) != WORLD_EDIT_STATUS_NO_MEMORY);
+    }
     for (int32_t z = floor_above; z < floor_above + tall; z++) {
         CHECK(world_edit_block_set(edit, x, y, z, BLOCK_ID_OAK_LOG) == WORLD_EDIT_STATUS_CHANGED);
     }
