@@ -30,9 +30,13 @@ typedef struct density_knot_t {
 } density_knot_t;
 static_assert(sizeof(density_knot_t) == 16);
 
+/* Plan 007 phase 06: the land's rise inland is a fifth of what it was (3 to 22, was 3 to 100), and every knot but the ends
+ * moves 0.12 towards the land. Continentalness has octaves down to 48 blocks, and 97 blocks of rise over it made every
+ * lowland moderate ground (master section 4 wants 30 to 40% of land flat); the shift keeps the sea's share, which the
+ * plateaus, now read from smooth broad continentalness, would otherwise have lifted out of the pockets they stand round. */
 static const density_knot_t DENSITY_KNOTS_CONTINENTAL[] = {
-    {-1.0f64, -110.0f64}, {-0.88f64, -90.0f64}, {-0.78f64, -64.0f64}, {-0.6f64, -36.0f64}, {-0.5f64, -10.0f64},
-    {-0.45f64, 3.0f64},   {-0.34f64, 10.0f64},  {-0.07f64, 26.0f64},  {0.43f64, 54.0f64},  {1.0f64, 100.0f64},
+    {-1.0f64, -110.0f64}, {-0.76f64, -90.0f64}, {-0.66f64, -64.0f64}, {-0.48f64, -36.0f64}, {-0.38f64, -10.0f64},
+    {-0.33f64, 3.0f64},   {-0.22f64, 4.4f64},   {0.05f64, 7.6f64},    {0.55f64, 13.2f64},   {1.0f64, 22.4f64},
 };
 /* The soft shaping curve, m^1.6 at its knots: a range on rolling ground, gentle at its foot and only a little steeper at its
  * top. The knots at tenths beside master 3.6's table hold the spline's slope near the power curve's (README). */
@@ -59,8 +63,8 @@ static const density_knot_t DENSITY_KNOTS_RANGE_LAND[] = {
 /* From how near a column is to a range's line, 1 on the line itself, to how much of the range is there. Wide and nearly
  * straight: plan 007 phase 04's slope shaping puts the concavity on it, so it is not baked in here twice. */
 static const density_knot_t DENSITY_KNOTS_FLANK[] = {
-    {0.0f64, 0.0f64},   {0.40f64, 0.0f64},  {0.55f64, 0.06f64},  {0.70f64, 0.20f64}, {0.82f64, 0.42f64},
-    {0.90f64, 0.64f64}, {0.95f64, 0.82f64}, {0.985f64, 0.96f64}, {1.0f64, 1.0f64},
+    {0.0f64, 0.0f64},     {0.60f64, 0.0f64},    {0.70f64, 0.06f64},  {0.80f64, 0.20f64}, {0.88f64, 0.42f64},
+    {0.9333f64, 0.64f64}, {0.9667f64, 0.82f64}, {0.99f64, 0.96f64},  {1.0f64, 1.0f64},
 };
 /* How tall a stretch of range stands, along its length: passes, and here and there the great heights. */
 static const density_knot_t DENSITY_KNOTS_MASSIF[] = {
@@ -74,8 +78,8 @@ static const density_knot_t DENSITY_KNOTS_CREST[] = {
     {1.0f64, 1.0f64},
 };
 static const density_knot_t DENSITY_KNOTS_VALLEY[] = {
-    {-1.0f64, 0.3f64},
-    {-0.6f64, 0.65f64},
+    {-1.0f64, 0.6f64},
+    {-0.6f64, 0.85f64},
     {-0.2f64, 1.0f64},
     {1.0f64, 1.0f64},
 };
@@ -86,16 +90,17 @@ static const density_knot_t DENSITY_KNOTS_WETLAND[] = {
     {0.6f64, 1.0f64},
     {1.0f64, 1.0f64},
 };
+/* Moved 0.12 with the coast (plan 007 phase 06), so a beach still has no hills or knobs. */
 static const density_knot_t DENSITY_KNOTS_HILL_LAND[] = {
     {-1.0f64, 0.0f64},
-    {-0.45f64, 0.0f64},
-    {-0.2f64, 1.0f64},
+    {-0.33f64, 0.0f64},
+    {-0.08f64, 1.0f64},
     {1.0f64, 1.0f64},
 };
 static const density_knot_t DENSITY_KNOTS_HILL_SEA[] = {
     {-1.0f64, 1.0f64},
-    {-0.58f64, 1.0f64},
-    {-0.51f64, 0.0f64},
+    {-0.46f64, 1.0f64},
+    {-0.39f64, 0.0f64},
     {1.0f64, 0.0f64},
 };
 /* A dry basin's sinking, as a share of the most, against how far into the basin a column is: concave, a flat floor and steep
@@ -112,7 +117,9 @@ static const density_knot_t DENSITY_KNOTS_HILL_RELIEF[] = {
 
 /* The height formula's sizes, in blocks. The limits in the header are their sum. A range rises to DENSITY_RANGE_TOP less the
  * plateau it stands on, so the two together never pass it. */
-static const float64_t DENSITY_RANGE_TOP = 1000.0f64;
+/* 1080 from plan 007 phase 06, which took the land's own rise from 100 to 22.4: the summits stay at 1100 to 1190 (master
+ * section 4), and the sum stays under TERRAIN_DENSITY_HEIGHT_MAX. */
+static const float64_t DENSITY_RANGE_TOP = 1080.0f64;
 /* How much a crest's side valleys cut a range at its full height: half of what the crest spline leaves out. */
 static const float64_t DENSITY_CREST_DEPTH = 0.5f64;
 /* How much a plateau's face counts as rough ground, for softness, and how much a rugged range's height does. */
@@ -123,11 +130,11 @@ static const float64_t DENSITY_WETLAND_BLOCKS = 14.0f64;
 static const float64_t DENSITY_PEAK_BLOCKS = 40.0f64;
 static const float64_t DENSITY_PEAK_FROM = 0.6f64;
 /* Knobs: where knobs passes DENSITY_KNOB_FROM, (MIN + EXTRA * size) * shape(t) blocks. */
-static const float64_t DENSITY_KNOB_FROM = 0.55f64;
+static const float64_t DENSITY_KNOB_FROM = 0.7f64;
 static const float64_t DENSITY_KNOB_BLOCKS_MIN = 20.0f64;
 static const float64_t DENSITY_KNOB_BLOCKS_EXTRA = 70.0f64;
-static const float64_t DENSITY_HILL_BLOCKS_MIN = 6.0f64;
-static const float64_t DENSITY_HILL_BLOCKS_EXTRA = 24.0f64;
+static const float64_t DENSITY_HILL_BLOCKS_MIN = 0.0f64;
+static const float64_t DENSITY_HILL_BLOCKS_EXTRA = 10.0f64;
 static const float64_t DENSITY_HILL_BLOCKS_SEA = 6.0f64;
 static const float64_t DENSITY_SOFTNESS_MIN = 4.0f64;
 static const float64_t DENSITY_SOFTNESS_EXTRA = 22.0f64;
@@ -156,11 +163,17 @@ static const float64_t DENSITY_BASIN_UPLIFT_DEPTH = 0.4f64;
 static const float64_t DENSITY_BASIN_UPLIFT_FROM = -0.95f64;
 static const float64_t DENSITY_BASIN_UPLIFT_TO = -0.85f64;
 static const float64_t DENSITY_BASIN_FLOOR = 100.0f64;
+/* A basin's floor is DENSITY_BASIN_FLOOR times the ruggedness G, but at least DENSITY_BASIN_FLOOR_LEAST of it: shallow pans
+ * on rolling ground, deep troughs among alpine ranges (plan 007 phase 06; every floor was -99 or -100 before, as B is held
+ * to 1 where basins sink). */
+static const float64_t DENSITY_BASIN_FLOOR_LEAST = 0.4f64;
 /* The inland gate reads broad continentalness at nodes this many blocks apart, blended between, not at the column: broad
  * continentalness's finest octave has a cell of 768, and read at the column it broke a basin into pieces round every sea
  * pocket and changed the ring field faster than the rim can follow. */
 static const int64_t DENSITY_BASIN_INLAND_CELL = 2048;
 static const float64_t DENSITY_BASIN_RIM_BLOCKS = 3.0f64;
+/* How much of broad continentalness at the column the plateau reads; the rest is the inland gate's blend (plan 007 phase 06). */
+static const float64_t DENSITY_PLATEAU_BROAD_SHARE = 0.25f64;
 
 /* What each field looks like. */
 static const terrain_noise_shape_t DENSITY_SHAPE_HILLS = {
@@ -172,8 +185,8 @@ static const terrain_noise_shape_t DENSITY_SHAPE_HILLS = {
 };
 /* Where it is 0 is a range's line. A line where a smooth field is 0 has no ends, and this field's size sets how far apart they lie. */
 static const terrain_noise_shape_t DENSITY_SHAPE_RANGE = {
-    .frequency_x = 1.0f64 / 8192.0f64,
-    .frequency_y = 1.0f64 / 8192.0f64,
+    .frequency_x = 1.0f64 / 12288.0f64,
+    .frequency_y = 1.0f64 / 12288.0f64,
     .lacunarity = 2.0f32,
     .persistence = 0.45f32,
     .octaves = 3u,
@@ -396,7 +409,9 @@ terrain_density_profile_t terrain_density_profile_from(const terrain_density_t *
         sink = terrain_density_spline_at(&density->basin, (field - DENSITY_BASIN_FROM) / (1.0f64 - DENSITY_BASIN_FROM));
     }
     /* A sea pocket in a basin, its base below -100, is raised to the floor as the rest is lowered to it. */
-    const float64_t depression = (base + DENSITY_BASIN_FLOOR) * sink;
+    const float64_t floor_depth =
+        DENSITY_BASIN_FLOOR * (rugged > DENSITY_BASIN_FLOOR_LEAST ? rugged : DENSITY_BASIN_FLOOR_LEAST);
+    const float64_t depression = (base + floor_depth) * sink;
 
     /* A range stands on the plateau and rises at most to DENSITY_RANGE_TOP above the base, whatever the plateau. */
     float64_t height = base - depression + lift +
@@ -420,8 +435,8 @@ terrain_density_profile_t terrain_density_profile_from(const terrain_density_t *
     }
     /* No floor below -100, blended in as the rim blends out, so there is no step. */
     const float64_t floor_in = 1.0f64 - out;
-    if (floor_in > 0.0f64 && height < -DENSITY_BASIN_FLOOR) {
-        height = floor_in >= 1.0f64 ? -DENSITY_BASIN_FLOOR : height + floor_in * (-DENSITY_BASIN_FLOOR - height);
+    if (floor_in > 0.0f64 && height < -floor_depth) {
+        height = floor_in >= 1.0f64 ? -floor_depth : height + floor_in * (-floor_depth - height);
     }
     return (terrain_density_profile_t){
         .height = (float32_t)height,
@@ -430,6 +445,7 @@ terrain_density_profile_t terrain_density_profile_from(const terrain_density_t *
         .rivers = (float32_t)(1.0f64 - density_smoothstep(ring, DENSITY_BASIN_FROM - DENSITY_BASIN_RIVERS_FROM,
                                                           DENSITY_BASIN_FROM - DENSITY_BASIN_RIVERS_TO)),
         .ring = (float32_t)ring,
+        .knob = (float32_t)knob,
         .dry = field > DENSITY_BASIN_FROM ? 1u : 0u,
     };
 }
@@ -645,8 +661,17 @@ static void density_profile_batch(const terrain_density_t *density, const float6
     terrain_fields_sample_points(density->borrowed_fields, xs, ys, count, &fields);
     terrain_noise_sample_points(density->borrowed_hills, xs, ys, zs, count, hills);
     terrain_noise_sample_points(density->borrowed_range, xs, ys, zs, count, range);
-    density_plateau_batch(density, xs, ys, count, broad, plateau, face, rugged, basin, uplift);
+    /* The plateau reads broad continentalness mostly as the basins' inland gate does, blended from nodes
+     * DENSITY_BASIN_INLAND_CELL apart, with DENSITY_PLATEAU_BROAD_SHARE of it at the column (plan 007 phase 06): read wholly
+     * at the column, its 768-block octave made the plateau input change up to five times faster than the faces are drawn
+     * for, and 1.8 to 3.6% of the land was sheer; read wholly blended, the coast gate lifted the sea out of its pockets. */
     density_inland_batch(density, xs, ys, count, inland);
+    float32_t plateau_broad[DENSITY_BATCH_COLUMNS];
+    for (uint32_t i = 0u; i < count; i++) {
+        plateau_broad[i] = (float32_t)((float64_t)inland[i] +
+                                       DENSITY_PLATEAU_BROAD_SHARE * ((float64_t)broad[i] - (float64_t)inland[i]));
+    }
+    density_plateau_batch(density, xs, ys, count, plateau_broad, plateau, face, rugged, basin, uplift);
 
     /* Massif and crest only multiply a range, so outside one they are not worth their octaves, and any value gives the same ground. */
     uint32_t reached = 0u;
@@ -708,6 +733,9 @@ static void density_profile_batch(const terrain_density_t *density, const float6
         }
         if (out->ring != nullptr) {
             out->ring[done + i] = profile.ring;
+        }
+        if (out->knob != nullptr) {
+            out->knob[done + i] = profile.knob;
         }
     }
 }

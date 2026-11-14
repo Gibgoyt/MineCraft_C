@@ -90,10 +90,11 @@ typedef struct terrain_density_profile_t {
     float32_t
         rivers;     /* 12: from 0 to 1, how much of a river hydrology may cut here: 0 on a dry basin's rim and in it */
     float32_t ring; /* 16: the ring field R of the README's "Dry basins": the rim is where it is 0.72 or more */
-    uint8_t dry;    /* 20: 1 in a dry basin: what is open at or below the sea's level there is air, not water */
-    uint8_t _pad0[3]; /* 21 */
+    float32_t knob; /* 20: in blocks, what a knob adds here: for tools that read the ground without its knobs */
+    uint8_t dry;    /* 24: 1 in a dry basin: what is open at or below the sea's level there is air, not water */
+    uint8_t _pad0[7]; /* 25 */
 } terrain_density_profile_t;
-static_assert(sizeof(terrain_density_profile_t) == 24);
+static_assert(sizeof(terrain_density_profile_t) == 32);
 
 /* The noise a profile takes that is not climate, each already spread out to -1 to 1. */
 typedef struct terrain_density_inputs_t {
@@ -127,8 +128,9 @@ typedef struct terrain_density_profile_arrays_t {
     float32_t *rivers;   /* 24 */
     uint8_t *dry;        /* 32 */
     float32_t *ring;     /* 40: for tests and tools */
+    float32_t *knob;     /* 48: what a knob adds, for tools (bench_landform's plateau surface) */
 } terrain_density_profile_arrays_t;
-static_assert(sizeof(terrain_density_profile_arrays_t) == 48);
+static_assert(sizeof(terrain_density_profile_arrays_t) == 56);
 
 /* Blocks next to each other. Filled with x changing fastest, then y, then z, as a section's voxels are stored:
  * out[ix + count_x * (iy + count_y * iz)] is the voxel origin + i. */

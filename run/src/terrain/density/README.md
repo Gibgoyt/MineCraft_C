@@ -58,17 +58,18 @@ summit field `n` (-1 to 1), from `run/src/terrain/landform/`:
     S_G(m)      = (1 - G) * soft(m) + G * sharp(m)                         gentle feet, steep tops (plan 007 phase 04)
     peak        = 40 * w^3 * (1 - |n|),  w = (m - 0.6) / 0.4 where m > 0.6, else no peak
     land        = hill_land(c)
-    knob        = (20 + 70 * sigma) * S_K(t) * (1 - body) * land,  t = (K - 0.55) / 0.45 where K > 0.55, else no knob
+    knob        = (20 + 70 * sigma) * S_K(t) * (1 - body) * land,  t = (K - 0.7) / 0.3 where K > 0.7, else no knob
     S_K(t)      = (1 - G) * (1 - (1 - t)^2) + G * koppie(t)              a dome, or a flat-topped koppie
-    hill        = land * valley_at * (6 + 24 * hill_relief(e) * (0.5 + 0.5 * G)) + hill_sea(c) * 6
+    hill        = land * valley_at * 10 * hill_relief(e) * (0.5 + 0.5 * G) + hill_sea(c) * 6
 
     sink        = basin((F - 0.86) / 0.14) where F > 0.86, else 0   a dry basin: below
-    depression  = (base + 100) * sink
-    height      = base - depression + lift + (1000 - lift) * S_G(m) + peak + knob + hill * hills * (1 - sink)
+    floor       = 100 * max(0.4, G)                    a basin's depth below the sea: 40 to 100 (plan 007 phase 06)
+    depression  = (base + floor) * sink
+    height      = base - depression + lift + (1080 - lift) * S_G(m) + peak + knob + hill * hills * (1 - sink)
     softness    = 4 + 22 * (h + body - h * body),   h = min(1, 0.5 * face + 0.3 * G * m)
     lift        = P - depression                                           what the profile hands on as lift
 
-A range stands on the plateau and rises at most to 1000 above the base, whatever the plateau.
+A range stands on the plateau and rises at most to 1080 above the base, whatever the plateau (1000 before plan 007 phase 06, which lowered the land's own rise by 78 and gave it to the ranges, so the summits stay at 1100 to 1190).
 
 **Slope shaping** (master 3.6). With `m` rising steadily from a range's foot to its top, `S_G` is flat at 0 and steep at 1, so
 the ground is gentle low down and steep high up. On a straight envelope 2000 blocks long the slope at `m = 0.9` is 4.4 times
@@ -77,9 +78,9 @@ the slope at `m = 0.1` on rolling ground (`G = 0`, about `m^1.6`), 11 times at `
 summit cliffs above 60% of the envelope only: 5 blocks at `m = 0.8`, 40 at the top. It replaced `jagged`, 14 blocks on every
 foothill.
 
-**Knobs** (master 3.7, Ahmed's "pimples": koppies, inselbergs, domes) stand where `K` passes 0.55, about a fifth of the land,
+**Knobs** (master 3.7, Ahmed's "pimples": koppies, inselbergs, domes) stand where `K` passes 0.7 (0.55 before plan 007 phase 06), about a tenth of the land,
 20 to 90 blocks high and 250 to 500 across (the knob field's cell is 640, not master 3.7's 320: on 320 their sides came out 1:2 to 1:5 on `bench_landform`'s slope map, not the master's 6:1 to 1:1.5), on any ground: the lowland and a plateau's top alike, as nothing ties them to height. Never on a range
-(`1 - body`) or in the sea (`land`). **Hills** are gentler than before: at most 30 blocks (46 before) on a cell of 384 (192).
+(`1 - body`) or in the sea (`land`). **Hills** are gentler than before: at most 10 blocks, and only on worn ground's low relief (plan 007 phase 06: 6 + 24 before, 46 before plan 007 phase 04), on a cell of 384 (192).
 The **foothills** (60 blocks on ridges where erosion was low) are gone: knobs and `S_G`'s low part do their work. Softness
 follows faces and rugged ranges, so a plain or a plateau top has one surface at about 4, and overhangs go to cliffs.
 
@@ -87,15 +88,15 @@ Each of those names is a spline through these knots, each written `x: y`:
 
 | Spline | Knots | Why |
 |---|---|---|
-| `continental` | -1: -110, -0.88: -90, -0.78: -64, -0.6: -36, -0.5: -10, -0.45: 3, -0.34: 10, -0.07: 26, 0.43: 54, 1: 100 | Sea bed, a wide shelf, the coast at about `c = -0.46`, and land rising slowly inland. So about 27% of the world is under the sea: `bench/world_map/` reads 24.9 to 29.1% on 8 seeds |
+| `continental` | -1: -110, -0.76: -90, -0.66: -64, -0.48: -36, -0.38: -10, -0.33: 3, -0.22: 4.4, 0.05: 7.6, 0.55: 13.2, 1: 22.4 | Sea bed, a wide shelf, the coast at about `c = -0.34`, and land rising very slowly inland. Plan 007 phase 06 took the rise to a fifth (it reached 100) and moved the coast 0.12 inland: continentalness has octaves down to 48 blocks, and 97 blocks over it made every lowland moderate ground, while the plateaus, read from smooth broad continentalness since, lift more of the sea's pockets. `bench_landform` reads the sea's share in its table |
 | `range_land` | -1: 0, -0.38: 0, -0.1: 0.5, 0.2: 1, 1: 1 | No ranges in the open sea or right on the coast. Read from broad continentalness: see below |
-| `flank` | 0: 0, 0.40: 0, 0.55: 0.06, 0.70: 0.20, 0.82: 0.42, 0.90: 0.64, 0.95: 0.82, 0.985: 0.96, 1: 1 | How much of a range stands at each nearness to its line, 1 being on the line: wide, and nearly straight, as phase 04's shaping puts the concavity on it. About 60% of the world has any, before the land and massif |
+| `flank` | 0: 0, 0.60: 0, 0.70: 0.06, 0.80: 0.20, 0.88: 0.42, 0.9333: 0.64, 0.9667: 0.82, 0.99: 0.96, 1: 1 | How much of a range stands at each nearness to its line, 1 being on the line: nearly straight, as phase 04's shaping puts the concavity on it. About 40% of the world has any, before the land and massif (60% before plan 007 phase 06, which took the belt from nearness 0.40 to 0.60 and the range's cell from 8192 to 12288, so ranges are rarer, as master section 4's slope rows ask, and as wide in blocks) |
 | `massif` | -1: 0.35, -0.2: 0.58, 0.4: 0.82, 0.75: 1, 1: 1 | Along a range: passes, and here and there the great heights |
 | `crest` | 0: 0.5, 0.4: 0.66, 0.8: 0.94, 1: 1 | Across a range: side valleys between sharp crests, down to three quarters of its height where `body` is 1, and not at all at its foot |
 | `soft` | 0: 0, 0.1: 0.025, 0.2: 0.076, 0.3: 0.146, 0.4: 0.231, 0.5: 0.33, 0.6: 0.442, 0.7: 0.565, 0.8: 0.7, 0.9: 0.845, 0.95: 0.921, 1: 1 | `m^1.6`, a rolling range. Master 3.6's knots, and tenths between them so the spline's slope stays within a few % of the power curve's (with only the master's 7 knots the slope at `m = 0.2` came out 19% low) |
 | `sharp` | 0: 0, 0.1: 0.001, 0.2: 0.008, 0.3: 0.027, 0.4: 0.064, 0.5: 0.125, 0.6: 0.216, 0.7: 0.343, 0.8: 0.512, 0.9: 0.729, 0.95: 0.857, 1: 1 | `m^3`, an alpine range |
 | `koppie` | 0: 0, 0.3: 0.15, 0.5: 0.75, 0.7: 0.95, 1: 1 | Steep sides and a flat top, like the Highveld's koppies |
-| `valley` | -1: 0.3, -0.6: 0.65, -0.2: 1, 1: 1 | Valley floors sink towards the sea, where Stage 10.4 can put rivers |
+| `valley` | -1: 0.6, -0.6: 0.85, -0.2: 1, 1: 1 | Valley floors sink towards the sea, where Stage 10.4 can put rivers: by at most 40% of the land's height (70% before plan 007 phase 06, whose slope rows found the sinking a main source of moderate and steep lowland) |
 | `wetland` | -1: 0, 0.35: 0, 0.6: 1, 1: 1 | Worn ground's valley floors go below the sea's level, which is what gives a swamp standing water far inland |
 | `hill_land` | -1: 0, -0.45: 0, -0.2: 1, 1: 1 | No hills on a beach |
 | `hill_sea` | -1: 1, -0.58: 1, -0.51: 0, 1: 0 | A sea bed is not quite flat, except near the coast |
@@ -104,11 +105,11 @@ Each of those names is a spline through these knots, each written `x: y`:
 **A spline never passes its knots.** Its pieces are cubics with Fritsch and Carlson's slopes, which stay between their two knots
 and have no corner, and a last clamp takes care of rounding. So the limits can be added up by hand, which is what the header does:
 
-    height   at most 100 + (lift + 1000 - lift) + 40 + 30 = 1170    at least -110 - 6 = -116
+    height   at most 22.4 + (lift + 1080 - lift) + 40 + 10 = 1152.4    at least -110 - 6 = -116
     softness from 4 to 4 + 22 = 26
 
 A knob does not add to the top, as `1 - body` takes it away where a range stands, and on a plateau with no range it adds 90 to
-650: `100 + 650 + 90 + 30 = 870`. `TERRAIN_DENSITY_HEIGHT_MAX` stays 1190, the sum before plan 007, so the world's top, the
+650: `22.4 + 650 + 90 + 10 = 772.4`. `TERRAIN_DENSITY_HEIGHT_MAX` stays 1190, the sum before plan 007, so the world's top, the
 stone limit and the room for trees do not move. The limit is as high as it can be, as `terrain/index.h` holds `1190 + 26 + 8`
 plus the tallest tree to the world's top.
 
@@ -121,10 +122,11 @@ continentalness read at nodes 2048 blocks apart and blended between (bilinear, x
     R  = B - 0.4 * (1 - smoothstep(b2; -0.1, 0.2)) - 0.4 * smoothstep(U; -0.95, -0.85)    the ring field
     F  = R - 0.4 * min(1, P / 65)                                                          the basin field
     dry    = F > 0.86
-    sink   = basin((F - 0.86) / 0.14), 0 where F <= 0.86      the floor: base - (base + 100) * sink, -100 at the deepest
+    sink   = basin((F - 0.86) / 0.14), 0 where F <= 0.86      the floor: base - (base + floor) * sink, -floor at the deepest
+    floor  = 100 * max(0.4, G)                                  40 to 100 blocks, by the ruggedness
     rim    = min(smoothstep(R; 0.76, 0.78), 1 - smoothstep(F; 0.86, 0.88))
     height = height + rim * (softness + 3 - height)         where rim > 0 and height < softness + 3; at rim 1, softness + 3
-    height = height + (1 - out) * (-100 - height)            where height < -100, out the rim's second term: no floor deeper
+    height = height + (1 - out) * (-floor - height)          where height < -floor, out the rim's second term: no floor deeper
     rivers = 1 - smoothstep(R; 0.70, 0.76)
 
 So a basin sinks where `B` is high, the land is inland, least lifted (`U` near its lowest, far from any plateau) and off the
@@ -152,14 +154,14 @@ or below the sea's level. So no voxel of water ever touches a basin's air. `test
 `a_basin_s_rim_is_closed_dry_land` checks the rim on every basin of 8 seeds, and `tests/run/terrain/hydrology/` checks the
 real blocks across rims.
 
-`rivers` is 0 from `R` = 0.76, before the rim starts, so hydrology never cuts a rim. The floor stops at -100, so the height
+`rivers` is 0 from `R` = 0.76, before the rim starts, so hydrology never cuts a rim. The floor stops at -100 at the deepest, so the height
 limits stand: the lowest ground is still the sea bed's.
 
 ## How a range is made
 
 **A range does not need three things to line up.** Before plan 003 phase 8 stage 4, a mountain took far inland, low erosion and a high ridge at once, and ridges is folded from weirdness, whose cell is 512: so high ground came as thin mazes and needles, with nothing at 150 or more of even 1 km^2.
 
-**A range is the line where a smooth field is 0.** `range` has a cell of 8192 blocks (4096 before plan 007 phase 03). A line where such a field is 0 has no ends: it closes on itself or runs on, so it goes on for many kilometres. As the field is spread evenly, `1 - |range|` is too, so `flank` can be read as shares of the world. That makes the ranges common and far apart by the field's own scale, about 8 km, curving less, so a range runs 15 to 40 km. Nearness 0.40 is `|range| = 0.6`, so a belt reaches about 2.4 km either side of its line.
+**A range is the line where a smooth field is 0.** `range` has a cell of 12288 blocks (4096 before plan 007 phase 03, 8192 before phase 06). A line where such a field is 0 has no ends: it closes on itself or runs on, so it goes on for many kilometres. As the field is spread evenly, `1 - |range|` is too, so `flank` can be read as shares of the world. That makes the ranges far apart by the field's own scale, about 12 km, curving less, so a range runs for tens of km. Nearness 0.60 is `|range| = 0.4`, so a belt reaches about 2.4 km either side of its line, as before phase 06 at nearness 0.40 and a cell of 8192.
 
 **Slope is what sets the sizes.** Height from a field changes by its size over its cell. 1000 blocks over a fine field is a wall, so `body` takes only broad fields, and the finer ones carry only small heights: `crest`, cell 896, a quarter of the height at most, and only high up; the summit rock, cell 48, 40 blocks, only above 60% of the envelope.
 
@@ -196,7 +198,7 @@ has that, and the fade means that nothing outside twice the softness pays for 3D
 |---|---|---|---|---|---|
 | `density/hills` | 384 | 3 | 2 | 0.34 | 0.169 |
 | `density/detail` | 64 | 3 | 3 | 0.35 | 0.177 |
-| `density/range` | 8192, each octave 0.45 of the last | 3 | 2 | 0.36 | 0.182 |
+| `density/range` | 12288, each octave 0.45 of the last | 3 | 2 | 0.36 | 0.182 |
 | `density/massif` | 4096 | 2 | 2 | 0.39 | 0.208 |
 | `density/crest` | 896 | 3 | 2 | 0.35 | 0.170 |
 

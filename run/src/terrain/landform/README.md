@@ -19,7 +19,7 @@
 
 ## The plateau
 
-With `U` the uplift field, spread to -1 to 1, read at its node's point moved by the edge warp, and `b` broad continentalness (`run/src/terrain/fields/`):
+With `U` the uplift field, spread to -1 to 1, read at its node's point moved by the edge warp, and `b` broad continentalness (`run/src/terrain/fields/`) **as the density hands it: three quarters blended from nodes 2048 blocks apart** (`b2`, the dry basins' inland gate, `run/src/terrain/density/README.md`) **and a quarter at the column**. Plan 007 phase 06 made that change: read at the column, `b`'s 768-block octave made `L` change up to five times faster than the faces are drawn for, and 1.8 to 3.6% of the land came out sheer (master section 4: 0.3 to 1); with `b2` alone it was 0.2 to 0.4%, but the coast gate, smooth, lifted the sea out of its pockets (18 to 24% sea against 25 to 30); with a quarter of `b` it is about 0.6 to 1.1%, and the density's coast, moved inland, gives the sea back:
 
     L       = clamp(U - 0.3 + 0.25 * (b - 0.1) - 0.6 * (1 - smoothstep(b; -0.7, 0.2)), -1, 1)    the plateau input
     k       = 1 - 0.8 * smoothstep(b; 0.2, 0.5)            the back edge's stretch, from 1 to 0.2

@@ -185,7 +185,8 @@ static bool lf_seed(job_system_t *system, lf_run_t *run, const lf_memory_t *m, c
     memset(r, 0, sizeof(*r));
     r->seed = seed;
     const int64_t started = time_now_ns();
-    lf_grid_t grid = {.h = m->h, .g = m->g, .side = options->side, .step = options->step, .dry = m->dry};
+    lf_grid_t grid = {
+        .h = m->h, .g = m->g, .side = options->side, .step = options->step, .dry = m->dry, .knob = m->knob};
     grid.origin_x = GAME_WORLD_MIDDLE - (int32_t)(options->side * options->step / 2u);
     grid.origin_x -= grid.origin_x % (int32_t)options->step;
     grid.origin_y = grid.origin_x;
@@ -455,7 +456,7 @@ int32_t main(int32_t argc, char **argv) {
     const uint64_t png_map = display_png_bytes_needed(LF_SIDE_MAX, LF_SIDE_MAX);
     const uint64_t png_profiles = display_png_bytes_needed(LF_PANEL_WIDE, LF_PICTURE_PIXELS / LF_PANEL_WIDE);
     const uint64_t stream_bytes = png_map > png_profiles ? png_map : png_profiles;
-    enum : uint32_t { LF_PARTS = 26u };
+    enum : uint32_t { LF_PARTS = 28u };
     const uint64_t floats = (uint64_t)LF_PIXELS_MAX * 4u;
     const uint64_t windows = (uint64_t)LF_WINDOWS_MAX * LF_WINDOW_COLUMNS;
     const uint64_t sizes[LF_PARTS] = {floats,
@@ -483,7 +484,9 @@ int32_t main(int32_t argc, char **argv) {
                                       sizeof(texture_t),
                                       sizeof(climate_normals_t),
                                       sizeof(lf_result_t) * LF_SEEDS_MAX,
-                                      LF_PIXELS_MAX};
+                                      LF_PIXELS_MAX,
+                                      floats,
+                                      floats};
     uint64_t total = 0u;
     for (uint32_t k = 0u; k < LF_PARTS; k++) {
         total += (sizes[k] + 63u) & ~63ull;
@@ -520,7 +523,9 @@ int32_t main(int32_t argc, char **argv) {
                            .ray = (float32_t *)(void *)parts[18],
                            .window_origins = (int32_t *)(void *)parts[19],
                            .directory = options.directory,
-                           .dry = parts[25]};
+                           .dry = parts[25],
+                           .knob = (float32_t *)(void *)parts[26],
+                           .surface = (float32_t *)(void *)parts[27]};
     ui_t *const ui = (ui_t *)(void *)parts[21];
     texture_t *const texture = (texture_t *)(void *)parts[22];
     climate_normals_t *const normals = (climate_normals_t *)(void *)parts[23];

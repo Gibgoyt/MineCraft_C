@@ -98,7 +98,8 @@ TEST(the_limits_are_the_ones_the_plan_and_the_yaml_give) {
     CHECK_EQ_I64(COLUMN_Z_GAMEPLAY_MIN, MC_WORLD_Z_MIN);
     CHECK_EQ_I64(COLUMN_Z_GAMEPLAY_MAX, MC_WORLD_Z_MAX);
     /* The limits in the header, added up from the README's table, not read from the header's sums. */
-    /* The old sum, 100 + 1030 + 46 + 14, kept as the limit: plan 007 phase 04's sum is 100 + 1000 + 40 + 30 = 1170 under it. */
+    /* The old sum, 100 + 1030 + 46 + 14, kept as the limit: plan 007 phase 06's sum, 22.4 + 1080 + 40 + 10 = 1152.4, is under
+     * it (phase 04's was 100 + 1000 + 40 + 30 = 1170). */
     CHECK_EQ_I64(TERRAIN_DENSITY_HEIGHT_MAX, 100 + 1030 + 46 + 14);
     CHECK_EQ_I64(TERRAIN_DENSITY_HEIGHT_MIN, -110 - 6);
     CHECK_EQ_I64(TERRAIN_DENSITY_SOFTNESS_MAX, 4 + 22);
@@ -159,14 +160,14 @@ TEST(splines_go_through_their_knots_and_never_past_them) {
     terrain_t terrain;
     REQUIRE(terrain_init(&terrain, DENSITY_WORLD));
     const terrain_density_t *const density = terrain.borrowed_density;
-    DENSITY_CHECK_SPLINE(continental, {-1.0f64, -110.0f64}, {-0.88f64, -90.0f64}, {-0.78f64, -64.0f64},
-                         {-0.6f64, -36.0f64}, {-0.5f64, -10.0f64}, {-0.45f64, 3.0f64}, {-0.34f64, 10.0f64},
-                         {-0.07f64, 26.0f64}, {0.43f64, 54.0f64}, {1.0f64, 100.0f64});
+    DENSITY_CHECK_SPLINE(continental, {-1.0f64, -110.0f64}, {-0.76f64, -90.0f64}, {-0.66f64, -64.0f64},
+                         {-0.48f64, -36.0f64}, {-0.38f64, -10.0f64}, {-0.33f64, 3.0f64}, {-0.22f64, 4.4f64},
+                         {0.05f64, 7.6f64}, {0.55f64, 13.2f64}, {1.0f64, 22.4f64});
     DENSITY_CHECK_SPLINE(range_land, {-1.0f64, 0.0f64}, {-0.38f64, 0.0f64}, {-0.1f64, 0.5f64}, {0.2f64, 1.0f64},
                          {1.0f64, 1.0f64});
     DENSITY_CHECK_SPLINE(wetland, {-1.0f64, 0.0f64}, {0.35f64, 0.0f64}, {0.6f64, 1.0f64}, {1.0f64, 1.0f64});
-    DENSITY_CHECK_SPLINE(flank, {0.0f64, 0.0f64}, {0.40f64, 0.0f64}, {0.55f64, 0.06f64}, {0.70f64, 0.20f64},
-                         {0.82f64, 0.42f64}, {0.90f64, 0.64f64}, {0.95f64, 0.82f64}, {0.985f64, 0.96f64},
+    DENSITY_CHECK_SPLINE(flank, {0.0f64, 0.0f64}, {0.60f64, 0.0f64}, {0.70f64, 0.06f64}, {0.80f64, 0.20f64},
+                         {0.88f64, 0.42f64}, {0.9333f64, 0.64f64}, {0.9667f64, 0.82f64}, {0.99f64, 0.96f64},
                          {1.0f64, 1.0f64});
     DENSITY_CHECK_SPLINE(massif, {-1.0f64, 0.35f64}, {-0.2f64, 0.58f64}, {0.4f64, 0.82f64}, {0.75f64, 1.0f64},
                          {1.0f64, 1.0f64});
@@ -179,9 +180,9 @@ TEST(splines_go_through_their_knots_and_never_past_them) {
                          {0.8f64, 0.512f64}, {0.9f64, 0.729f64}, {0.95f64, 0.857f64}, {1.0f64, 1.0f64});
     DENSITY_CHECK_SPLINE(koppie, {0.0f64, 0.0f64}, {0.3f64, 0.15f64}, {0.5f64, 0.75f64}, {0.7f64, 0.95f64},
                          {1.0f64, 1.0f64});
-    DENSITY_CHECK_SPLINE(valley, {-1.0f64, 0.3f64}, {-0.6f64, 0.65f64}, {-0.2f64, 1.0f64}, {1.0f64, 1.0f64});
-    DENSITY_CHECK_SPLINE(hill_land, {-1.0f64, 0.0f64}, {-0.45f64, 0.0f64}, {-0.2f64, 1.0f64}, {1.0f64, 1.0f64});
-    DENSITY_CHECK_SPLINE(hill_sea, {-1.0f64, 1.0f64}, {-0.58f64, 1.0f64}, {-0.51f64, 0.0f64}, {1.0f64, 0.0f64});
+    DENSITY_CHECK_SPLINE(valley, {-1.0f64, 0.6f64}, {-0.6f64, 0.85f64}, {-0.2f64, 1.0f64}, {1.0f64, 1.0f64});
+    DENSITY_CHECK_SPLINE(hill_land, {-1.0f64, 0.0f64}, {-0.33f64, 0.0f64}, {-0.08f64, 1.0f64}, {1.0f64, 1.0f64});
+    DENSITY_CHECK_SPLINE(hill_sea, {-1.0f64, 1.0f64}, {-0.46f64, 1.0f64}, {-0.39f64, 0.0f64}, {1.0f64, 0.0f64});
     DENSITY_CHECK_SPLINE(hill_relief, {-1.0f64, 1.0f64}, {0.0f64, 0.5f64}, {0.6f64, 0.12f64}, {1.0f64, 0.0f64});
     terrain_deinit(&terrain);
 }
@@ -219,15 +220,15 @@ static terrain_density_profile_t density_expected_profile(const terrain_density_
     const float64_t peak = m > 0.6f64 ? 40.0f64 * w * w * w * (1.0f64 - fabs((float64_t)in->peak)) : 0.0f64;
     const float64_t land = terrain_density_spline_at(&density->hill_land, c);
     float64_t knob = 0.0f64;
-    if ((float64_t)in->knobs > 0.55f64) {
-        const float64_t k = ((float64_t)in->knobs - 0.55f64) / 0.45f64;
+    if ((float64_t)in->knobs > 0.7f64) {
+        const float64_t k = ((float64_t)in->knobs - 0.7f64) / 0.3f64;
         const float64_t dome = 1.0f64 - (1.0f64 - k) * (1.0f64 - k);
         knob = (20.0f64 + 70.0f64 * (float64_t)in->knob_size) *
                ((1.0f64 - g) * dome + g * terrain_density_spline_at(&density->koppie, k)) * (1.0f64 - body) * land;
     }
     const float64_t hill =
         land * valley *
-            (6.0f64 + 24.0f64 * terrain_density_spline_at(&density->hill_relief, e) * (0.5f64 + 0.5f64 * g)) +
+            (0.0f64 + 10.0f64 * terrain_density_spline_at(&density->hill_relief, e) * (0.5f64 + 0.5f64 * g)) +
         terrain_density_spline_at(&density->hill_sea, c) * 6.0f64;
     const float64_t rough = fmin(1.0f64, 0.5f64 * (float64_t)in->face + 0.3f64 * g * m);
     /* Plan 007 phase 05's dry basins: the README's "Dry basins". */
@@ -237,8 +238,10 @@ static terrain_density_profile_t density_expected_profile(const terrain_density_
     const float64_t field = ring - 0.4f64 * fmin(1.0f64, (float64_t)in->plateau / 0.1f64);
     const float64_t sink =
         field > 0.86f64 ? terrain_density_spline_at(&density->basin, (field - 0.86f64) / (1.0f64 - 0.86f64)) : 0.0f64;
-    const float64_t depression = (base + 100.0f64) * sink;
-    float64_t height = base - depression + lift + (1000.0f64 - lift) * shape + peak + knob +
+    /* Plan 007 phase 06: a floor 100 times the ruggedness deep, at least 40; a range to 1080 over the base, not 1000. */
+    const float64_t floor_depth = 100.0f64 * fmax(0.4f64, g);
+    const float64_t depression = (base + floor_depth) * sink;
+    float64_t height = base - depression + lift + (1080.0f64 - lift) * shape + peak + knob +
                        hill * (float64_t)in->hills * (1.0f64 - sink);
     const float32_t softness = (float32_t)(4.0f64 + 22.0f64 * (rough + body - rough * body));
     const float64_t out = 1.0f64 - density_smooth(field, 0.86f64, 0.88f64);
@@ -247,8 +250,8 @@ static terrain_density_profile_t density_expected_profile(const terrain_density_
     if (rim > 0.0f64 && height < top) {
         height = rim >= 1.0f64 ? top : height + rim * (top - height);
     }
-    if (1.0f64 - out > 0.0f64 && height < -100.0f64) {
-        height = 1.0f64 - out >= 1.0f64 ? -100.0f64 : height + (1.0f64 - out) * (-100.0f64 - height);
+    if (1.0f64 - out > 0.0f64 && height < -floor_depth) {
+        height = 1.0f64 - out >= 1.0f64 ? -floor_depth : height + (1.0f64 - out) * (-floor_depth - height);
     }
     return (terrain_density_profile_t){
         .height = (float32_t)height,
@@ -256,6 +259,7 @@ static terrain_density_profile_t density_expected_profile(const terrain_density_
         .lift = (float32_t)(lift - depression),
         .rivers = (float32_t)(1.0f64 - density_smooth(ring, 0.70f64, 0.76f64)),
         .ring = (float32_t)ring,
+        .knob = (float32_t)knob,
         .dry = field > 0.86f64 ? 1u : 0u,
     };
 }
@@ -356,9 +360,9 @@ TEST(no_climate_at_all_can_reach_past_the_height_limits) {
     printf("over the grid: height %.1f to %.1f, softness %.1f to %.1f\n", (libc_double_t)lowest, (libc_double_t)highest,
            (libc_double_t)softest, (libc_double_t)hardest);
     /* The grid holds both ends of every input, so each sum is reached and is not only an upper bound on paper. The top is
-     * plan 007 phase 04's sum, 100 + 1000 + 40 + 30, under the limit. */
+     * plan 007 phase 06's sum, 22.4 + 1080 + 40 + 10, under the limit (phase 04's was 100 + 1000 + 40 + 30). */
     CHECK(lowest == (float32_t)TERRAIN_DENSITY_HEIGHT_MIN);
-    CHECK(highest == 1170.0f32);
+    CHECK(fabsf(highest - 1152.4f32) < 1.0e-3f32);
     CHECK(highest <= (float32_t)TERRAIN_DENSITY_HEIGHT_MAX);
     CHECK(softest == (float32_t)TERRAIN_DENSITY_SOFTNESS_MIN);
     CHECK(hardest == (float32_t)TERRAIN_DENSITY_SOFTNESS_MAX);

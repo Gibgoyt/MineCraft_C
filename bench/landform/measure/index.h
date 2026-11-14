@@ -97,6 +97,7 @@ typedef enum lf_value_t : uint32_t {
     LF_V_BASIN_FLOOR_HIGH, /* the shallowest */
     LF_V_BASIN_ACROSS_MIN, /* km, the larger of a basin's two extents: the narrowest basin's */
     LF_V_BASIN_ACROSS_MAX, /* the widest's */
+    LF_V_RANGE_PEAKS,      /* peaks the concavity is measured on: 500 over their 3 km, off plateaus and knobs */
     LF_V_SECONDS,          /* from here on, times: never compared */
     LF_V_PROFILE_US,
     LF_V_PROFILE_SHARE,
@@ -130,12 +131,12 @@ static_assert(sizeof(lf_place_t) == 16);
 
 typedef struct lf_result_t {
     float64_t v[LF_V_COUNT];     /* 0 */
-    lf_place_t place[LF_PLACES]; /* 536 */
-    uint64_t seed;               /* 648 */
-    uint32_t range_direction;    /* 656: 0 along x, 1 along y, 2 and 3 the diagonals */
-    uint32_t plateau_edge;       /* 660: an escarpment pixel nearest the largest plateau's middle, or UINT32_MAX */
+    lf_place_t place[LF_PLACES]; /* 544 */
+    uint64_t seed;               /* 656 */
+    uint32_t range_direction;    /* 664: 0 along x, 1 along y, 2 and 3 the diagonals */
+    uint32_t plateau_edge;       /* 668: an escarpment pixel nearest the largest plateau's middle, or UINT32_MAX */
 } lf_result_t;
-static_assert(sizeof(lf_result_t) == 664);
+static_assert(sizeof(lf_result_t) == 672);
 
 /* A square of heights, row after row, y growing down the rows. */
 typedef struct lf_grid_t {
@@ -146,8 +147,9 @@ typedef struct lf_grid_t {
     int32_t origin_x; /* 24 */
     int32_t origin_y; /* 28 */
     uint8_t *dry;     /* 32: 1 in a dry basin (plan 007 phase 05), or nullptr for none */
+    float32_t *knob;  /* 40: what a knob adds to each column (plan 007 phase 06), or nullptr for none */
 } lf_grid_t;
-static_assert(sizeof(lf_grid_t) == 40);
+static_assert(sizeof(lf_grid_t) == 48);
 
 typedef struct lf_peak_t {
     uint32_t at; /* 0 */
@@ -219,8 +221,10 @@ typedef struct lf_memory_t {
     const climate_normals_t *borrowed_normals; /* 176 */
     const char *directory;                     /* 184 */
     uint8_t *dry;                              /* 192: LF_PIXELS_MAX */
+    float32_t *knob;                           /* 200: LF_PIXELS_MAX */
+    float32_t *surface;                        /* 208: LF_PIXELS_MAX: the ground less its knobs, for plateaus */
 } lf_memory_t;
-static_assert(sizeof(lf_memory_t) == 200);
+static_assert(sizeof(lf_memory_t) == 216);
 
 /* The class of a slope, 0 flat to 6 sheer. */
 uint32_t lf_class(float64_t g);

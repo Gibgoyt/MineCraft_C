@@ -14,6 +14,10 @@ static const float32_t LF_MOUNTAIN_RELIEF = 150.0f32;
 static const int32_t LF_PEAK_HALF = 256; /* a peak is the highest in a square of 512 */
 static const int32_t LF_LOW_HALF = 1500; /* the lowest in a square of 3 km: a peak's relief, an edge's drop */
 static const float32_t LF_PEAK_RELIEF = 150.0f32;
+/* A range's peak, for the concavity (plan 007 phase 06): at least this over the lowest in its 3 km, off plateau land and with
+ * no knob. A knob or a range standing on a plateau's top is a peak whose rays cross the flat top first, which says nothing
+ * of the shape master 3.6 means. */
+static const float32_t LF_RANGE_PEAK_RELIEF = 500.0f32;
 static const float64_t LF_RAY_REACH = 3000.0f64;
 static const float64_t LF_RAY_FLAT = 64.0f64;
 static const float32_t LF_PLATEAU_Z = 250.0f32;
@@ -97,6 +101,7 @@ const char *const LF_VALUE_NAME[LF_V_COUNT] = {"profile_flat",
                                                "basin_floor_highest",
                                                "basin_across_km_min",
                                                "basin_across_km_max",
+                                               "range_peaks",
                                                "seconds",
                                                "profile_us_a_lattice_column",
                                                "profile_share_of_box_percent",
@@ -300,6 +305,23 @@ static void lf_sweep_row(const lf_run_t *run, float32_t *scratch, uint32_t row) 
         grid->g[at] = (float32_t)lf_gradient((float64_t)along[k - 1u], (float64_t)along[k + 1u], (float64_t)north[i],
                                              (float64_t)south[i], 8.0f64);
     }
+    if (grid->knob == nullptr) {
+        return;
+    }
+    /* What a knob adds to each column of the row: the very profile the estimate reads on the lattice, so the plateau rule
+     * can read the ground without its knobs (plan 007 phase 06). */
+    const uintptr_t after = (uintptr_t)(along_dry + along_count);
+    float64_t *const xs = (float64_t *)(void *)((after + 7u) & ~(uintptr_t)7u);
+    float64_t *const ys = xs + grid->side;
+    float32_t *const heights = (float32_t *)(void *)(ys + grid->side);
+    float32_t *const softness = heights + grid->side;
+    for (uint32_t i = 0u; i < grid->side; i++) {
+        xs[i] = (float64_t)(grid->origin_x + (int32_t)(i * grid->step));
+        ys[i] = (float64_t)y;
+    }
+    const terrain_density_profile_arrays_t out = {
+        .heights = heights, .softness = softness, .knob = grid->knob + (uint64_t)row * grid->side};
+    terrain_density_profile_points_arrays(run->borrowed_terrain->borrowed_density, xs, ys, grid->side, &out);
 }
 
 /* The highest (or, with is_max false, lowest) value in a window half to each side, for each of n values stride apart: van
@@ -586,7 +608,8 @@ static bool lf_ray(const lf_grid_t *grid, float64_t px, float64_t py, float64_t 
 }
 
 /* Peaks: highest in their square, at least LF_PEAK_RELIEF over the lowest in theirs, the highest first, and one of any
- * that tie in one square. highest holds the highest in LF_PEAK_HALF. */
+ * that tie in one square. highest holds the highest in LF_PEAK_HALF. The concavity and width are of range peaks only
+ * (LF_RANGE_PEAK_RELIEF), so m->plateau must hold the plateau land. */
 static void lf_peaks(const lf_grid_t *grid, const float32_t *highest, const lf_memory_t *m, lf_result_t *r) {
     const uint64_t n = (uint64_t)grid->side * grid->side;
     uint32_t count = 0u;
@@ -623,10 +646,16 @@ static void lf_peaks(const lf_grid_t *grid, const float32_t *highest, const lf_m
     }
     float32_t *const ts = m->ray, *const hs = m->ray + LF_RAY_SAMPLES;
     float32_t *const concavity = m->ray + 2u * LF_RAY_SAMPLES, *const width = concavity + LF_PEAKS_MAX;
-    uint32_t measured = 0u;
+    uint32_t measured = 0u, ranged = 0u;
     for (uint32_t i = 0u; i < kept; i++) {
-        const float64_t px = (float64_t)((m->peaks[i].at % grid->side) * grid->step);
-        const float64_t py = (float64_t)((m->peaks[i].at / grid->side) * grid->step);
+        const uint32_t at = m->peaks[i].at;
+        if (m->peaks[i].h - m->low[at] < LF_RANGE_PEAK_RELIEF || m->plateau[at] != 0u ||
+            (grid->knob != nullptr && grid->knob[at] >= 1.0f32)) {
+            continue;
+        }
+        ranged++;
+        const float64_t px = (float64_t)((at % grid->side) * grid->step);
+        const float64_t py = (float64_t)((at / grid->side) * grid->step);
         float32_t r50s[LF_RAYS], r100s[LF_RAYS], drops[LF_RAYS];
         uint32_t rays = 0u;
         for (uint32_t k = 0u; k < LF_RAYS; k++) {
@@ -651,6 +680,7 @@ static void lf_peaks(const lf_grid_t *grid, const float32_t *highest, const lf_m
         measured++;
     }
     r->v[LF_V_PEAKS] = (float64_t)kept;
+    r->v[LF_V_RANGE_PEAKS] = (float64_t)ranged;
     r->v[LF_V_CONCAVITY] = lf_median(concavity, measured);
     r->v[LF_V_WIDTH] = lf_median(width, measured);
     if (kept > 0u) {
@@ -890,20 +920,36 @@ void lf_measure(job_system_t *system, lf_run_t *run, const lf_memory_t *m, lf_re
                                            : (v[LF_V_DECILE + LF_DECILES - 1u] > 0.0f64 ? 999.0f64 : 0.0f64);
     v[LF_V_STEEP_TOP] = lf_percent(steep_top, steep);
 
-    /* Peaks. a is kept, the highest in a square of 512, for the plateaus. */
+    /* a, the highest in a square of 512, is for the peaks below. */
     lf_slide(system, run, h, m->c, m->a, LF_PEAK_HALF, true);
     lf_slide(system, run, h, m->c, m->low, LF_LOW_HALF, false);
-    lf_peaks(grid, m->a, m, r);
 
-    /* Plateaus: at LF_PLATEAU_Z or over, and in some square of 512 whose relief is at most LF_PLATEAU_RELIEF. */
-    lf_slide(system, run, h, m->c, m->b, LF_PLATEAU_HALF, false);
-    for (uint64_t i = 0u; i < n; i++) {
-        m->b[i] = m->a[i] - m->b[i] <= LF_PLATEAU_RELIEF ? 1.0f32 : 0.0f32;
+    /* Plateaus: at LF_PLATEAU_Z or over, and in some square of 512 whose relief is at most LF_PLATEAU_RELIEF, read on the
+     * ground less its knobs where the grid has them (plan 007 phase 06: knobs stand on plateau tops, as Ahmed asked, and a
+     * knob of up to 90 would otherwise break the rule on every top). */
+    if (grid->knob != nullptr) {
+        for (uint64_t i = 0u; i < n; i++) {
+            m->surface[i] = h[i] - grid->knob[i];
+        }
+        lf_slide(system, run, m->surface, m->c, m->b, LF_PLATEAU_HALF, true);
+        lf_slide(system, run, m->surface, m->c, m->surface, LF_PLATEAU_HALF, false);
+        for (uint64_t i = 0u; i < n; i++) {
+            m->b[i] = m->b[i] - m->surface[i] <= LF_PLATEAU_RELIEF ? 1.0f32 : 0.0f32;
+        }
+    } else {
+        lf_slide(system, run, h, m->c, m->b, LF_PLATEAU_HALF, false);
+        for (uint64_t i = 0u; i < n; i++) {
+            m->b[i] = m->a[i] - m->b[i] <= LF_PLATEAU_RELIEF ? 1.0f32 : 0.0f32;
+        }
     }
     lf_slide(system, run, m->b, m->c, m->b, LF_PLATEAU_HALF, true);
     for (uint64_t i = 0u; i < n; i++) {
-        m->plateau[i] = m->b[i] > 0.5f32 && h[i] >= LF_PLATEAU_Z ? 1u : 0u;
+        const float32_t z = grid->knob != nullptr ? h[i] - grid->knob[i] : h[i];
+        m->plateau[i] = m->b[i] > 0.5f32 && z >= LF_PLATEAU_Z ? 1u : 0u;
     }
+
+    /* Peaks, with the plateau land known: the concavity is of range peaks. */
+    lf_peaks(grid, m->a, m, r);
     lf_pieces_t pieces;
     lf_pieces(m->plateau, side, step, m->queue, &pieces);
     const float64_t pixel_km2 = (float64_t)step * (float64_t)step / 1.0e6f64;
