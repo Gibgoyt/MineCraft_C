@@ -8,6 +8,7 @@
 #include "player/index.h"
 #include "tables/blocks/index.h"
 #include "terrain/feature/index.h"
+#include "time/index.h"
 #include "world/index.h"
 #include "world/wall_torch/index.h"
 
@@ -30,6 +31,12 @@ enum : int32_t {
     /* Heights a tree is cut at, from the foot, and the highest of them that the eye of a body on the ground is on. */
     PF_CUT_LEVELS = 9,
     PF_CUT_LEVEL_EYE = 1,
+    /* The ground: dirt this deep under the foot, over all that is loaded (3 chunks round the middle one). */
+    PF_GROUND_DEEP = 6,
+    PF_LOADED_LOW = -48,
+    PF_LOADED_HIGH = 63,
+    /* How deep a generated trunk goes into the ground (plan 010 phase 01): the first log level with the ground's top. */
+    PF_ROOT_DEPTH = 2,
 };
 
 enum : uint32_t {
@@ -42,6 +49,11 @@ enum : uint32_t {
     PF_TICKS_MAX = 400u,
     PF_WALL_SIZE = 5u,
     PF_SEEDS_CUT = 2u,
+    /* The most logs of one layer: a mangrove's trunk and its 4 prop roots, with room over. */
+    PF_LAYER_MAX = 8u,
+    /* Seeds looked through for a tree of a shape, and cuts timed. */
+    PF_SEEDS_SHAPED = 32u,
+    PF_FIND_TIMED = 100u,
 };
 
 typedef struct pf_rig_t {
@@ -50,13 +62,22 @@ typedef struct pf_rig_t {
     player_target_t target;     /* 136 */
     player_interaction_t hands; /* 232 */
     player_felling_t felling;   /* 1384 */
-    uint64_t logs_dropped;      /* 6568 */
-    uint64_t felled;            /* 6576: what player_felling_tick said went */
-    uint8_t drain;              /* 6584: whether anyone is taking the drops */
-    uint8_t torches_dropped;    /* 6585 */
-    uint8_t _pad0[6];           /* 6586 */
+    uint64_t logs_dropped;      /* 31768 */
+    uint64_t felled;            /* 31776: what player_felling_tick said went */
+    uint8_t drain;              /* 31784: whether anyone is taking the drops */
+    uint8_t torches_dropped;    /* 31785 */
+    uint8_t _pad0[6];           /* 31786 */
 } pf_rig_t;
-static_assert(sizeof(pf_rig_t) == 6592);
+static_assert(sizeof(pf_rig_t) == 31792);
+
+/* The logs of one layer of a trunk, as the feller counts them. */
+typedef struct pf_layer_t {
+    int32_t x[PF_LAYER_MAX]; /* 0 */
+    int32_t y[PF_LAYER_MAX]; /* 32 */
+    int32_t z;               /* 64 */
+    uint32_t count;          /* 68 */
+} pf_layer_t;
+static_assert(sizeof(pf_layer_t) == 72);
 
 /* A wood axe in hand, an empty world and a body at rest away from where the tests work. */
 static bool pf_begin(test_context_t *t, pf_rig_t *rig) {
@@ -70,6 +91,14 @@ static bool pf_begin(test_context_t *t, pf_rig_t *rig) {
     player_interaction_hold_tool(&rig->hands, BLOCK_TOOL_AXE, BLOCK_TIER_WOOD);
     player_felling_start(&rig->felling);
     rig->drain = 1u;
+    /* Ground under every column that is loaded, for the roots to stand in. */
+    for (int32_t y = PF_LOADED_LOW; y <= PF_LOADED_HIGH; y++) {
+        for (int32_t x = PF_LOADED_LOW; x <= PF_LOADED_HIGH; x++) {
+            if (world_map_column_at(rig->world.map, column_chunk_of(x), column_chunk_of(y)) != nullptr) {
+                test_world_fill(t, &rig->world, x, y, PF_Z - PF_GROUND_DEEP, x, y, PF_Z - 1, BLOCK_ID_DIRT);
+            }
+        }
+    }
     return true;
 }
 
@@ -163,10 +192,12 @@ static bool pf_settle(pf_rig_t *rig) {
     return false;
 }
 
-/* A trunk straight up, both ends included. */
+/* A trunk straight up, both ends included. One standing on the ground (from PF_Z) goes on into it as a generated tree's does, so that
+ * it holds a root log. */
 static void pf_trunk(test_context_t *t, pf_rig_t *rig, int32_t x, int32_t y, int32_t z_first, int32_t z_last,
                      uint16_t block) {
-    test_world_fill(t, &rig->world, x, y, z_first, x, y, z_last, block);
+    const int32_t from = z_first == PF_Z ? PF_Z - PF_ROOT_DEPTH : z_first;
+    test_world_fill(t, &rig->world, x, y, from, x, y, z_last, block);
 }
 
 /* What looks like a tree: leaves round the top of a trunk. */
@@ -205,6 +236,74 @@ static terrain_density_box_t pf_tree_box(void) {
     };
 }
 
+static void pf_voxel_place(const terrain_density_box_t *box, uint32_t i, int32_t *x, int32_t *y, int32_t *z) {
+    *x = box->origin_x + (int32_t)(i % box->count_x);
+    *y = box->origin_y + (int32_t)(i / box->count_x % box->count_y);
+    *z = box->origin_z + (int32_t)(i / (box->count_x * box->count_y));
+}
+
+/* A painted cell, and air outside the box. */
+static uint16_t pf_painted_at(const uint16_t *blocks, int32_t x, int32_t y, int32_t z) {
+    const terrain_density_box_t box = pf_tree_box();
+    const int32_t at_x = x - box.origin_x, at_y = y - box.origin_y, at_z = z - box.origin_z;
+    if (at_x < 0 || at_y < 0 || at_z < 0 || at_x >= PF_ACROSS || at_y >= PF_ACROSS || at_z >= PF_TALL) {
+        return BLOCK_ID_AIR;
+    }
+    return blocks[((uint32_t)at_z * (uint32_t)PF_ACROSS + (uint32_t)at_y) * (uint32_t)PF_ACROSS + (uint32_t)at_x];
+}
+
+static bool pf_is_ground(uint16_t block) {
+    const uint32_t flags = block_defs[block].flags;
+    return (flags & BLOCK_FLAG_SOLID) != 0u && (flags & (BLOCK_FLAG_LOG | BLOCK_FLAG_DECAYS)) == 0u;
+}
+
+/* The master's root log, read from the picture rather than from the feller: ground under it, and ground or its wood on 3 of 4 sides. */
+static bool pf_painted_root(const uint16_t *blocks, int32_t x, int32_t y, int32_t z) {
+    const uint16_t log = pf_painted_at(blocks, x, y, z);
+    if ((block_defs[log].flags & BLOCK_FLAG_LOG) == 0u || !pf_is_ground(pf_painted_at(blocks, x, y, z - 1))) {
+        return false;
+    }
+    const uint16_t sides[4] = {pf_painted_at(blocks, x + 1, y, z), pf_painted_at(blocks, x - 1, y, z),
+                               pf_painted_at(blocks, x, y + 1, z), pf_painted_at(blocks, x, y - 1, z)};
+    uint32_t held = 0u;
+    for (uint32_t i = 0u; i < 4u; i++) {
+        held += sides[i] == log || pf_is_ground(sides[i]) ? 1u : 0u;
+    }
+    return held >= 3u;
+}
+
+/* Whether this column of the picture holds a root log. */
+static bool pf_painted_trunk_column(const uint16_t *blocks, int32_t x, int32_t y) {
+    for (int32_t z = PF_Z - 8; z < PF_Z - 8 + PF_TALL; z++) {
+        if (pf_painted_root(blocks, x, y, z)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* The trunk's logs at height z in the picture: one tree, so every trunk column is its trunk. */
+static void pf_layer_of(const uint16_t *blocks, uint16_t log, int32_t z, pf_layer_t *layer) {
+    const terrain_density_box_t box = pf_tree_box();
+    memset(layer, 0, sizeof(*layer));
+    layer->z = z;
+    for (int32_t y = box.origin_y; y < box.origin_y + PF_ACROSS; y++) {
+        for (int32_t x = box.origin_x; x < box.origin_x + PF_ACROSS; x++) {
+            if (pf_painted_at(blocks, x, y, z) == log && layer->count < PF_LAYER_MAX &&
+                pf_painted_trunk_column(blocks, x, y)) {
+                layer->x[layer->count] = x;
+                layer->y[layer->count] = y;
+                layer->count++;
+            }
+        }
+    }
+}
+
+/* Where the ground's top is in a painted column: the trunk's own column at the site, the others at the feet. */
+static int32_t pf_ground_top(int32_t x, int32_t y, int16_t foot) {
+    return x == PF_X && y == PF_Y ? PF_Z - 1 : (int32_t)foot;
+}
+
 /* foot_gap is how far the ground falls away beside it: 0 leaves every log over the ground at or above the lowest of the middle.
  * Plan 010 phase 01: the tree stands on dirt, its own column's top at PF_Z - 1 and every other column's at its foot, as the land
  * has it, so its trunk columns root into the ground as a generated tree's do. */
@@ -213,11 +312,9 @@ static void pf_paint(uint16_t *blocks, terrain_feature_tree_t kind, uint64_t see
     const terrain_feature_canvas_t canvas = terrain_feature_canvas_of(&box, blocks);
     const int16_t foot = (int16_t)(PF_Z - 1 - foot_gap);
     for (uint32_t i = 0u; i < PF_VOXELS; i++) {
-        const int32_t x = box.origin_x + (int32_t)(i % box.count_x);
-        const int32_t y = box.origin_y + (int32_t)(i / box.count_x % box.count_y);
-        const int32_t z = box.origin_z + (int32_t)(i / (box.count_x * box.count_y));
-        const int32_t top = x == PF_X && y == PF_Y ? PF_Z - 1 : (int32_t)foot;
-        blocks[i] = z <= top ? (uint16_t)BLOCK_ID_DIRT : (uint16_t)BLOCK_ID_AIR;
+        int32_t x = 0, y = 0, z = 0;
+        pf_voxel_place(&box, i, &x, &y, &z);
+        blocks[i] = z <= pf_ground_top(x, y, foot) ? BLOCK_ID_DIRT : BLOCK_ID_AIR;
     }
     const terrain_feature_tree_site_t site = {
         .seed = seed,
@@ -232,7 +329,6 @@ static void pf_paint(uint16_t *blocks, terrain_feature_tree_t kind, uint64_t see
     terrain_feature_paint_tree(&canvas, &site);
 }
 
-/* Every log of the tree, its roots too. */
 static uint32_t pf_painted_logs(const uint16_t *blocks, uint16_t log) {
     uint32_t count = 0u;
     for (uint32_t i = 0u; i < PF_VOXELS; i++) {
@@ -241,21 +337,16 @@ static uint32_t pf_painted_logs(const uint16_t *blocks, uint16_t log) {
     return count;
 }
 
-/* Its logs at or above z_from: what a cut at the foot fells, the roots under it staying. */
-static uint32_t pf_painted_logs_from(const uint16_t *blocks, uint16_t log, int32_t z_from) {
+/* Logs of this wood in the picture with z from z_low to z_high, both included. */
+static uint32_t pf_painted_logs_between(const uint16_t *blocks, uint16_t log, int32_t z_low, int32_t z_high) {
     const terrain_density_box_t box = pf_tree_box();
     uint32_t count = 0u;
     for (uint32_t i = 0u; i < PF_VOXELS; i++) {
-        const int32_t z = box.origin_z + (int32_t)(i / (box.count_x * box.count_y));
-        count += blocks[i] == log && z >= z_from ? 1u : 0u;
+        int32_t x = 0, y = 0, z = 0;
+        pf_voxel_place(&box, i, &x, &y, &z);
+        count += blocks[i] == log && z >= z_low && z <= z_high ? 1u : 0u;
     }
     return count;
-}
-
-static void pf_voxel_place(const terrain_density_box_t *box, uint32_t i, int32_t *x, int32_t *y, int32_t *z) {
-    *x = box->origin_x + (int32_t)(i % box->count_x);
-    *y = box->origin_y + (int32_t)(i / box->count_x % box->count_y);
-    *z = box->origin_z + (int32_t)(i / (box->count_x * box->count_y));
 }
 
 /* Into the world by hand, as terrain would leave it: nothing wakes. Air where there is none. */
@@ -283,6 +374,30 @@ static void pf_left(const pf_rig_t *rig, uint16_t log, int32_t z_from, uint32_t 
         *leaves += (block_defs[block].flags & BLOCK_FLAG_DECAYS) != 0u ? 1u : 0u;
         *vines += block == BLOCK_ID_VINE ? 1u : 0u;
     }
+}
+
+/* Logs of this wood standing in the box with z from z_low to z_high, both included. */
+static uint32_t pf_logs_between(const pf_rig_t *rig, uint16_t log, int32_t z_low, int32_t z_high) {
+    const terrain_density_box_t box = pf_tree_box();
+    uint32_t count = 0u;
+    for (uint32_t i = 0u; i < PF_VOXELS; i++) {
+        int32_t x = 0, y = 0, z = 0;
+        pf_voxel_place(&box, i, &x, &y, &z);
+        count += z >= z_low && z <= z_high && pf_block(rig, x, y, z) == log ? 1u : 0u;
+    }
+    return count;
+}
+
+/* Every log of a layer, by the hands, in the order the layer has them. */
+static bool pf_chop_layer(pf_rig_t *rig, const pf_layer_t *layer) {
+    bool chopped = layer->count > 0u;
+    for (uint32_t i = 0u; i < layer->count; i++) {
+        /* One the hands took already, as a test cutting the trunk first does. */
+        if (pf_block(rig, layer->x[i], layer->y[i], layer->z) != BLOCK_ID_AIR) {
+            chopped = pf_chop(rig, layer->x[i], layer->y[i], layer->z) && chopped;
+        }
+    }
+    return chopped;
 }
 
 static uint8_t pf_lift_of(terrain_feature_tree_t kind) {
@@ -320,27 +435,36 @@ TEST(the_limit_is_above_the_biggest_tree_of_every_kind_measured) {
     CHECK(2u * biggest < PLAYER_FELLING_LOGS_MAX);
 }
 
-/* Cut at its lowest log over the ground: every log from there up goes, each once and with its drop, and the leaves and vines after
- * them. The roots under the cut stay. */
+/* Cut through its first layer over the ground, every log of it: every log above goes, each once and with its drop, and the leaves and
+ * vines after them. The stump stays: the roots of every trunk column, the top one level with the ground. */
 static void pf_fell_one(test_context_t *t, pf_rig_t *rig, uint16_t *blocks, terrain_feature_tree_t kind,
                         uint64_t seed) {
     const uint16_t log = pf_kind_log(kind);
     pf_paint(blocks, kind, seed, 0, pf_lift_of(kind));
-    const uint32_t logs = pf_painted_logs_from(blocks, log, PF_Z);
-    CHECK(pf_painted_logs(blocks, log) > logs); /* it has roots */
+    pf_layer_t layer;
+    pf_layer_of(blocks, log, PF_Z, &layer);
+    const uint32_t above = pf_painted_logs_between(blocks, log, PF_Z + 1, INT32_MAX);
+    const uint32_t stump = pf_painted_logs_between(blocks, log, INT32_MIN, PF_Z - 1);
+    CHECK(layer.count >= 1u);
+    CHECK_EQ_U64(stump, (uint64_t)layer.count * PF_ROOT_DEPTH);
     pf_place_tree(t, rig, blocks);
     const uint64_t dropped = rig->logs_dropped, felled = rig->felled, mined = rig->hands.mined_count;
-    CHECK(pf_chop(rig, PF_X, PF_Y, PF_Z));
+    CHECK(pf_chop_layer(rig, &layer));
     CHECK(pf_settle(rig));
     uint32_t logs_left = 0u, leaves_left = 0u, vines_left = 0u;
     pf_left(rig, log, PF_Z, &logs_left, &leaves_left, &vines_left);
     CHECK_EQ_U64(logs_left, 0u);
     CHECK_EQ_U64(leaves_left, 0u);
     CHECK_EQ_U64(vines_left, 0u);
-    CHECK_EQ_U64(rig->logs_dropped - dropped, logs);
-    CHECK_EQ_U64(rig->felled - felled, logs - 1u);
-    CHECK(rig->hands.mined_count - mined >= logs);
+    CHECK_EQ_U64(rig->logs_dropped - dropped, above + layer.count);
+    CHECK_EQ_U64(rig->felled - felled, above);
+    CHECK(rig->hands.mined_count - mined >= above + layer.count);
     CHECK_EQ_U64(rig->hands.drops_lost_count, 0u);
+    CHECK_EQ_U64(pf_logs_between(rig, log, INT32_MIN, PF_Z - 1), stump);
+    for (uint32_t i = 0u; i < layer.count; i++) {
+        CHECK_EQ_U64(pf_block(rig, layer.x[i], layer.y[i], PF_Z - 1), log);
+        CHECK_EQ_U64(pf_block(rig, layer.x[i], layer.y[i], PF_Z - 2), log);
+    }
 }
 
 TEST(every_kind_of_tree_comes_down_whole_with_a_drop_for_every_log) {
@@ -358,6 +482,288 @@ TEST(every_kind_of_tree_comes_down_whole_with_a_drop_for_every_log) {
     }
     CHECK_EQ_U64(pf_world_tick(rig)->broken_lost_count, 0u);
     CHECK_EQ_U64(rig->felling.turned_away_count, 0u);
+    CHECK_EQ_U64(rig->felling.find_overflow_count, 0u);
+    CHECK_EQ_U64(rig->felling.find_unloaded_count, 0u);
+    pf_end(rig);
+}
+
+/* Each kind's stump, on a few more seeds: what pf_fell_one checks of it, by name. */
+TEST(the_stump_is_flush_and_rooted) {
+    uint16_t *const blocks = test_alloc(t, PF_VOXELS * sizeof(uint16_t));
+    pf_rig_t *const rig = test_alloc(t, sizeof(pf_rig_t));
+    REQUIRE(pf_begin(t, rig));
+    for (uint32_t k = 0u; k < TERRAIN_FEATURE_TREES; k++) {
+        for (uint32_t s = 0u; s < 4u; s++) {
+            pf_fell_one(t, rig, blocks, (terrain_feature_tree_t)k, 0x3Bull * s + 7u * k + 1000u);
+        }
+    }
+    pf_end(rig);
+}
+
+/* Thin trunks cut at each height of the trunk: everything above goes, everything under stays, roots and all. */
+TEST(a_thin_trunk_falls_when_its_one_log_layer_is_cut) {
+    static const terrain_feature_tree_t KINDS[] = {TERRAIN_FEATURE_TREE_OAK, TERRAIN_FEATURE_TREE_BIRCH,
+                                                   TERRAIN_FEATURE_TREE_SPRUCE, TERRAIN_FEATURE_TREE_JUNGLE,
+                                                   TERRAIN_FEATURE_TREE_CHERRY};
+    uint16_t *const blocks = test_alloc(t, PF_VOXELS * sizeof(uint16_t));
+    pf_rig_t *const rig = test_alloc(t, sizeof(pf_rig_t));
+    REQUIRE(pf_begin(t, rig));
+    uint32_t cuts = 0u;
+    for (uint32_t k = 0u; k < sizeof(KINDS) / sizeof(KINDS[0]); k++) {
+        const uint16_t log = pf_kind_log(KINDS[k]);
+        for (uint32_t s = 0u, painted = 0u; s < PF_SEEDS_SHAPED && painted < 2u; s++) {
+            const uint64_t seed = 0x77ull * s + k;
+            if (terrain_feature_tree_is_wide(KINDS[k], seed)) {
+                continue;
+            }
+            painted++;
+            pf_paint(blocks, KINDS[k], seed, 0, 0u);
+            for (int32_t h = PF_Z - 1; pf_painted_at(blocks, PF_X, PF_Y, h) == log; h++) {
+                pf_layer_t layer;
+                pf_layer_of(blocks, log, h, &layer);
+                CHECK_EQ_U64(layer.count, 1u);
+                const uint32_t under = pf_painted_logs_between(blocks, log, INT32_MIN, h - 1);
+                pf_place_tree(t, rig, blocks);
+                CHECK(pf_chop_layer(rig, &layer));
+                CHECK(pf_settle(rig));
+                CHECK_EQ_U64(pf_logs_between(rig, log, h, INT32_MAX), 0u);
+                CHECK_EQ_U64(pf_logs_between(rig, log, INT32_MIN, h - 1), under);
+                cuts++;
+            }
+        }
+    }
+    printf("    %" PRIu32 " cuts of a thin trunk\n", cuts);
+    CHECK(cuts > 20u);
+    pf_end(rig);
+}
+
+/* A painted wide tree of this kind, its seed out. */
+static bool pf_wide_seed(terrain_feature_tree_t kind, uint64_t from, uint64_t *seed) {
+    for (uint64_t s = from; s < from + PF_SEEDS_SHAPED; s++) {
+        if (terrain_feature_tree_is_wide(kind, s)) {
+            *seed = s;
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Ahmed's 10.png: a notch in a 2 by 2 layer, and the tree standing. All 24 orders of its 4 cuts. */
+TEST(a_wide_trunk_stands_until_its_fourth_log_in_every_order) {
+    static const terrain_feature_tree_t KINDS[2] = {TERRAIN_FEATURE_TREE_JUNGLE, TERRAIN_FEATURE_TREE_DARK_OAK};
+    uint16_t *const blocks = test_alloc(t, PF_VOXELS * sizeof(uint16_t));
+    pf_rig_t *const rig = test_alloc(t, sizeof(pf_rig_t));
+    REQUIRE(pf_begin(t, rig));
+    for (uint32_t k = 0u; k < 2u; k++) {
+        const uint16_t log = pf_kind_log(KINDS[k]);
+        uint64_t seed = 0u;
+        REQUIRE(pf_wide_seed(KINDS[k], 40u + k, &seed));
+        pf_paint(blocks, KINDS[k], seed, 0, 0u);
+        const int32_t h = PF_Z + 1;
+        pf_layer_t layer;
+        pf_layer_of(blocks, log, h, &layer);
+        REQUIRE(layer.count == 4u);
+        const uint32_t above = pf_painted_logs_between(blocks, log, h + 1, INT32_MAX);
+        const uint32_t under = pf_painted_logs_between(blocks, log, INT32_MIN, h - 1);
+        for (uint32_t order = 0u; order < 24u; order++) {
+            /* The order-th permutation of 0 to 3, by the factorial number system. */
+            uint32_t left[4] = {0u, 1u, 2u, 3u}, picked[4] = {0u, 0u, 0u, 0u};
+            for (uint32_t i = 0u, rest = order, size = 4u; i < 4u; i++, size--) {
+                const uint32_t radix = i == 0u ? 6u : i == 1u ? 2u : 1u;
+                const uint32_t at = rest / radix;
+                rest %= radix;
+                picked[i] = left[at];
+                for (uint32_t j = at; j + 1u < size; j++) {
+                    left[j] = left[j + 1u];
+                }
+            }
+            pf_place_tree(t, rig, blocks);
+            const uint64_t felled = rig->felled;
+            for (uint32_t i = 0u; i < 4u; i++) {
+                CHECK(pf_chop(rig, layer.x[picked[i]], layer.y[picked[i]], h));
+                CHECK(pf_settle(rig));
+                if (i < 3u) {
+                    CHECK_EQ_U64(rig->felled, felled);
+                    CHECK_EQ_U64(pf_logs_between(rig, log, h + 1, INT32_MAX), above);
+                }
+            }
+            CHECK_EQ_U64(rig->felled - felled, above);
+            CHECK_EQ_U64(pf_logs_between(rig, log, h, INT32_MAX), 0u);
+            CHECK_EQ_U64(pf_logs_between(rig, log, INT32_MIN, h - 1), under);
+        }
+    }
+    pf_end(rig);
+}
+
+/* A wide jungle branch's first log is beside the trunk at from + 1, and joins the trunk at from by a corner. Cut the layer at from + 1:
+ * the crown falls, though that branch log would join it to the stump, and the branch log stays with the stump. So does the rest of
+ * that branch, which only its first log joins to anything (master 2.3: what falls is what a path above the layer joins to the trunk
+ * above it): at most its 2 more logs each, none in the trunk's columns. */
+TEST(a_branch_beside_the_layer_does_not_hold_the_crown) {
+    uint16_t *const blocks = test_alloc(t, PF_VOXELS * sizeof(uint16_t));
+    pf_rig_t *const rig = test_alloc(t, sizeof(pf_rig_t));
+    REQUIRE(pf_begin(t, rig));
+    const terrain_density_box_t box = pf_tree_box();
+    uint32_t tried = 0u;
+    for (uint64_t s = 0u; s < PF_SEEDS_SHAPED; s++) {
+        if (!terrain_feature_tree_is_wide(TERRAIN_FEATURE_TREE_JUNGLE, s)) {
+            continue;
+        }
+        pf_paint(blocks, TERRAIN_FEATURE_TREE_JUNGLE, s, 0, 0u);
+        /* The lowest branch log: outside the trunk's 4 columns. */
+        int32_t branch_x = 0, branch_y = 0, branch_z = INT32_MAX;
+        for (uint32_t i = 0u; i < PF_VOXELS; i++) {
+            int32_t x = 0, y = 0, z = 0;
+            pf_voxel_place(&box, i, &x, &y, &z);
+            const bool trunk = (x == PF_X || x == PF_X + 1) && (y == PF_Y || y == PF_Y + 1);
+            if (blocks[i] == BLOCK_ID_JUNGLE_LOG && !trunk && z < branch_z) {
+                branch_x = x;
+                branch_y = y;
+                branch_z = z;
+            }
+        }
+        pf_layer_t layer;
+        pf_layer_of(blocks, BLOCK_ID_JUNGLE_LOG, branch_z, &layer);
+        if (branch_z == INT32_MAX || layer.count != 4u) {
+            continue;
+        }
+        tried++;
+        pf_place_tree(t, rig, blocks);
+        CHECK(pf_chop_layer(rig, &layer));
+        CHECK(pf_settle(rig));
+        /* Branches starting at the same height each keep theirs. */
+        const uint32_t starts = pf_painted_logs_between(blocks, BLOCK_ID_JUNGLE_LOG, branch_z, branch_z) - layer.count;
+        CHECK(pf_logs_between(rig, BLOCK_ID_JUNGLE_LOG, branch_z + 1, INT32_MAX) <= 2u * starts);
+        for (int32_t z = branch_z; z < PF_Z + PF_TALL; z++) {
+            for (uint32_t i = 0u; i < layer.count; i++) {
+                CHECK_EQ_U64(pf_block(rig, layer.x[i], layer.y[i], z), BLOCK_ID_AIR);
+            }
+        }
+        CHECK_EQ_U64(pf_block(rig, branch_x, branch_y, branch_z), BLOCK_ID_JUNGLE_LOG);
+    }
+    printf("    %" PRIu32 " wide jungle trees cut beside a branch\n", tried);
+    CHECK(tried >= 8u);
+    pf_end(rig);
+}
+
+/* Logs of this wood standing in the box, sorted by where they are against the trunk's column: in it, or one way or the other along
+ * (dx, dy). */
+static void pf_logs_by_side(const pf_rig_t *rig, uint16_t log, int32_t dx, int32_t dy, uint32_t *in_trunk,
+                            uint32_t *this_way, uint32_t *other_way) {
+    const terrain_density_box_t box = pf_tree_box();
+    *in_trunk = 0u;
+    *this_way = 0u;
+    *other_way = 0u;
+    for (uint32_t i = 0u; i < PF_VOXELS; i++) {
+        int32_t x = 0, y = 0, z = 0;
+        pf_voxel_place(&box, i, &x, &y, &z);
+        if (pf_block(rig, x, y, z) != log) {
+            continue;
+        }
+        const int32_t along = (x - PF_X) * dx + (y - PF_Y) * dy;
+        *in_trunk += x == PF_X && y == PF_Y ? 1u : 0u;
+        *this_way += along > 0 ? 1u : 0u;
+        *other_way += along < 0 ? 1u : 0u;
+    }
+}
+
+/* The lowest log of the picture outside the trunk's column, or false. */
+static bool pf_lowest_off_trunk(const uint16_t *blocks, uint16_t log, int32_t *out_x, int32_t *out_y, int32_t *out_z) {
+    const terrain_density_box_t box = pf_tree_box();
+    bool found = false;
+    for (uint32_t i = 0u; i < PF_VOXELS && !found; i++) {
+        int32_t x = 0, y = 0, z = 0;
+        pf_voxel_place(&box, i, &x, &y, &z);
+        if (blocks[i] == log && (x != PF_X || y != PF_Y)) {
+            *out_x = x;
+            *out_y = y;
+            *out_z = z;
+            found = true;
+        }
+    }
+    return found;
+}
+
+/* An acacia's lean holds its crown up off the straight trunk. Cut the lean's first log: the lean and its crown go, the trunk stays. */
+TEST(an_acacia_cut_at_its_lean_drops_the_crown_and_keeps_the_trunk) {
+    uint16_t *const blocks = test_alloc(t, PF_VOXELS * sizeof(uint16_t));
+    pf_rig_t *const rig = test_alloc(t, sizeof(pf_rig_t));
+    REQUIRE(pf_begin(t, rig));
+    for (uint64_t s = 0u; s < PF_SEEDS_SHAPED; s++) {
+        pf_paint(blocks, TERRAIN_FEATURE_TREE_ACACIA, 0x101ull * s, 0, 0u);
+        int32_t x = 0, y = 0, z = 0;
+        REQUIRE(pf_lowest_off_trunk(blocks, BLOCK_ID_ACACIA_LOG, &x, &y, &z));
+        pf_place_tree(t, rig, blocks);
+        uint32_t trunk_before = 0u, this_way = 0u, other_way = 0u;
+        pf_logs_by_side(rig, BLOCK_ID_ACACIA_LOG, x - PF_X, y - PF_Y, &trunk_before, &this_way, &other_way);
+        CHECK(this_way >= 1u);
+        CHECK(pf_chop(rig, x, y, z));
+        CHECK(pf_settle(rig));
+        uint32_t trunk_after = 0u;
+        pf_logs_by_side(rig, BLOCK_ID_ACACIA_LOG, x - PF_X, y - PF_Y, &trunk_after, &this_way, &other_way);
+        CHECK_EQ_U64(trunk_after, trunk_before);
+        CHECK_EQ_U64(this_way, 0u);
+        CHECK_EQ_U64(other_way, 0u);
+    }
+    pf_end(rig);
+}
+
+/* A cherry's two boughs go opposite ways from the top of its trunk. Cut one at its first log: that bough goes, the other and the trunk
+ * stay. */
+TEST(a_cherry_bough_cut_drops_only_that_bough) {
+    uint16_t *const blocks = test_alloc(t, PF_VOXELS * sizeof(uint16_t));
+    pf_rig_t *const rig = test_alloc(t, sizeof(pf_rig_t));
+    REQUIRE(pf_begin(t, rig));
+    for (uint64_t s = 0u; s < PF_SEEDS_SHAPED; s++) {
+        pf_paint(blocks, TERRAIN_FEATURE_TREE_CHERRY, 0x89ull * s + 3u, 0, 0u);
+        int32_t x = 0, y = 0, z = 0;
+        REQUIRE(pf_lowest_off_trunk(blocks, BLOCK_ID_CHERRY_LOG, &x, &y, &z));
+        pf_place_tree(t, rig, blocks);
+        uint32_t trunk_before = 0u, this_way = 0u, other_before = 0u;
+        pf_logs_by_side(rig, BLOCK_ID_CHERRY_LOG, x - PF_X, y - PF_Y, &trunk_before, &this_way, &other_before);
+        CHECK(this_way >= 2u);
+        CHECK(other_before >= 2u);
+        CHECK(pf_chop(rig, x, y, z));
+        CHECK(pf_settle(rig));
+        uint32_t trunk_after = 0u, other_after = 0u;
+        pf_logs_by_side(rig, BLOCK_ID_CHERRY_LOG, x - PF_X, y - PF_Y, &trunk_after, &this_way, &other_after);
+        CHECK_EQ_U64(trunk_after, trunk_before);
+        CHECK_EQ_U64(this_way, 0u);
+        CHECK_EQ_U64(other_after, other_before);
+    }
+    pf_end(rig);
+}
+
+/* A mangrove's prop roots are trunk columns: at a height they reach, its layer is the trunk and them. Its trunk alone fells nothing. */
+TEST(a_mangrove_layer_holds_its_prop_roots) {
+    uint16_t *const blocks = test_alloc(t, PF_VOXELS * sizeof(uint16_t));
+    pf_rig_t *const rig = test_alloc(t, sizeof(pf_rig_t));
+    REQUIRE(pf_begin(t, rig));
+    uint32_t tried = 0u;
+    const uint8_t lift = pf_lift_of(TERRAIN_FEATURE_TREE_MANGROVE);
+    for (uint64_t s = 0u; s < PF_SEEDS_SHAPED; s++) {
+        pf_paint(blocks, TERRAIN_FEATURE_TREE_MANGROVE, 0x2Dull * s + 6u, 0, lift);
+        const int32_t h = PF_Z + 2;
+        pf_layer_t layer;
+        pf_layer_of(blocks, BLOCK_ID_MANGROVE_LOG, h, &layer);
+        if (layer.count < 3u) {
+            continue;
+        }
+        tried++;
+        const uint32_t above = pf_painted_logs_between(blocks, BLOCK_ID_MANGROVE_LOG, h + 1, INT32_MAX);
+        pf_place_tree(t, rig, blocks);
+        const uint64_t felled = rig->felled;
+        CHECK(pf_chop(rig, PF_X, PF_Y, h));
+        CHECK(pf_settle(rig));
+        CHECK_EQ_U64(rig->felled, felled);
+        CHECK_EQ_U64(pf_logs_between(rig, BLOCK_ID_MANGROVE_LOG, h + 1, INT32_MAX), above);
+        CHECK(pf_chop_layer(rig, &layer));
+        CHECK(pf_settle(rig));
+        CHECK_EQ_U64(rig->felled - felled, above);
+        CHECK_EQ_U64(pf_logs_between(rig, BLOCK_ID_MANGROVE_LOG, h, INT32_MAX), 0u);
+    }
+    printf("    %" PRIu32 " mangroves with 2 or more prop roots\n", tried);
+    CHECK(tried >= 4u);
     pf_end(rig);
 }
 
@@ -371,7 +777,11 @@ TEST(a_giant_cut_at_the_level_of_its_middle_leaves_only_what_is_below_that) {
     pf_paint(blocks, TERRAIN_FEATURE_TREE_JUNGLE, seed, PF_FOOT_GAP, 0u);
     REQUIRE(terrain_feature_tree_is_wide(TERRAIN_FEATURE_TREE_JUNGLE, seed));
     pf_place_tree(t, rig, blocks);
+    /* All four, the middle's own first: it stands on a pillar of ground, no root log, so its cut is a branch's. */
     REQUIRE(pf_chop(rig, PF_X, PF_Y, PF_Z));
+    REQUIRE(pf_chop(rig, PF_X + 1, PF_Y, PF_Z));
+    REQUIRE(pf_chop(rig, PF_X, PF_Y + 1, PF_Z));
+    REQUIRE(pf_chop(rig, PF_X + 1, PF_Y + 1, PF_Z));
     REQUIRE(pf_settle(rig));
     uint32_t logs = 0u, leaves = 0u, vines = 0u;
     pf_left(rig, BLOCK_ID_JUNGLE_LOG, PF_Z, &logs, &leaves, &vines);
@@ -421,6 +831,40 @@ static void pf_wall_stays(test_context_t *t, uint8_t tool, uint8_t tier) {
     }
     CHECK_EQ_U64(standing, PF_WALL_SIZE * PF_WALL_SIZE - 1u);
     CHECK_EQ_U64(rig->felled, 0u);
+    pf_end(rig);
+}
+
+/* Six logs put on the ground, leaves round the top: a tower a player made. No log of it is set in the ground, so it is no tree. */
+TEST(a_log_tower_with_leaves_is_never_felled) {
+    pf_rig_t *const rig = test_alloc(t, sizeof(pf_rig_t));
+    REQUIRE(pf_begin(t, rig));
+    test_world_fill(t, &rig->world, PF_X, PF_Y, PF_Z, PF_X, PF_Y, PF_Z + 5, BLOCK_ID_OAK_LOG);
+    pf_crown(t, rig, PF_X, PF_Y, PF_Z + 5, BLOCK_ID_OAK_LEAVES);
+    REQUIRE(pf_chop(rig, PF_X, PF_Y, PF_Z + 2));
+    REQUIRE(pf_settle(rig));
+    CHECK_EQ_U64(rig->felled, 0u);
+    CHECK_EQ_U64(rig->felling.not_a_tree_count, 1u);
+    for (int32_t z = PF_Z; z <= PF_Z + 5; z++) {
+        CHECK_EQ_U64(pf_block(rig, PF_X, PF_Y, z), z == PF_Z + 2 ? BLOCK_ID_AIR : BLOCK_ID_OAK_LOG);
+    }
+    pf_end(rig);
+}
+
+/* The stump left by a fall is logs set in the ground with no leaves: cutting one takes that one. */
+TEST(a_stump_loses_only_the_log_cut) {
+    pf_rig_t *const rig = test_alloc(t, sizeof(pf_rig_t));
+    REQUIRE(pf_begin(t, rig));
+    pf_trunk(t, rig, PF_X, PF_Y, PF_Z, PF_Z + 6, BLOCK_ID_OAK_LOG);
+    pf_crown(t, rig, PF_X, PF_Y, PF_Z + 6, BLOCK_ID_OAK_LEAVES);
+    REQUIRE(pf_chop(rig, PF_X, PF_Y, PF_Z));
+    REQUIRE(pf_settle(rig));
+    CHECK_EQ_U64(rig->felled, 6u);
+    CHECK_EQ_U64(pf_block(rig, PF_X, PF_Y, PF_Z - 1), BLOCK_ID_OAK_LOG);
+    REQUIRE(pf_chop(rig, PF_X, PF_Y, PF_Z - 1));
+    REQUIRE(pf_settle(rig));
+    CHECK_EQ_U64(rig->felled, 6u);
+    CHECK_EQ_U64(pf_block(rig, PF_X, PF_Y, PF_Z - 2), BLOCK_ID_OAK_LOG);
+    CHECK_EQ_U64(rig->logs_dropped, 8u);
     pf_end(rig);
 }
 
@@ -560,13 +1004,17 @@ TEST(no_drop_is_lost_on_the_biggest_tree_with_or_without_anyone_taking_them_at_o
     uint64_t seed = 0u;
     const uint32_t biggest = pf_biggest_of(blocks, TERRAIN_FEATURE_TREE_JUNGLE, &seed);
     pf_paint(blocks, TERRAIN_FEATURE_TREE_JUNGLE, seed, 0, 0u);
-    const uint32_t logs = pf_painted_logs_from(blocks, BLOCK_ID_JUNGLE_LOG, PF_Z);
+    pf_layer_t layer;
+    pf_layer_of(blocks, BLOCK_ID_JUNGLE_LOG, PF_Z, &layer);
+    REQUIRE(layer.count == 4u);
+    /* The layer cut by hand, and every log above it felled; the stump stays. */
+    const uint32_t logs = pf_painted_logs_between(blocks, BLOCK_ID_JUNGLE_LOG, PF_Z, INT32_MAX);
     REQUIRE(logs > PLAYER_INTERACTION_DROPS);
     REQUIRE(logs <= biggest);
     pf_place_tree(t, rig, blocks);
     /* Nobody takes them: it holds back at a full ring, loses nothing, and goes on when someone comes. */
     rig->drain = 0u;
-    REQUIRE(pf_chop(rig, PF_X, PF_Y, PF_Z));
+    REQUIRE(pf_chop_layer(rig, &layer));
     for (uint32_t tick = 0u; tick < 40u; tick++) {
         pf_tick(rig, false);
     }
@@ -581,25 +1029,48 @@ TEST(no_drop_is_lost_on_the_biggest_tree_with_or_without_anyone_taking_them_at_o
     pf_end(rig);
 }
 
-TEST(past_the_limit_the_rest_stay) {
+/* A rooted trunk under a block of logs side by side, size by size by height, with leaves on top. */
+static void pf_log_block(test_context_t *t, pf_rig_t *rig, int32_t size, int32_t height) {
+    pf_trunk(t, rig, PF_X, PF_Y, PF_Z, PF_Z + 3, BLOCK_ID_OAK_LOG);
+    test_world_fill(t, &rig->world, PF_X - size / 2, PF_Y - size / 2, PF_Z + 4, PF_X - size / 2 + size - 1,
+                    PF_Y - size / 2 + size - 1, PF_Z + 3 + height, BLOCK_ID_OAK_LOG);
+    pf_put(t, rig, PF_X, PF_Y, PF_Z + 4 + height, BLOCK_ID_OAK_LEAVES);
+}
+
+/* Past the find's limit, the find is unsure: only the cut goes. */
+TEST(past_the_finds_limit_nothing_falls) {
     pf_rig_t *const rig = test_alloc(t, sizeof(pf_rig_t));
     REQUIRE(pf_begin(t, rig));
-    const int32_t top = PF_Z + 2 * (int32_t)PLAYER_FELLING_LOGS_MAX;
-    pf_trunk(t, rig, PF_X, PF_Y, PF_Z, top, BLOCK_ID_OAK_LOG);
-    pf_put(t, rig, PF_X + 1, PF_Y, PF_Z + 1, BLOCK_ID_OAK_LEAVES);
-    REQUIRE(pf_chop(rig, PF_X, PF_Y, PF_Z));
+    /* 11 by 11 by 9 is 1089 logs, over the 1024. */
+    pf_log_block(t, rig, 11, 9);
+    REQUIRE(pf_chop(rig, PF_X, PF_Y, PF_Z + 1));
+    CHECK_EQ_U64(player_felling_pending(&rig->felling), 0u);
     REQUIRE(pf_settle(rig));
-    CHECK(rig->felling.turned_away_count > 0u);
-    /* The queue had the cut in it, so that one fewer than it holds went above it. */
-    CHECK_EQ_U64(rig->felled, PLAYER_FELLING_LOGS_MAX - 1u);
-    const int32_t last = PF_Z + (int32_t)PLAYER_FELLING_LOGS_MAX - 1;
-    CHECK_EQ_U64(pf_block(rig, PF_X, PF_Y, last), BLOCK_ID_AIR);
-    CHECK_EQ_U64(pf_block(rig, PF_X, PF_Y, last + 1), BLOCK_ID_OAK_LOG);
-    CHECK_EQ_U64(pf_block(rig, PF_X, PF_Y, top), BLOCK_ID_OAK_LOG);
+    CHECK_EQ_U64(rig->felling.find_overflow_count, 1u);
+    CHECK_EQ_U64(rig->felled, 0u);
+    CHECK_EQ_U64(pf_block(rig, PF_X, PF_Y, PF_Z + 2), BLOCK_ID_OAK_LOG);
+    CHECK_EQ_U64(pf_block(rig, PF_X, PF_Y, PF_Z + 12), BLOCK_ID_OAK_LOG);
     pf_end(rig);
 }
 
-TEST(a_column_not_loaded_stops_the_walk_and_nothing_goes_wrong) {
+/* More falling than the queue holds: none of it falls, as half a tree would float. */
+TEST(past_the_queues_limit_nothing_falls) {
+    pf_rig_t *const rig = test_alloc(t, sizeof(pf_rig_t));
+    REQUIRE(pf_begin(t, rig));
+    /* 11 by 11 by 3 is 363 logs, over the 256 the queue holds and under the 1024 the find does. */
+    pf_log_block(t, rig, 11, 3);
+    REQUIRE(pf_chop(rig, PF_X, PF_Y, PF_Z + 1));
+    REQUIRE(pf_settle(rig));
+    CHECK_EQ_U64(rig->felling.find_overflow_count, 0u);
+    CHECK(rig->felling.turned_away_count > PLAYER_FELLING_LOGS_MAX);
+    CHECK_EQ_U64(rig->felled, 0u);
+    CHECK_EQ_U64(pf_block(rig, PF_X, PF_Y, PF_Z + 2), BLOCK_ID_OAK_LOG);
+    pf_end(rig);
+}
+
+/* Against what is not loaded, which might be more of the tree or might hold it up, the find is unsure: only the cut goes, and the
+ * leaves stay for the rule of a leaf. */
+TEST(a_column_not_loaded_fells_nothing) {
     pf_rig_t *const rig = test_alloc(t, sizeof(pf_rig_t));
     REQUIRE(pf_begin(t, rig));
     /* x = 63 is the last that is loaded along this row. */
@@ -611,10 +1082,14 @@ TEST(a_column_not_loaded_stops_the_walk_and_nothing_goes_wrong) {
     pf_put(t, rig, edge - 1, PF_Y, PF_Z + 5, BLOCK_ID_OAK_LEAVES);
     REQUIRE(pf_chop(rig, edge, PF_Y, PF_Z));
     REQUIRE(pf_settle(rig));
-    CHECK_EQ_U64(pf_block(rig, edge, PF_Y, PF_Z + 5), BLOCK_ID_AIR);
-    /* Against what is not loaded, which might hold it: the rule says it stays. The other has only air between. */
+    CHECK_EQ_U64(rig->felling.find_unloaded_count, 1u);
+    CHECK_EQ_U64(rig->felled, 0u);
+    CHECK_EQ_U64(pf_block(rig, edge, PF_Y, PF_Z), BLOCK_ID_AIR);
+    for (int32_t z = PF_Z + 1; z <= PF_Z + 5; z++) {
+        CHECK_EQ_U64(pf_block(rig, edge, PF_Y, z), BLOCK_ID_OAK_LOG);
+    }
     CHECK_EQ_U64(pf_block(rig, edge, PF_Y + 1, PF_Z + 5), BLOCK_ID_OAK_LEAVES);
-    CHECK_EQ_U64(pf_block(rig, edge - 1, PF_Y, PF_Z + 5), BLOCK_ID_AIR);
+    CHECK_EQ_U64(pf_block(rig, edge - 1, PF_Y, PF_Z + 5), BLOCK_ID_OAK_LEAVES);
     pf_end(rig);
 }
 
@@ -703,15 +1178,18 @@ TEST(wherever_a_tree_is_cut_no_wood_is_left_floating) {
         for (uint32_t s = 0u; s < PF_SEEDS_CUT; s++) {
             pf_paint(blocks, kind, 0x51ull * s + k, 0, pf_lift_of(kind));
             for (int32_t level = 0; level < PF_CUT_LEVELS; level++) {
-                int32_t cut_x = 0, cut_y = 0;
                 const int32_t cut_z = PF_Z + level;
-                bool found = false;
+                /* The trunk's whole layer there; or, above the trunk, one log of a branch. */
+                pf_layer_t layer;
+                pf_layer_of(blocks, log, cut_z, &layer);
+                bool found = layer.count > 0u;
                 for (uint32_t i = 0u; i < PF_VOXELS && !found; i++) {
                     int32_t x = 0, y = 0, z = 0;
                     pf_voxel_place(&box, i, &x, &y, &z);
                     if (blocks[i] == log && z == cut_z) {
-                        cut_x = x;
-                        cut_y = y;
+                        layer.x[0] = x;
+                        layer.y[0] = y;
+                        layer.count = 1u;
                         found = true;
                     }
                 }
@@ -719,7 +1197,7 @@ TEST(wherever_a_tree_is_cut_no_wood_is_left_floating) {
                     continue;
                 }
                 pf_place_tree(t, rig, blocks);
-                CHECK(pf_chop(rig, cut_x, cut_y, cut_z));
+                CHECK(pf_chop_layer(rig, &layer));
                 CHECK(pf_settle(rig));
                 cuts++;
                 CHECK_EQ_U64(pf_logs_floating(rig, log, held, queue), 0u);
@@ -856,6 +1334,44 @@ TEST(a_tree_beside_it_keeps_its_leaves) {
     CHECK_EQ_U64(pf_block(rig, PF_X + 4, PF_Y, PF_Z + 5), BLOCK_ID_OAK_LOG);
     CHECK_EQ_U64(pf_block(rig, PF_X + 3, PF_Y, PF_Z + 5), BLOCK_ID_OAK_LEAVES);
     CHECK_EQ_U64(pf_block(rig, PF_X + 5, PF_Y, PF_Z + 5), BLOCK_ID_OAK_LEAVES);
+    pf_end(rig);
+}
+
+/* Master 4: the find reads at most 1024 logs' 26 neighbours. Timed on the biggest tree of every kind, 100 cuts each, with the first log
+ * of its trunk over the ground cut. Under 1 ms in the release build; the debug build's only printed. */
+TEST(the_find_takes_under_a_millisecond) {
+    uint16_t *const blocks = test_alloc(t, PF_VOXELS * sizeof(uint16_t));
+    pf_rig_t *const rig = test_alloc(t, sizeof(pf_rig_t));
+    REQUIRE(pf_begin(t, rig));
+    int64_t worst_ns = 0;
+    for (uint32_t k = 0u; k < TERRAIN_FEATURE_TREES; k++) {
+        const terrain_feature_tree_t kind = (terrain_feature_tree_t)k;
+        const uint16_t log = pf_kind_log(kind);
+        uint64_t seed = 0u;
+        (void)pf_biggest_of(blocks, kind, &seed);
+        pf_paint(blocks, kind, seed, 0, pf_lift_of(kind));
+        pf_place_tree(t, rig, blocks);
+        pf_put(t, rig, PF_X, PF_Y, PF_Z, BLOCK_ID_AIR);
+        int64_t sum_ns = 0, kind_worst_ns = 0;
+        uint32_t found = 0u;
+        for (uint32_t i = 0u; i < PF_FIND_TIMED; i++) {
+            player_felling_start(&rig->felling);
+            const int64_t started = time_now_ns();
+            const uint32_t queued = player_felling_cut(&rig->felling, rig->world.map, log, PF_X, PF_Y, PF_Z);
+            const int64_t spent = time_now_ns() - started;
+            CHECK(queued >= 1u);
+            found = rig->felling.found_count;
+            sum_ns += spent;
+            kind_worst_ns = spent > kind_worst_ns ? spent : kind_worst_ns;
+        }
+        printf("    kind %" PRIu32 ": %" PRIu32 " logs found, mean %" PRId64 " ns, worst %" PRId64 " ns\n", k, found,
+               sum_ns / (int64_t)PF_FIND_TIMED, kind_worst_ns);
+        worst_ns = kind_worst_ns > worst_ns ? kind_worst_ns : worst_ns;
+    }
+    player_felling_start(&rig->felling);
+#if defined(NDEBUG)
+    CHECK(worst_ns < 1000000);
+#endif
     pf_end(rig);
 }
 

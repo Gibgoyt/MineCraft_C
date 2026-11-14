@@ -64,8 +64,8 @@ enum : uint64_t {
     GAME_WORLD_ARENA_BYTES =
         GAME_STREAM_JOBS * (GAME_COLUMN_BYTES + 2u * GAME_COLUMN_VOXELS + UI_ATLAS_COLUMN_PIXELS * sizeof(uint32_t) +
                             COLUMN_SECTIONS * sizeof(section_encoded_t)) +
-        sizeof(game_world_parts_t) + 2ull * 4096ull + MOB_SPAWN_BYTES + GAME_CENSUS_ARENA_BYTES +
-        GAME_WATCH_ARENA_BYTES,
+        sizeof(game_world_parts_t) + sizeof(player_felling_t) + 2ull * 4096ull + MOB_SPAWN_BYTES +
+        GAME_CENSUS_ARENA_BYTES + GAME_WATCH_ARENA_BYTES,
 };
 enum : int64_t {
     GAME_SIM_IDLE_NS = 1000000, /* the sim looks for finished columns this often when it has nothing to do */

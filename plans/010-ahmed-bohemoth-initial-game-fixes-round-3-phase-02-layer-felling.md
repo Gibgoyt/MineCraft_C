@@ -1,6 +1,6 @@
 # 010-ahmed-bohemoth-initial-game-fixes-round-3 — phase 2: Layer felling
 
-**Status:** not started   (updated 2026-11-14)
+**Status:** in progress: the feller, its tests and README done; the playthrough waits for phase 01 to land   (updated 2026-11-14)
 
 Read first: `plans/010-ahmed-bohemoth-initial-game-fixes-round-3-phase-00-vision-and-plan-files.md`, then the master `plans/010-ahmed-bohemoth-initial-game-fixes-round-3.md` (sections 0, 1, 2.1, 2.3, 2.4, 4 to 6 and 9), then phase 01's file for what the roots are. Every number here comes from the master. Where this file adds one, it says so and why.
 
@@ -179,18 +179,18 @@ This phase may edit these, plus this file:
 
 From the master (section 9, phase 02):
 
-- [ ] `player_felling_cut`: the find (up and down, `found`, roots, leaves, overflow), the layer rule and the nothing-floats rule, as 2.3
-- [ ] `player_felling_t` grows; its asserts and README
-- [ ] `tests/run/player/felling/`: the tests of section 5, rewriting those that assumed one cut fells a wide trunk
+- [x] `player_felling_cut`: the find (up and down, `found`, roots, leaves, overflow), the layer rule and the nothing-floats rule, as 2.3
+- [x] `player_felling_t` grows; its asserts and README
+- [x] `tests/run/player/felling/`: the tests of section 5, rewriting those that assumed one cut fells a wide trunk
 - [ ] `run_playthrough`: the cut layer as a list of cuts; `fell.script`'s `stump.png`
-- [ ] `run/src/player/felling/README.md` rewritten for layers, roots and the stump
+- [x] `run/src/player/felling/README.md` rewritten for layers, roots and the stump
 
 Expanded:
 
-- [ ] A column not loaded, or a find past `PLAYER_FELLING_FIND_MAX`, fells nothing and is counted
-- [ ] A log tower on the ground with leaves on it is never felled (root log rule)
+- [x] A column not loaded, or a find past `PLAYER_FELLING_FIND_MAX`, fells nothing and is counted
+- [x] A log tower on the ground with leaves on it is never felled (root log rule)
 - [ ] The find is under 1 ms on the biggest tree of every kind (100 cuts timed)
-- [ ] No heap, the same bytes for the same cuts (existing `the_same_cut_gives_the_same_bytes_and_no_heap`)
+- [x] No heap, the same bytes for the same cuts (existing `the_same_cut_gives_the_same_bytes_and_no_heap`)
 - [ ] The pictures from `run_playthrough` looked at and described here
 - [ ] `standards_lint`, `clang_format`, the whole debug suite pass; `pgrep -af "$PWD/build"` prints nothing
 
@@ -254,4 +254,17 @@ Appended as they land:
 
 ## Issues found
 
-None.
+- **The struct.** `player_felling_t` is 30384 bytes (the plan guessed about 25 KiB): beside `found`, `found_seen` and `found_flags` it has `found_queue` (2 KiB, the floods' own list), `found_column` (1 KiB, each log's trunk column), the trunk columns (`trunk_x`, `trunk_y`, `trunk_in`, at most `PLAYER_FELLING_TRUNK_COLUMNS` = 64, more being a build set into the ground and so unsure), the four counts, and `last_layer` / `last_stump` for a report. The world arena's budget in `run/src/game/index.c` now adds `sizeof(player_felling_t)` (it was inside the 8 KiB of slack at 5 KiB; at 30 KiB it is not). That is the one line outside the owned paths.
+- **The queue is all or nothing.** The plan kept "past the limit, the rest stay" for the queue. That would leave half a tree floating, against "nothing floats", so when what falls does not fit in the queue's room nothing of that cut falls, and `turned_away_count` counts the logs. The find (1024) and the queue (256) both stay far over the biggest tree (107 logs with roots).
+- **Return value.** 0 when the find says no tree or is unsure (no change to the queue, as before for a log wall), 1 when the tree stands (the cut is queued so its leaves are looked at), 1 + the falling logs otherwise. `a_second_tree_cut_while_the_first_comes_down_goes_too` keeps its 0 and 11.
+- **A branch at the layer keeps its stub.** Cutting a wide jungle's 4 trunk logs at a branch's `from + 1`: the branch's first log stays with the stump (as the plan says), and so do the branch's 1 or 2 logs above it, because only that first log joins them to anything; master 2.3 has what falls as "what a path of logs above h joins to the trunk's logs above h", and they are joined by no such path. Nothing floats. The plan's test table said "everything above the layer falls"; the test checks 2.3's words: no log left in the trunk's columns above, the branch log at the layer still there, and at most 2 logs per branch starting at that height left above.
+- **The giant on falling ground** (`a_giant_cut_at_the_level_of_its_middle_leaves_only_what_is_below_that`): with the ground 2 lower beside it, the trunk's own column stands on a pillar of dirt with air on 2 sides, so its roots are not root logs and its column is no trunk column; its cut is a branch's, and the other 3 columns are the layer. The test cuts all four, the middle first; the expectation (nothing left from `PF_Z` up, the stump below) is unchanged.
+- **Rewritten tests**, old expectation then new:
+  - `every_kind_of_tree_comes_down_whole_with_a_drop_for_every_log`: one cut at the lowest log fells every log, `felled = logs - 1`; now every log of the first layer over the ground is cut, every log above drops (`felled = above`, drops `above + layer`), and the stump (2 roots per trunk column) stays.
+  - `a_giant_cut_at_the_level_of_its_middle_...`: one cut; now all four (above).
+  - `past_the_limit_the_rest_stay` (255 fell, the rest stood) became `past_the_finds_limit_nothing_falls` (1095 logs: only the cut, `find_overflow_count` 1) and `past_the_queues_limit_nothing_falls` (365 to fall: none, `turned_away_count` 365).
+  - `a_column_not_loaded_stops_the_walk_and_nothing_goes_wrong` (the logs went, the leaf against the unloaded column stayed) became `a_column_not_loaded_fells_nothing` (only the cut, every log and both leaves stay, `find_unloaded_count` 1).
+  - `wherever_a_tree_is_cut_no_wood_is_left_floating`: now cuts the trunk's whole layer at each height, or one branch log where the trunk has ended: 111 cuts, none left wood floating.
+  - `no_drop_is_lost_on_the_biggest_tree_...`: cuts the 4 of the layer; the drops are the layer and every log above.
+- **Ground in the tests.** Every test stands on 6 blocks of dirt under `PF_Z` over every loaded column (a disc, not the square), and `pf_trunk` from `PF_Z` draws 2 logs into it. `pf_paint` paints dirt under each column's ground and then `pf_roots_if_missing` draws the roots where the painter does not (before phase 01 lands); once phase 01's painter draws them it does nothing, as a column's lowest log then no longer stands on the ground's top.
+- **The find's time, debug** (`-O0`, CPU only, 2026-11-14), 100 cuts at the first log over the ground of the biggest tree of each kind: oak 8 logs found 12 µs mean / 15 µs worst, birch 9: 15 / 58, spruce 12: 19 / 62, jungle 101: 170 / 257, acacia 9: 15 / 57, dark oak 44: 73 / 87, mangrove 51: 85 / 99, cherry 14: 22 / 25. Release to come.
