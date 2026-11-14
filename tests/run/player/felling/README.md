@@ -22,10 +22,10 @@ Needs no card, no display and no input device. Bare hands, a pickaxe and an axe 
 
 `fixtures/fell.script` is a person's first minute on seed 36, as in `tests/run/playthrough/`: the block underfoot dug and
 held, then, at its line `@fell`, a `/tp` to the tree `run_playthrough` finds from the land near the start (the land there moves
-with each plan that changes the terrain, so no walk is written down), a look up at it and back, and one cut at its root with the
-left button and nothing in hand but what the hole gave. It looks up at the tree from the same place after, and it saves and
+with each plan that changes the terrain, so no walk is written down), a look up at it and back, and a cut with the
+left button and nothing in hand but what the hole gave, on each log of the trunk's layer there in turn (plan 010 phase 02). It looks up at the tree from the same place after, then down at the stump (`stump.png`), and it saves and
 opens the world again. `run_playthrough` in `tests/run/playthrough/` writes the `@fell` line for the tree, runs it and reads
 the report: the cut was a log and the feller felled at least 2 more, with the hand holding only what the hole gave. The
 pictures are for a person: run `run_playthrough` with `MC_PLAYTHROUGH_KEEP=1`, which prints where it kept them.
 
-Then read `before.png`, `during.png` and `later.png`, and the line `the tree feller felled N logs past what was cut` in what it prints.
+Then read `before.png`, `during.png`, `later.png` and `stump.png`, and the line `the tree feller felled N logs past what was cut` in what it prints.

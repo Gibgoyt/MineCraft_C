@@ -100,6 +100,8 @@ enum : uint32_t {
 #define PT_FEET_AHEAD 0.5f64
 #define PT_FEET_RIGHT 0.7f64
 #define PT_WALK_PER_TICK 0.2f64 /* blocks a walk covers in a tick, a little under its speed */
+#define PT_AIM_LOW 0.2f64       /* how high on a layer log the scripts aim, over its floor */
+#define PT_AIM_IN 0.4f64        /* and how far from its middle towards the stand */
 
 typedef struct pt_tree_t {
     int32_t root_x, root_y,
@@ -396,6 +398,15 @@ static bool pt_layer(const pt_box_t *box, uint32_t id, const int32_t cut[3], pt_
             }
         }
     }
+    /* One trunk only: a clump of trees grown into one another keeps what the other trunks hold, so its logs above are not what
+     * falls (seed 36's first try, an acacia whose 12 above came down as 8). */
+    for (int32_t dy = 0; dy < SIDE; dy++) {
+        for (int32_t dx = 0; dx < SIDE; dx++) {
+            if (trunk[dy][dx] == 1u) {
+                return false;
+            }
+        }
+    }
     tree->layer_count = 0u;
     tree->above = 0u;
     for (int32_t dy = 0; dy < SIDE; dy++) {
@@ -436,13 +447,23 @@ static bool pt_layer(const pt_box_t *box, uint32_t id, const int32_t cut[3], pt_
     return tree->layer_count > 0u;
 }
 
-/* Whether the eye at the stand sees the middle of the layer's log `which` once the ones before it are cut: the back logs of a 2 by 2
- * are seen through the gap the front ones leave. */
+/* Where the scripts aim on a layer log at (x, y): low on its side towards the stand, PT_AIM_LOW over its floor and PT_AIM_IN in from
+ * its middle. A back log's middle is hidden by the trunk over the gap a front log leaves, which stands until the last cut; low on its
+ * near side, the look goes through that gap under it. */
+static void pt_aim_point(const pt_tree_t *tree, int32_t x, int32_t y, float64_t to[2]) {
+    const float64_t dx = (float64_t)(tree->stand_x - x), dy = (float64_t)(tree->stand_y - y);
+    const float64_t length = hypot(dx, dy);
+    to[0] = (float64_t)x + 0.5f64 + (length > 0.0f64 ? PT_AIM_IN * dx / length : 0.0f64);
+    to[1] = (float64_t)y + 0.5f64 + (length > 0.0f64 ? PT_AIM_IN * dy / length : 0.0f64);
+}
+
+/* Whether the eye at the stand sees the aim point of the layer's log `which` once the ones before it are cut: the back logs of a 2 by
+ * 2 are seen through the gap the front ones leave. */
 static bool pt_sees_layer_log(const pt_box_t *box, const pt_tree_t *tree, int32_t cut_z, uint32_t which) {
     const float64_t from[3] = {(float64_t)tree->stand_x + 0.5f64, (float64_t)tree->stand_y + 0.5f64,
                                (float64_t)cut_z + PLAYER_MOVEMENT_EYE_STANDING};
-    const float64_t to[3] = {(float64_t)tree->layer_x[which] + 0.5f64, (float64_t)tree->layer_y[which] + 0.5f64,
-                             (float64_t)cut_z + 0.5f64};
+    float64_t to[3] = {0.0f64, 0.0f64, (float64_t)cut_z + PT_AIM_LOW};
+    pt_aim_point(tree, tree->layer_x[which], tree->layer_y[which], to);
     for (uint32_t step = 0u; step <= 200u; step++) {
         const float64_t f = (float64_t)step / 200.0f64;
         const int32_t x = (int32_t)floor(from[0] + (to[0] - from[0]) * f);
@@ -489,7 +510,7 @@ static void pt_box_make(pt_box_t *box, const terrain_t *terrain, const climate_t
 }
 
 /* The fittest tree whose cut point (pt_cut_point) is in the box's middle (inside its margin): at most PT_TREE_LOGS_MANY logs over
- * the ground close round its trunk and at least PT_TREE_LOGS_MIN above the layer cut there (plan 010 phase 02), alone on clear flat
+ * the ground close round its trunk and at least PT_TREE_LOGS_MIN in and above the layer cut there, which drop (plan 010 phase 02), alone on clear flat
  * ground, with a stand that sees every log of that layer in turn; one whose layer is one log before a wider one, and then the
  * nearest the start. False if there is none. */
 static bool pt_box_tree(pt_box_t *box, int32_t (*stack)[3], int32_t start_x, int32_t start_y, pt_tree_t *out,
@@ -534,12 +555,23 @@ static bool pt_box_tree(pt_box_t *box, int32_t (*stack)[3], int32_t start_x, int
                                  .stand_y = stand_y,
                                  .logs = logs,
                                  .log = box->blocks[i]};
-                if (!pt_layer(box, id, root, &fit) || fit.above < PT_TREE_LOGS_MIN) {
+                /* What drops: the layer's logs, cut by hand, and every log above it, felled. The stump does not. */
+                if (!pt_layer(box, id, root, &fit) || fit.layer_count + fit.above < PT_TREE_LOGS_MIN) {
                     continue;
                 }
+                /* An order the stand sees each log in, once the ones before it are cut: nearest first where that works, else the
+                 * first that is seen. */
                 bool seen = true;
-                for (uint32_t log = 1u; log < fit.layer_count && seen; log++) {
-                    seen = pt_sees_layer_log(box, &fit, root[2], log);
+                for (uint32_t log = 0u; log < fit.layer_count && seen; log++) {
+                    seen = false;
+                    for (uint32_t other = log; other < fit.layer_count && !seen; other++) {
+                        const int32_t keep_x = fit.layer_x[log], keep_y = fit.layer_y[log];
+                        fit.layer_x[log] = fit.layer_x[other];
+                        fit.layer_y[log] = fit.layer_y[other];
+                        fit.layer_x[other] = keep_x;
+                        fit.layer_y[other] = keep_y;
+                        seen = pt_sees_layer_log(box, &fit, root[2], log);
+                    }
                 }
                 const float64_t score = far + (fit.layer_count > 1u ? WIDE : 0.0f64);
                 if (!seen || score >= best) {
@@ -631,7 +663,7 @@ static bool pt_tree_find(test_context_t *t, pt_tree_t *out) {
            tiles, PT_TILE, block_defs[out->log].name, out->logs, out->root_x, out->root_y, out->ground_z + 1,
            (libc_double_t)best, out->stand_x, out->stand_y, (uint32_t)out->layer_count, out->above);
     out->far = (uint32_t)lround(best < 1e30f64 ? best : 0.0f64);
-    return CHECK(out->above >= PT_TREE_LOGS_MIN);
+    return CHECK(out->layer_count + out->above >= PT_TREE_LOGS_MIN);
 }
 
 static void pt_append(char *text, uint64_t *length, const char *line);
@@ -651,9 +683,12 @@ static void pt_look_lines(float64_t yaw, float64_t pitch, uint32_t ticks, float6
 
 /* The look from the stand's eye to the middle of the log at (x, y, ground_z + 1). */
 static void pt_aim_at(const pt_tree_t *tree, int32_t x, int32_t y, float64_t *yaw, float64_t *pitch) {
-    const float64_t across = (float64_t)(x - tree->stand_x), along = (float64_t)(y - tree->stand_y);
+    float64_t to[2];
+    pt_aim_point(tree, x, y, to);
+    const float64_t across = to[0] - ((float64_t)tree->stand_x + 0.5f64);
+    const float64_t along = to[1] - ((float64_t)tree->stand_y + 0.5f64);
     *yaw = atan2(along, across);
-    *pitch = atan2(0.5f64 - PLAYER_MOVEMENT_EYE_STANDING, hypot(across, along));
+    *pitch = atan2(PT_AIM_LOW - PLAYER_MOVEMENT_EYE_STANDING, hypot(across, along));
 }
 
 static void pt_append(char *text, uint64_t *length, const char *line) {
@@ -741,10 +776,13 @@ static void pt_tree_lines(const pt_tree_t *tree, bool fell, char *text, uint64_t
     if (fell) {
         return;
     }
-    /* The logs fall, and the leaves go over about a second and a half (run/src/player/felling/). Then level, facing the cut point,
-     * and the walk in. */
+    /* Level, facing the cut point, and the walk in at once: the layer's own logs lie on the stump in the way and are picked up
+     * first, into hotbar slot 2 where the scripts look for them, before the leaves have gone (about a second and a half after the
+     * fall, run/src/player/felling/) and dropped what they give. The felled logs come down round the trunk while it stands there.
+     * With one cut the wait was 40 ticks; with a layer of several, the cuts' drops merge in that time, and a mangrove's propagule
+     * was picked up first (plan 010 phase 02). */
     pt_aim_at(tree, tree->root_x, tree->root_y, &yaw, &pitch);
-    pt_look_lines(yaw, PT_LEVEL_PITCH, 40u, &yaw_now, &pitch_now, text, length);
+    pt_look_lines(yaw, PT_LEVEL_PITCH, 4u, &yaw_now, &pitch_now, text, length);
     const uint32_t walk = (uint32_t)ceil(distance / PT_WALK_PER_TICK);
     snprintf(line, sizeof(line), "+1 key w down\n+%u key w up", walk);
     pt_append(text, length, line);
@@ -804,7 +842,7 @@ static const char *pt_day(test_context_t *t, const char *fixture, const char *ro
         (void)pt_tree_find(t, &found);
     }
     *out = found;
-    if (!CHECK(found.above >= PT_TREE_LOGS_MIN)) {
+    if (!CHECK(found.layer_count + found.above >= PT_TREE_LOGS_MIN)) {
         return nullptr;
     }
     return pt_script(t, fixture, root, &found);

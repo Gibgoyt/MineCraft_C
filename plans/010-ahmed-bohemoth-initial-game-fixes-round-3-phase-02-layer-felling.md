@@ -1,6 +1,6 @@
 # 010-ahmed-bohemoth-initial-game-fixes-round-3 — phase 2: Layer felling
 
-**Status:** in progress: the feller, its tests and README done; the playthrough waits for phase 01 to land   (updated 2026-11-14)
+**Status:** done, rebased onto phase 01 (`58a8411e`); the full debug suite below   (updated 2026-11-14)
 
 Read first: `plans/010-ahmed-bohemoth-initial-game-fixes-round-3-phase-00-vision-and-plan-files.md`, then the master `plans/010-ahmed-bohemoth-initial-game-fixes-round-3.md` (sections 0, 1, 2.1, 2.3, 2.4, 4 to 6 and 9), then phase 01's file for what the roots are. Every number here comes from the master. Where this file adds one, it says so and why.
 
@@ -182,16 +182,16 @@ From the master (section 9, phase 02):
 - [x] `player_felling_cut`: the find (up and down, `found`, roots, leaves, overflow), the layer rule and the nothing-floats rule, as 2.3
 - [x] `player_felling_t` grows; its asserts and README
 - [x] `tests/run/player/felling/`: the tests of section 5, rewriting those that assumed one cut fells a wide trunk
-- [ ] `run_playthrough`: the cut layer as a list of cuts; `fell.script`'s `stump.png`
+- [x] `run_playthrough`: the cut layer as a list of cuts; `fell.script`'s `stump.png`
 - [x] `run/src/player/felling/README.md` rewritten for layers, roots and the stump
 
 Expanded:
 
 - [x] A column not loaded, or a find past `PLAYER_FELLING_FIND_MAX`, fells nothing and is counted
 - [x] A log tower on the ground with leaves on it is never felled (root log rule)
-- [ ] The find is under 1 ms on the biggest tree of every kind (100 cuts timed)
+- [x] The find is under 1 ms on the biggest tree of every kind (100 cuts timed)
 - [x] No heap, the same bytes for the same cuts (existing `the_same_cut_gives_the_same_bytes_and_no_heap`)
-- [ ] The pictures from `run_playthrough` looked at and described here
+- [x] The pictures from `run_playthrough` looked at and described here
 - [ ] `standards_lint`, `clang_format`, the whole debug suite pass; `pgrep -af "$PWD/build"` prints nothing
 
 ## Tests
@@ -266,5 +266,12 @@ Appended as they land:
   - `a_column_not_loaded_stops_the_walk_and_nothing_goes_wrong` (the logs went, the leaf against the unloaded column stayed) became `a_column_not_loaded_fells_nothing` (only the cut, every log and both leaves stay, `find_unloaded_count` 1).
   - `wherever_a_tree_is_cut_no_wood_is_left_floating`: now cuts the trunk's whole layer at each height, or one branch log where the trunk has ended: 111 cuts, none left wood floating.
   - `no_drop_is_lost_on_the_biggest_tree_...`: cuts the 4 of the layer; the drops are the layer and every log above.
-- **Ground in the tests.** Every test stands on 6 blocks of dirt under `PF_Z` over every loaded column (a disc, not the square), and `pf_trunk` from `PF_Z` draws 2 logs into it. `pf_paint` paints dirt under each column's ground and then `pf_roots_if_missing` draws the roots where the painter does not (before phase 01 lands); once phase 01's painter draws them it does nothing, as a column's lowest log then no longer stands on the ground's top.
+- **Ground in the tests.** Every test stands on 6 blocks of dirt under `PF_Z` over every loaded column (a disc, not the square), and `pf_trunk` from `PF_Z` draws 2 logs into it. `pf_paint` paints on phase 01's dirt, so its painter draws the roots. Before phase 01 landed a test helper drew them; it went in the rebase onto `58a8411e`, which keeps phase 01's ground and adds the layer helpers. There is one root-log rule in code, `felling_is_root` in `run/src/player/felling/index.c` (phase 01 added none; the tests' `pf_painted_root` and the playthrough's `pt_root_log` read pictures by the same words, to check the feller rather than share it).
+- **The playthrough** (debug, after the rebase onto phase 01): 6 of 6, 252 checks. Seed 36's tree is phase 01's mangrove, 14 logs over the ground, cut point (80, 145, 94), 155 blocks from the start, stood at (78, 144); its layer there is **4 logs** (the trunk and 3 prop roots), 10 above. The report: the player mined 15 blocks (mud, 4 by hand, 10 felled), `the tree feller felled 10`, `the last tree cut had 0 logs left in its trunk's layer, and 8 logs of it stayed joined to a root` (2 roots in each of the 4 columns). The pictures, looked at: `before.png` the trunk close up; `notch.png` (new) the first log of the layer gone, the trunk standing over the gap (Ahmed's `10.png`); `cut.png` after the fourth; `later.png` open sky where the mangrove stood; `stump.png` (new) four ringed log tops flush with the ground in a cross, drops on them, as in `11.png`. Changes to the finder from the plan, each forced by a run:
+  - **What counts is the layer and above, not above alone.** The layer's logs are cut by hand and drop too, so the finder needs `layer + above >= PT_TREE_LOGS_MIN` (phase 01's "logs at and over the cut point"). With "above >= 12" no tree within 1150 blocks fit: seed 36's land near the start has acacias of 4 to 7 logs and that mangrove, and thin trees never have 12 over a 1-log layer.
+  - **One trunk only.** A clump (two trees grown into one) is refused: an acacia pair 1075 blocks off had "12 above" but felled 8, the other trunk keeping its own.
+  - **Aim low on the near side.** A back log's middle is hidden by the trunk over the gap the front cut leaves, which stands until the last cut, so the mangrove was refused as unseen. The scripts now aim `PT_AIM_LOW` (0.2) over the log's floor, `PT_AIM_IN` (0.4) in from its middle toward the stand, under the standing trunk; the order is nearest first where every log is seen, else the first order found that is.
+  - **The walk in starts at once** (4 ticks after the last cut, not 40): with 4 hand cuts, their drops merged in those 40 ticks and the walk picked up a mangrove propagule first, into hotbar slot 2 where the scripts look for logs. Walking in at once takes the layer's logs off the stump first; the felled logs land round the trunk while it stands there.
+  - `pt_tree_t` gained no `cut_z`: it is `ground_z + 1`, the cut point's height.
+- **The find's time, release** (`-O3`, CPU only, 2026-11-14): worst 40 µs (jungle, 101 logs, mean 26 µs); every kind under 1 ms.
 - **The find's time, debug** (`-O0`, CPU only, 2026-11-14), 100 cuts at the first log over the ground of the biggest tree of each kind: oak 8 logs found 12 µs mean / 15 µs worst, birch 9: 15 / 58, spruce 12: 19 / 62, jungle 101: 170 / 257, acacia 9: 15 / 57, dark oak 44: 73 / 87, mangrove 51: 85 / 99, cherry 14: 22 / 25. Release to come.

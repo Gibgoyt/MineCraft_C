@@ -39,7 +39,7 @@
 +40 screenshot after.png
 +60 screenshot later.png
 # Down at the stump the fall left, level with the ground (plan 010 phase 02).
-+8 move 0 300
++8 move 0 250
 +6 screenshot stump.png
 # The inventory, there and back, to have the pointer at 320, 240 for the pause menu. Saved with the tree down, opened again, and out.
 +1 key e down

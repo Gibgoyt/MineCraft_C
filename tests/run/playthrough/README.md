@@ -9,10 +9,10 @@
 **May be called by:** ctest.
 **Depends on:** `tests/harness/`, the built `minecraft_c`, the card (compute only), and for the tree: `terrain`, `climate`, `job`, `game/spawn`. It opens no display and no input device.
 
-- `fixtures/day.script`, seed 36: a new world, mines the block underfoot and has it, goes by `/tp` to the tree the test found (below), facing its root, cuts it by hand, which brings the whole tree down, walks in over the logs and turns back, makes a crafting table from four logs in the inventory, places the table, opens it, sees a log make no planks there, makes a woodworking bench from three logs, places that, opens it, and on it makes planks, sticks and a wooden pickaxe (plan 005 phase 6), turns render distance down to 2 and back in the world that stays open, quits to the title and opens the world again.
+- `fixtures/day.script`, seed 36: a new world, mines the block underfoot and has it, goes by `/tp` to the tree the test found (below), facing its cut point, cuts its trunk layer by hand, which brings the tree down, walks in over the logs and turns back, makes a crafting table from four logs in the inventory, places the table, opens it, sees a log make no planks there, makes a woodworking bench from three logs, places that, opens it, and on it makes planks, sticks and a wooden pickaxe (plan 005 phase 6), turns render distance down to 2 and back in the world that stays open, quits to the title and opens the world again.
 - `fixtures/stairs.script`, seed 36: the day as far as an open bench, where two logs make eight planks and six of them four stairs of the tree's wood on its grid, two go down on the ground, one is mined back by hand, the bench is mined by one half, both halves go and the one bench that comes down is picked up, and all of it is saved and opened again.
 - `fixtures/bench.script`, seed 36: the day as far as a bench put down. It opens, the two logs left go on its grid, where they show sixteen sticks, and closing gives both back. It is saved with the bench standing and opened again, the bench's screen comes up from that, and its west half, on the left as it was placed, is mined by hand. Both go, the one bench is picked up, and it is saved and opened once more with nothing back.
-- `../player/felling/fixtures/fell.script`, seed 36, which `tests/run/player/felling/README.md` describes: the block underfoot, then by `/tp` (its `@fell` line) to the same tree the day finds, a look up at it, and one cut with bare hands brings it down. It must say so in the report, and it is saved and opened again.
+- `../player/felling/fixtures/fell.script`, seed 36, which `tests/run/player/felling/README.md` describes: the block underfoot, then by `/tp` (its `@fell` line) to the same tree the day finds, a look up at it, and its trunk layer cut log by log with bare hands brings it down, then a look down at the stump (`stump.png`). It must say so in the report, and it is saved and opened again.
 - `../player/interaction/door/fixtures/door.script`, seed 36 (plan 005 phase 2): stairs.script's day as far as the open bench, where two logs make eight planks and six of them three wooden doors. One is placed beside the bench, hinged on the bench's side, opened, shut, opened and shut again, and mined by its top half: both halves go and one door drops, which is walked over and picked up, and it is saved and opened again.
 - `fixtures/night.script`, seed 2: stands in the open until dark, then turns and swings, and is saved and opened again. Since plan 005 phase 3 turned off zombies, skeletons and creepers, nothing comes all night: each report says 0 mobs came, struck, shot or burst, and the player never died. Before, zombies struck and died, skeletons shot, a creeper left a crater, and the player died and came back by the swing; the script is the same, and its swings now meet the air.
 
@@ -31,12 +31,20 @@ log is underground. The finder takes the column of the lowest log and goes up it
 (or a plant): the trunk's first log over the ground. The logs under it, 1 or 2, must be the tree's roots, with no log of the
 wood under them. `ground_z` is the block under the cut point, which is the flush root, level with the ground the feet stand on
 beside it; the clear ground round the trunk counts that flush root as the trunk's own. The logs counted, 12 to 64, are those at
-and over the cut point, which a cut there fells; the roots stay as the stump. `@tree`, `@fell` and `@feet` needed no change:
-the old feller fells everything at and over the cut.
+and over the cut point; the roots stay as the stump.
+
+**The layer it cuts** (plan 010 phase 02). A tree falls only when every log of one layer of its trunk is cut, so the finder
+also works out the layer at the cut point by the feller's words (`run/src/player/felling/README.md`): the tree's logs at that
+height in the columns holding a root log (ground under it, and ground or its wood on 3 of 4 sides) joined to the cut point's.
+It needs at least 12 logs in and above the layer (those drop; the stump does not), at most 4 in it, one trunk (not a clump of trees grown together), and a stand whose eye sees each layer
+log in turn once the ones before it are cut (nearest first where it can); it takes a tree whose layer is 1 log before a wider one, then the nearest. The
+report line names the layer's size and the logs above it, and the game's report says what the last cut left in its layer and
+how many logs stayed with the stump.
 
 Each of the four scripts has a line `@tree`. The test replaces it with: the `/tp` to the stand (with 25 s to wait if the tree
 is more than 64 blocks off, as the dive waits), the turn to the root from a new world's first look (which a `/tp` keeps), one
-cut that brings the tree down, a walk in over the logs, and a second `/tp` to one place in the trunk's block, facing along an
+aimed cut for each log of the layer, nearest first, the last bringing the tree down (`notch.png` after the first when there
+are more), a walk in over the logs, and a second `/tp` to one place in the trunk's block, facing along an
 axis. A line `@feet` later in a script is that second `/tp` again, back to the same place with the look kept: `stairs.script`
 steps in to pick up the stair it mined (on plan 006 phase 04's land its drop lay out of reach) and comes back by it. That
 last place is what the rest of the scripts were tuned to by their screenshots: the table, the bench, the stairs and
