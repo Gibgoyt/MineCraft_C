@@ -100,12 +100,13 @@ enum : uint32_t {
 #define PT_WALK_PER_TICK 0.2f64 /* blocks a walk covers in a tick, a little under its speed */
 
 typedef struct pt_tree_t {
-    int32_t root_x, root_y, ground_z; /* 0: the root log, and the ground block under it */
-    int32_t stand_x, stand_y;         /* 12: where the feet go, on the same ground */
-    uint32_t logs;                    /* 20 */
-    uint32_t far;                     /* 24: blocks from the start */
-    uint16_t log;                     /* 28: its block */
-    uint8_t _pad0[2];                 /* 30 */
+    int32_t root_x, root_y,
+        ground_z;             /* 0: the cut point, the trunk's first log over the ground, and the flush root under it */
+    int32_t stand_x, stand_y; /* 12: where the feet go, on the same ground */
+    uint32_t logs;            /* 20 */
+    uint32_t far;             /* 24: blocks from the start */
+    uint16_t log;             /* 28: its block */
+    uint8_t _pad0[2];         /* 30 */
 } pt_tree_t;
 static_assert(sizeof(pt_tree_t) == 32);
 
@@ -188,6 +189,52 @@ static uint32_t pt_flood(int32_t (*stack)[3], pt_box_t *box, int32_t x, int32_t 
     return count;
 }
 
+/* Plan 010 phase 01: whether (x, y, z) has a side open to the air (or a plant), where a body can stand beside it. */
+static bool pt_open_beside(const pt_box_t *box, int32_t x, int32_t y, int32_t z) {
+    static const int32_t SIDE_X[4] = {1, -1, 0, 0};
+    static const int32_t SIDE_Y[4] = {0, 0, 1, -1};
+    for (uint32_t side = 0u; side < 4u; side++) {
+        const uint16_t there = pt_block(box, x + SIDE_X[side], y + SIDE_Y[side], z);
+        if (!pt_flag(there, BLOCK_FLAG_SOLID) && there != BLOCK_ID_WATER && there != BLOCK_ID_LAVA) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Plan 010 phase 01: the cut point. Trees root TERRAIN_FEATURE_ROOT_DEPTH logs into the ground, so the flood's lowest log is the
+ * deep root. Up its column, the first log with a side open is the trunk's first over the ground, and the logs under it, 1 or 2
+ * (1 where a cave or an ore stopped the deeper), are its roots, with no log of the wood under the lowest. False if the column
+ * has no such log within the root depth, which is no tree the land grew. */
+static bool pt_cut_point(const pt_box_t *box, uint32_t id, const int32_t lowest[3], int32_t cut[3]) {
+    if (pt_flag(pt_block(box, lowest[0], lowest[1], lowest[2] - 1), BLOCK_FLAG_LOG)) {
+        return false;
+    }
+    for (int32_t z = lowest[2]; z <= lowest[2] + (int32_t)TERRAIN_FEATURE_ROOT_DEPTH; z++) {
+        if (!pt_inside(box, lowest[0], lowest[1], z) || box->tree[pt_at(box, lowest[0], lowest[1], z)] != id) {
+            return false;
+        }
+        if (pt_open_beside(box, lowest[0], lowest[1], z)) {
+            cut[0] = lowest[0], cut[1] = lowest[1], cut[2] = z;
+            return z > lowest[2]; /* at least one root under it */
+        }
+    }
+    return false;
+}
+
+/* Logs of tree id under z: its roots, which the cut leaves. */
+static uint32_t pt_logs_under(const pt_box_t *box, uint32_t id, int32_t z_cut) {
+    uint32_t count = 0u;
+    for (int32_t z = box->z0; z < z_cut; z++) {
+        for (int32_t y = box->y0; y < box->y0 + (int32_t)box->ny; y++) {
+            for (int32_t x = box->x0; x < box->x0 + (int32_t)box->nx; x++) {
+                count += box->tree[pt_at(box, x, y, z)] == id ? 1u : 0u;
+            }
+        }
+    }
+    return count;
+}
+
 /* Every log of tree id within PT_SPREAD across of the root's column, so that most fall where a walk in takes them. */
 static bool pt_compact(const pt_box_t *box, uint32_t id, const int32_t root[3]) {
     for (int32_t z = box->z0; z < box->z0 + (int32_t)PT_BOX_Z; z++) {
@@ -203,8 +250,8 @@ static bool pt_compact(const pt_box_t *box, uint32_t id, const int32_t root[3]) 
     return true;
 }
 
-/* The ground round the trunk: no other tree's log near, and within PT_CLEAR every column's top at the root's ground, firm, with
- * room for a body over it once this tree is gone. */
+/* The ground round the trunk: no other tree's log near, and within PT_CLEAR every column's top at the cut's ground (the flush
+ * root's height), firm, with room for a body over it once this tree is gone. */
 static bool pt_clear_round(const pt_box_t *box, uint32_t id, const int32_t root[3]) {
     const int32_t ground = root[2] - 1;
     for (int32_t dy = -(int32_t)PT_ALONE; dy <= (int32_t)PT_ALONE; dy++) {
@@ -223,8 +270,10 @@ static bool pt_clear_round(const pt_box_t *box, uint32_t id, const int32_t root[
                 continue;
             }
             const uint16_t under = pt_block(box, x, y, ground);
+            /* The flush root under the cut is this tree's trunk, not something on the clear ground. */
+            const bool own_root = box->tree[pt_at(box, x, y, ground)] == id;
             if (!pt_flag(under, BLOCK_FLAG_SOLID) || pt_flag(under, BLOCK_FLAG_DECAYS) ||
-                pt_flag(under, BLOCK_FLAG_LOG)) {
+                (pt_flag(under, BLOCK_FLAG_LOG) && !own_root)) {
                 return false;
             }
             for (int32_t z = ground + 1; z <= ground + 2; z++) {
@@ -306,8 +355,9 @@ static void pt_box_make(pt_box_t *box, const terrain_t *terrain, const climate_t
     }
 }
 
-/* The fittest tree whose root is in the box's middle (inside its margin): PT_TREE_LOGS_MIN to PT_TREE_LOGS_MANY logs close round its trunk, alone
- * on clear flat ground, with a stand that sees its root; the nearest the start of those. False if there is none. */
+/* The fittest tree whose cut point (pt_cut_point) is in the box's middle (inside its margin): PT_TREE_LOGS_MIN to PT_TREE_LOGS_MANY logs
+ * over the ground close round its trunk, alone on clear flat ground, with a stand that sees its cut point; the nearest the start of
+ * those. False if there is none. */
 static bool pt_box_tree(pt_box_t *box, int32_t (*stack)[3], int32_t start_x, int32_t start_y, pt_tree_t *out,
                         float64_t *out_far) {
     float64_t best = 1e30f64;
@@ -320,17 +370,21 @@ static bool pt_box_tree(pt_box_t *box, int32_t (*stack)[3], int32_t start_x, int
                     continue;
                 }
                 id++;
-                int32_t root[3];
+                int32_t lowest[3], root[3];
                 bool leaves = false, cut_off = false;
-                const uint32_t logs = pt_flood(stack, box, x, y, z, id, root, &leaves, &cut_off);
+                const uint32_t flooded = pt_flood(stack, box, x, y, z, id, lowest, &leaves, &cut_off);
+                if (!pt_cut_point(box, id, lowest, root)) {
+                    continue;
+                }
+                /* What the cut fells: the logs at and over it, the roots staying. */
+                const uint32_t logs = flooded - pt_logs_under(box, id, root[2]);
                 const float64_t far = hypot((float64_t)(root[0] - start_x), (float64_t)(root[1] - start_y));
                 const bool middle = root[0] >= box->x0 + (int32_t)PT_MARGIN &&
                                     root[1] >= box->y0 + (int32_t)PT_MARGIN &&
                                     root[0] < box->x0 + (int32_t)(box->nx - PT_MARGIN) &&
                                     root[1] < box->y0 + (int32_t)(box->ny - PT_MARGIN);
                 if (!middle || !leaves || cut_off || logs < PT_TREE_LOGS_MIN || logs > PT_TREE_LOGS_MANY ||
-                    far >= best || pt_flag(pt_block(box, root[0], root[1], root[2] - 1), BLOCK_FLAG_LOG) ||
-                    !pt_compact(box, id, root) || !pt_clear_round(box, id, root)) {
+                    far >= best || !pt_compact(box, id, root) || !pt_clear_round(box, id, root)) {
                     continue;
                 }
                 int32_t stand_x = 0, stand_y = 0;

@@ -9,4 +9,6 @@
 **May be called by:** `terrain/feature`, which finds the sites, and tests (`tests/run/terrain/feature/`, `tests/run/player/felling/`).
 **Depends on:** `terrain/feature`'s header for the canvas, the site and `terrain_feature_put` (which stays in `terrain/feature`, as the rest of the stage puts with it too), `terrain/rng`, `assert`, and the generated `tables/blocks/`.
 
+**Roots** (plan 010 phase 01): `feature_roots` puts `TERRAIN_FEATURE_ROOT_DEPTH` logs, with `TERRAIN_FEATURE_PUT_ROOT`, from a trunk column's ground top down: under the trunk (`site->z - 1`), under each of a wide trunk's other columns (`foot[i]`) and under each mangrove prop root drawn (`foot[side]`, after its 1-in-4 draw). It draws nothing, so no other voxel moves. `run/src/terrain/feature/README.md`'s "The trees" says what a root is.
+
 Each voxel goes on the canvas through `terrain_feature_put`, so what is drawn at a voxel depends only on the site and on what is at that voxel: the rules are `run/src/terrain/feature/README.md`'s "How a voxel stays a pure function" and its tree table.

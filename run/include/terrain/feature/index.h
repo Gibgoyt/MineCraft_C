@@ -36,6 +36,9 @@ enum : int32_t {
     TERRAIN_FEATURE_LAKE_CLEARS = 4,
     /* What a column's top says when the ground there is cut away: see the README. */
     TERRAIN_FEATURE_NO_GROUND = INT16_MIN,
+    /* Plan 010 master 2.2: how far each of a tree's trunk columns goes into the ground, the first level with the ground's top
+     * (where the grass it stood on was). */
+    TERRAIN_FEATURE_ROOT_DEPTH = 2,
 };
 
 typedef enum terrain_feature_tree_t : uint8_t {
@@ -168,6 +171,7 @@ typedef enum terrain_feature_put_t : uint8_t {
     TERRAIN_FEATURE_PUT_VINE = 2,  /* over air */
     TERRAIN_FEATURE_PUT_PLANT = 3, /* over air */
     TERRAIN_FEATURE_PUT_WATER = 4, /* a sea plant: over water */
+    TERRAIN_FEATURE_PUT_ROOT = 5, /* plan 010: over ground only, stone included; never an ore, bedrock or unbreakable */
 } terrain_feature_put_t;
 
 /* Puts block at (x, y, z) if that voxel is inside the canvas and what is there may be gone over, by mode. Decided by that voxel

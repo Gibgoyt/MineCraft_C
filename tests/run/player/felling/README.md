@@ -9,6 +9,12 @@
 **May be called by:** ctest.
 **Depends on:** `tests/harness/`, `tests/run/physics/fixtures/`, `run/src/player/`, `run/src/world/`, `run/src/terrain/feature/` for `terrain_feature_paint_tree`.
 
+**Trees stand on dirt** (plan 010 phase 01). `pf_paint` fills the box with dirt up to the tree's own column's top
+(`PF_Z - 1`) and every other column's foot before it paints, and `pf_place_tree` puts that ground in the world with the tree.
+So each painted tree has its roots, 2 logs under each trunk column, as a generated tree does: phase 02's felling needs them,
+and the limit test counts them in the biggest tree. The cuts at `PF_Z` are over the roots, so the counts of logs "at or above
+`PF_Z`" are what falls, and the roots stay.
+
 Needs no card, no display and no input device. Bare hands, a pickaxe and an axe each fell a whole tree, sneaking or not, and a log wall with no leaves stays whatever is in hand. What an axe in a real inventory wears, only the cut and nothing for what falls, is in `tests/run/item/equipment/`, with a real game on the card.
 
 ## The proof by eye

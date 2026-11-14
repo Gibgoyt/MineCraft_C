@@ -26,6 +26,14 @@ stack, so hotbar slots 4 to 6, which the scripts use, stay free), all within 3 b
 ground, no other tree's log within 3 blocks, the ground within 3 flat and clear, and a stand 2 to 3 blocks off whose eye sees
 the root. Since plan 006 phase 03 that is a jungle tree 65 blocks from the start: nothing else near it has 12 logs.
 
+**The root it aims at is the cut point** (plan 010 phase 01). Generated trees root 2 logs into the ground, so a tree's lowest
+log is underground. The finder takes the column of the lowest log and goes up it to the first log with a side open to the air
+(or a plant): the trunk's first log over the ground. The logs under it, 1 or 2, must be the tree's roots, with no log of the
+wood under them. `ground_z` is the block under the cut point, which is the flush root, level with the ground the feet stand on
+beside it; the clear ground round the trunk counts that flush root as the trunk's own. The logs counted, 12 to 64, are those at
+and over the cut point, which a cut there fells; the roots stay as the stump. `@tree`, `@fell` and `@feet` needed no change:
+the old feller fells everything at and over the cut.
+
 Each of the four scripts has a line `@tree`. The test replaces it with: the `/tp` to the stand (with 25 s to wait if the tree
 is more than 64 blocks off, as the dive waits), the turn to the root from a new world's first look (which a `/tp` keeps), one
 cut that brings the tree down, a walk in over the logs, and a second `/tp` to one place in the trunk's block, facing along an

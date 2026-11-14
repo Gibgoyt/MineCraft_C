@@ -111,6 +111,35 @@ static const uint8_t FEATURE_CLASSES[BLOCK_COUNT] = {
     [BLOCK_ID_CHERRY_LEAVES] = FEATURE_CLASS_LEAF,
 };
 
+/* The ores, which a root leaves: run_terrain_feature_roots holds every block named "_ore" to this. */
+static const bool FEATURE_ORES[BLOCK_COUNT] = {
+    [BLOCK_ID_CHROMIUM_ORE] = true,
+    [BLOCK_ID_COAL_ORE] = true,
+    [BLOCK_ID_COPPER_ORE] = true,
+    [BLOCK_ID_DIAMOND_ORE] = true,
+    [BLOCK_ID_EMERALD_ORE] = true,
+    [BLOCK_ID_GOLD_ORE] = true,
+    [BLOCK_ID_IRON_ORE] = true,
+    [BLOCK_ID_LAPIS_ORE] = true,
+    [BLOCK_ID_DEEPSLATE_CHROMIUM_ORE] = true,
+    [BLOCK_ID_DEEPSLATE_COAL_ORE] = true,
+    [BLOCK_ID_DEEPSLATE_COPPER_ORE] = true,
+    [BLOCK_ID_DEEPSLATE_DIAMOND_ORE] = true,
+    [BLOCK_ID_DEEPSLATE_EMERALD_ORE] = true,
+    [BLOCK_ID_DEEPSLATE_GOLD_ORE] = true,
+    [BLOCK_ID_DEEPSLATE_IRON_ORE] = true,
+    [BLOCK_ID_DEEPSLATE_LAPIS_ORE] = true,
+};
+
+/* Plan 010 master 2.1: ground a root may take. Solid and of FEATURE_CLASS_SOLID, so never a plant, leaves, water or air; and not
+ * a log, leaves, an ore, bedrock or any unbreakable block. Stone is ground: roots split rock. A narrowing of FEATURE_CLASS_SOLID,
+ * not a class of its own, so TERRAIN_FEATURE_PUT_LOG's rule is untouched and no ordinary log goes into the ground. */
+static bool feature_root_takes(uint16_t block) {
+    const uint8_t flags = block_defs[block].flags;
+    return FEATURE_CLASSES[block] == FEATURE_CLASS_SOLID && (flags & BLOCK_FLAG_SOLID) != 0u &&
+           (flags & (BLOCK_FLAG_LOG | BLOCK_FLAG_DECAYS | BLOCK_FLAG_UNBREAKABLE)) == 0u && !FEATURE_ORES[block];
+}
+
 void terrain_feature_put(const terrain_feature_canvas_t *canvas, int32_t x, int32_t y, int32_t z, uint16_t block,
                          terrain_feature_put_t mode) {
     if (x < canvas->x_low || x > canvas->x_high || y < canvas->y_low || y > canvas->y_high || z < canvas->z_low ||
@@ -137,6 +166,9 @@ void terrain_feature_put(const terrain_feature_canvas_t *canvas, int32_t x, int3
         break;
     case TERRAIN_FEATURE_PUT_WATER:
         takes = there == FEATURE_CLASS_WATER;
+        break;
+    case TERRAIN_FEATURE_PUT_ROOT:
+        takes = there == FEATURE_CLASS_SOLID && feature_root_takes(*voxel);
         break;
     }
     if (takes) {

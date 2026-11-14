@@ -73,8 +73,11 @@ static const uint64_t FEA_DIGEST_OF_GENERATOR[] = {
     /* 2: plan 006 phases 02 to 04 (biomes, snow, ice, sand and trees from the climate) and plan 007 phases 03 to 05
      * (plateaus, escarpments, ranges, slope profiles, knobs, dry basins), with plan 007 phase 06's tuning; each move is
      * recorded in row 1's comment above and in those phases' files. Closed 2026-11-14 by the joint final check of plan 006
-     * phase 05 and plan 007 phase 06. */
-    0xBF67826538D85EA0ull,
+     * phase 05 and plan 007 phase 06.
+     * Plan 010 phase 01: trees root two blocks into the ground: 0x8A84C8086A5091A5, putting back 0xBF67826538D85EA0, the land
+     * of version 2 as it was closed. Written here while the version stays 2, until that phase's last step raises it to 3 and
+     * gives this value row 3. */
+    0x8A84C8086A5091A5ull,
 };
 static_assert(sizeof(FEA_DIGEST_OF_GENERATOR) / sizeof(FEA_DIGEST_OF_GENERATOR[0]) == TERRAIN_GENERATOR_VERSION + 1u);
 /* Plan 003 phase 8 stage 3 moved the coast and the rivers. */
@@ -100,7 +103,9 @@ static_assert(sizeof(FEA_DIGEST_OF_GENERATOR) / sizeof(FEA_DIGEST_OF_GENERATOR[0
  * value 0x7745E8634869CCBA. */
 /* Plan 007 phase 04: slope shaping, summit rock, knobs, gentler hills and no foothills moved the ground. Its old value 0x28D864B0AD53007B. */
 /* Plan 007 phase 06's tuning (a flatter lowland, rarer ranges, plateaus from blended broad continentalness, basin floors by ruggedness) moved the land. Its old value 0xC5DB779526D235D8. */
-static const uint64_t FEA_FOREST_PIN = 0x0A2981C595D9ACA2ull;
+/* Plan 010 phase 01: trees root two blocks into the ground. Its old value 0x0A2981C595D9ACA2; the trunks counted on the ground's
+ * top are the same 83. */
+static const uint64_t FEA_FOREST_PIN = 0xB97FC1D587B0154Full;
 
 static uint64_t fea_digest(uint64_t hash, const void *memory, uint64_t bytes) {
     const uint8_t *const data = memory;
@@ -1314,7 +1319,8 @@ TEST(ice_and_snow_are_where_each_biomes_file_says) {
 /* ---- The chain's ends --------------------------------------------------------------------------------------------- */
 
 /* Only air, water and what grows may change, from what the stages before left, and only near the ground. Lakes aside, which do
- * cut. Above the world and below the bedrock nothing is written. */
+ * cut, and roots (plan 010 phase 01), a log in the place of ground but never of an ore. Above the world and below the bedrock
+ * nothing is written. */
 TEST(only_what_is_open_changes_and_no_voxel_outside_the_world) {
     terrain_t terrain;
     REQUIRE(terrain_init(&terrain, FEA_WORLD));
@@ -1333,21 +1339,31 @@ TEST(only_what_is_open_changes_and_no_voxel_outside_the_world) {
         const uint64_t layer = (uint64_t)box.count_x * box.count_y;
         uint64_t replaced = 0u;
         uint64_t changed = 0u;
+        uint64_t roots = 0u;
         for (uint64_t i = 0u; i < voxels; i++) {
             if (before[i] != after[i]) {
                 changed++;
                 /* A lake cuts ground, and in the cold its top layer is ice with only sky over it. Where it is 1 deep, that is all of it. */
                 const bool frozen_lake =
                     after[i] == BLOCK_ID_ICE && i + layer < voxels && after[i + layer] == BLOCK_ID_AIR;
+                const uint8_t was = block_defs[before[i]].flags;
+                const uint64_t name = strlen(block_defs[before[i]].name);
+                const bool ore = name > 4u && strcmp(block_defs[before[i]].name + name - 4u, "_ore") == 0;
+                const bool root = (block_defs[after[i]].flags & BLOCK_FLAG_LOG) != 0u &&
+                                  (was & BLOCK_FLAG_SOLID) != 0u &&
+                                  (was & (BLOCK_FLAG_LOG | BLOCK_FLAG_DECAYS | BLOCK_FLAG_UNBREAKABLE)) == 0u && !ore;
+                roots += root ? 1u : 0u;
                 if (before[i] != BLOCK_ID_AIR && before[i] != BLOCK_ID_WATER && after[i] != BLOCK_ID_AIR &&
-                    after[i] != BLOCK_ID_WATER && !frozen_lake) {
+                    after[i] != BLOCK_ID_WATER && !frozen_lake && !root) {
                     replaced++;
                 }
             }
         }
-        printf("    %" PRIu64 " voxels changed, %" PRIu64 " of solid to solid\n", changed, replaced);
+        printf("    %" PRIu64 " voxels changed, %" PRIu64 " ground to a root, %" PRIu64 " other solid to solid\n",
+               changed, roots, replaced);
         CHECK(changed > 0u);
-        /* Nothing solid is ever turned to anything else solid, but for a lake's ice. */
+        CHECK(roots > 0u);
+        /* Nothing solid is ever turned to anything else solid, but for a lake's ice and a root. */
         CHECK_EQ_U64(replaced, 0u);
     }
     /* Well above the world: all air, nothing written. */

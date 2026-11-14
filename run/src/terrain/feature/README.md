@@ -42,6 +42,7 @@ What may go over what:
 | Writing | Goes over |
 |---|---|
 | A log | Air, water, plants, vines, leaves. Never solid ground, or another log |
+| A root (plan 010 phase 01) | Solid ground, stone included; never an ore, bedrock or an unbreakable block, nor air, water, a plant, leaves or a log |
 | Leaves | Air, plants, vines |
 | A vine, a land plant, snow | Air |
 | A sea plant, ice | Water |
@@ -91,23 +92,25 @@ A site then needs what its row asks for. Those in the table come in addition to 
 
 ## The trees
 
-| Kind | Trunk | Crown | Reach |
-|---|---|---|---|
-| Oak | 4 to 6 | 2 wide layers, 2 narrow | 2 |
-| Birch | 5 to 7 | As oak | 2 |
-| Spruce | 6 to 10 | A cone of boughs, up to 3 across | 3 |
-| Jungle, 1 in 4 | 5 to 8 | As oak | 7 |
-| Jungle, 3 in 4 | 12 to 21, 2 by 2 | A blob 5 across, less any leaf more than 6 steps from the trunk, and 2 or 3 boughs with blobs on | 7 |
-| Acacia | 3 to 5, leaning by 1 or 2 | A flat top 3 across | 5 |
-| Dark oak | 6 to 9, 2 by 2 | A blob 3 across | 4 |
-| Mangrove | 5 to 8 over the water | A blob 3 across, and roots | 3 |
-| Cherry | 4 to 6 | 2 boughs going opposite ways, each with a blob 3 across | 6 |
+| Kind | Trunk | Crown | Roots | Reach |
+|---|---|---|---|---|
+| Oak | 4 to 6 | 2 wide layers, 2 narrow | 2 under the trunk | 2 |
+| Birch | 5 to 7 | As oak | 2 under the trunk | 2 |
+| Spruce | 6 to 10 | A cone of boughs, up to 3 across | 2 under the trunk | 3 |
+| Jungle, 1 in 4 | 5 to 8 | As oak | 2 under the trunk | 7 |
+| Jungle, 3 in 4 | 12 to 21, 2 by 2 | A blob 5 across, less any leaf more than 6 steps from the trunk, and 2 or 3 boughs with blobs on | 2 under each of the 4 columns, from its own foot | 7 |
+| Acacia | 3 to 5, leaning by 1 or 2 | A flat top 3 across | 2 under the trunk | 5 |
+| Dark oak | 6 to 9, 2 by 2 | A blob 3 across | 2 under each of the 4 columns, from its own foot | 4 |
+| Mangrove | 5 to 8 over the water | A blob 3 across, and prop roots | 2 under the trunk, and 2 under each prop root drawn | 3 |
+| Cherry | 4 to 6 | 2 boughs going opposite ways, each with a blob 3 across | 2 under the trunk | 6 |
 
 **No leaf the game would take.** The game's leaves go when no log is within 6 steps through leaves (`run/src/world/tick/`). The wide jungle tree's blob reached 7 at its rim, so in the game a jungle's crowns crumbled where its trees stood apart (plan 006 phase 04 found it, when the rain thinned the jungles near the default spawn and `run_terrain_cave_walk`'s body walked where they fell). Its blob now leaves those out.
 
 **Reach** is the furthest a voxel is from its site on `x` or `y`, and it is under a chunk. So a tree can only reach the chunks next to its own, and that is why a tile looks at 8 others. `tests/run/terrain/feature/` holds each to its reach over many seeds.
 
 A tree's trunk is never stopped by the ground: a column's top is the highest thing in it, so all above is open. Its crown can run into a slope beside it, and leaves stop there, as they do not go over ground.
+
+**Roots** (plan 010 phase 01, master 2.2). Every trunk column goes `TERRAIN_FEATURE_ROOT_DEPTH` (2) logs into the ground: the first in the place of the column's top, the grass or dirt the tree stood on, so its ringed top is level with the ground round it once the tree above is gone; the second under it. A thin trunk roots from its site's top (`site.z - 1`), each of a wide trunk's other three columns from its own foot (`foot[i]`), and each mangrove prop root from its own foot, after the same 1-in-4 draw. Roots draw nothing from the tree's stream, so every other voxel of every tree, plant and vine is where it was (`run_terrain_feature_roots`' `nothing_but_trees_changes` holds the land with the root voxels masked to its value before roots). They go with `TERRAIN_FEATURE_PUT_ROOT`, over ground only, each voxel decided by what is at it: over a cave or an ore under the top the root is 1 log, and it splits stone. Two layers under a top are well inside `FEATURE_BELOW`, so no box bound, skip or margin changed. The stump is ordinary logs of the tree's wood: what makes a root a root is where it is (master 2.1's **root log**: a log with ground under it and ground or a log of its wood on at least three of its four sides, which a generated tree's deeper root always is where its ground is whole, and which a log a player sets on the ground is not). `run/src/player/felling/` reads that (plan 010 phase 02).
 
 ## Lakes
 

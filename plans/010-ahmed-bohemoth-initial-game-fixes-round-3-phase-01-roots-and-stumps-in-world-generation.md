@@ -1,6 +1,6 @@
 # 010-ahmed-bohemoth-initial-game-fixes-round-3 — phase 1: Roots and stumps in world generation
 
-**Status:** in progress: the tree code moved to `feature/tree/`, every terrain digest held   (updated 2026-11-14)
+**Status:** in progress: roots drawn and tested, the pins of the new land in row 2 while the version is 2; the version change to 3 is the last commit   (updated 2026-11-14)
 
 Read first: `plans/010-ahmed-bohemoth-initial-game-fixes-round-3-phase-00-vision-and-plan-files.md`, then the master `plans/010-ahmed-bohemoth-initial-game-fixes-round-3.md` (sections 0, 2.1, 2.2, 2.4, 3 to 7 and 9). Every number here comes from the master. Where this file adds one, it says so and why.
 
@@ -186,22 +186,22 @@ This phase may edit these, plus this file:
 From the master (section 9, phase 01):
 
 - [x] Move the tree shapes from `run/src/terrain/feature/index.c` to `run/src/terrain/feature/tree/`, no byte of output changed (every digest holds)
-- [ ] `TERRAIN_FEATURE_ROOT_DEPTH` 2, `FEATURE_PUT_ROOT` and the ground class; roots under the trunk, each wide column and each mangrove prop root
-- [ ] `tests/run/terrain/feature/roots/`: the root tests of section 5
+- [x] `TERRAIN_FEATURE_ROOT_DEPTH` 2, `FEATURE_PUT_ROOT` and the ground class; roots under the trunk, each wide column and each mangrove prop root
+- [x] `tests/run/terrain/feature/roots/`: the root tests of section 5
 - [ ] `TERRAIN_GENERATOR_VERSION` 3, `FEA_DIGEST_OF_GENERATOR[3]`, every terrain pin that moved re-pinned with its reason; `run_save_world` refuses 2
-- [ ] `run_playthrough`'s finder aims at the first log over the ground; the scripts still fell their tree
-- [ ] `tests/run/player/felling/` paints its trees on solid ground; the limit test measures with roots
+- [x] `run_playthrough`'s finder aims at the first log over the ground; the scripts still fell their tree
+- [x] `tests/run/player/felling/` paints its trees on solid ground; the limit test measures with roots
 - [ ] Benches: `bench_terrain`, `bench_lod`, before and after
-- [ ] READMEs: `run/src/terrain/feature/`, its new `tree/`, `plans/REPO_STRUCTURE.md`
-- [ ] List `saves/` with sizes and generators in the phase file, and ask Ahmed (Q1)
+- [x] READMEs: `run/src/terrain/feature/`, its new `tree/`, `plans/REPO_STRUCTURE.md`
+- [x] List `saves/` with sizes and generators in the phase file, and ask Ahmed (Q1)
 
 Expanded:
 
-- [ ] `FEATURE_PUT_LOG` still never writes over ground (a test: a trunk painted into a hillside leaves the hill's blocks)
-- [ ] No new random draw: tree, plant and vine sites and counts unchanged (`FEA_FOREST_PIN`'s tree count and every non-log voxel above the ground the same as before; a test compares the two lands with logs under the ground masked out)
-- [ ] Height, density, hydrology, biome, cave and ore digests unchanged
-- [ ] `run_terrain_feature_own` (box against chunk) and 1 against 16 workers: same bytes
-- [ ] Goldens that moved made again and described here
+- [x] `FEATURE_PUT_LOG` still never writes over ground (a test: a trunk painted into a hillside leaves the hill's blocks)
+- [x] No new random draw: tree, plant and vine sites and counts unchanged (`FEA_FOREST_PIN`'s tree count and every non-log voxel above the ground the same as before; a test compares the two lands with logs under the ground masked out)
+- [x] Height, density, hydrology, biome, cave and ore digests unchanged
+- [x] `run_terrain_feature_own` (box against chunk) and 1 against 16 workers: same bytes
+- [x] Goldens that moved made again and described here
 - [ ] `standards_lint`, `clang_format`, the whole debug suite pass; `pgrep -af "$PWD/build"` prints nothing
 
 ## Tests
@@ -260,9 +260,19 @@ Ahmed opens a new world, finds a tree, digs the block beside its trunk at the gr
 
 Appended as they land:
 
-- (none yet)
+- c1047426 Move the tree shapes from terrain/feature into terrain/feature/tree, with no byte of the land changed (plan 010 phase 01 step 1)
 
 ## Issues found
 
 1. **Q1: Ahmed chose version 3, 2026-11-14; old worlds deleted by the orchestrator.** The nine generator 1 worlds are gone; `saves/test_8-3` (generator 2) is left for the orchestrator to delete once this lands. This phase touches nothing in `saves/`. The version change is still its own last commit, so it reads alone.
 2. **The move (step 1).** `terrain_feature_put` and its modes (`terrain_feature_put_t`, `TERRAIN_FEATURE_PUT_*`, renamed from the file's static `feature_put` and `FEATURE_PUT_*`) are now declared in `run/include/terrain/feature/index.h`, and stay in `feature/index.c`, since lakes, plants and spikes put with them too. `FEATURE_CLASSES` stays private to `feature/`. `feature_row_reach` asks `terrain_feature_tree_reach` for a tree's reach, as the table moved with the trees. `feature/index.c` went from 1473 lines to 1193, `tree/index.c` is 276. Every `run_terrain_.*` test passed on the moved code (14 of 14, the digests unchanged), before any root went in.
+3. **The ground a root takes is a narrowing of `FEATURE_CLASS_SOLID`, not a new class in `FEATURE_CLASSES`.** `feature_root_takes` (in `feature/index.c`) is: of `FEATURE_CLASS_SOLID`, `BLOCK_FLAG_SOLID`, not `BLOCK_FLAG_LOG`, `BLOCK_FLAG_DECAYS` or `BLOCK_FLAG_UNBREAKABLE`, and not one of the 16 ores, listed by hand in `FEATURE_ORES`. The ore table's rows were not used, as they hold the rocks (granite, diorite, andesite, tuff) too, which roots split. `run_terrain_feature_roots` holds every block whose name ends `_ore` and every unbreakable block to it, so an ore added later fails that test until it is listed. As `FEATURE_CLASSES` did not change, `TERRAIN_FEATURE_PUT_LOG`'s rule (`there != FEATURE_CLASS_SOLID`) did not either: no ordinary log goes into the ground by construction, and `ordinary_logs_still_never_go_into_the_ground` checks it on 1324 trees against a hill.
+4. **Each root voxel is decided by itself.** Under an ore or air at the top's place the root is not drawn there and the lower one still is: the top of a site is always soil or snow (`feature_tree_stands`), so this does not happen in the land, and reading the voxel above would break the purity rule (a box may hold one and not the other). The plan's "the ore stays and the root is 1 log" holds for an ore or a cave **under** the top, which is what the test checks.
+5. **No new draw, measured.** `nothing_but_trees_changes` digests 3 worlds (the default, 11107447384583428913, 11) by 16 whole chunks, every voxel at a column's pre-feature top or the one under it that is a log or ground read as one mark. Pinned on step 1's code, before roots: `0x526F23C145164874`. With roots it is the same value, with 1355 root logs in it. `run_terrain_feature`'s forest still counts 83 trunks on 18.9 chunks.
+6. **Pins that moved (all with "plan 010 phase 01: trees root two blocks into the ground").** `FEA_DIGEST_OF_GENERATOR[2]` `0xBF67826538D85EA0` to `0x8A84C8086A5091A5` while the version stays 2 (the last commit moves it to row 3 and puts row 2 back); `FEA_FOREST_PIN` `0x0A2981C595D9ACA2` to `0xB97FC1D587B0154F`. `only_what_is_open_changes_and_no_voxel_outside_the_world` now lets ground become a root (never an ore) and checks there are some (500, 40 and 149 in its three places were the solid-to-solid changes it found). Held, unchanged: `run_terrain_biome` (`BIO_COLUMNS_PIN`), density, hydrology, cave, cave walk, ore, fields, landform, climate sample and seed; `run_terrain_feature_own`; and `run_terrain_feature`'s 1, 16 and scattered workers agree with each other.
+7. **Goldens made again** with `MC_GOLDEN_WRITE=1` and looked at against the old ones side by side with a diff (the old ones kept in the scratchpad): `tests/cuda/lod/fixtures/real_near.png` (123 pixels past the tolerance), `tests/run/render/frame/fixtures/start.png` (425), `north_low.png` (25) and `down.png` (19). Every changed pixel is at the foot of a trunk on a slope: where the step of the ground showed dirt or grass beside a trunk, it now shows the log's bark of the root. Nothing else moved; `real_far.png`, `hills*.png` and the other frame goldens are byte-for-byte what they were.
+8. **The finder.** `pt_cut_point` goes up the lowest log's column to the first log with a side open to air or a plant; the 1 or 2 logs under it are the roots, with no log of the wood under the lowest. `ground_z` is the flush root; `pt_clear_round` counts the flush root as the trunk's own; the 12 to 64 logs counted are those at and over the cut. `run_playthrough` passed (6 of 6, 256 checks) with the old feller: seed 36's tree is now a mangrove, 14 logs over the ground, cut point at (80, 145, 94), 155 blocks from the start, stood at (78, 144). The last figure written in a plan file was a mangrove of 14 logs 874 blocks off (plan 007's land); main's own figure just before this phase was not measured, so the move is not put down to the roots alone.
+9. **The felling tests.** `pf_paint` fills dirt up to `PF_Z - 1` in the tree's own column and up to its foot elsewhere, so every painted tree has its roots. `pf_fell_one` and the drop test count the logs at and over `PF_Z`, which a cut at the foot fells, and check the tree has roots under that. `run_player_felling` passes with the old feller. The biggest of every kind with roots: oak 8, birch 9, spruce 12, jungle 107, acacia 9, dark oak 50, mangrove 75, cherry 14; 2 x 107 = 214 is under `PLAYER_FELLING_LOGS_MAX` 256.
+10. **`saves/` (2026-11-14, read only):** `test_8-3`, generator 2 (`blocks/manifest` offset 52), 91879095 bytes (89M), newest file 2026-11-14 11:05. The generator 1 worlds are already gone (issue 1).
+11. **Benches before roots** (release, on step 1's code, the land byte for byte main's; load average up to 43 from other agents' builds during the run): `bench_terrain` slowest place jungle 953 chunk columns/s on 16 workers (plains 1828, forest 2125, mangrove swamp 1100, jagged peaks 1216, plateau top 1322), so already under 1000 before any root went in. `bench_lod`: worst column 30.90 ms (shift 2), shift 1 22.79 ms.
+12. **A tree for the gate, on Ahmed's seed 11107447384583428913** (found with the playthrough's finder on that seed's real climate): a jungle tree of 62 logs over the ground, its trunk at x -131, y -560, the first log over the ground at z 4, so the flush root is at z 3, level with the grass, and the second at z 2. `/tp -133 -561 4` stands 2 blocks off it, facing it; dig the block beside the trunk at z 3 and the one under it.

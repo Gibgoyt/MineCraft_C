@@ -205,14 +205,20 @@ static terrain_density_box_t pf_tree_box(void) {
     };
 }
 
-/* foot_gap is how far the ground falls away beside it: 0 leaves every log at or above the lowest of the middle. */
+/* foot_gap is how far the ground falls away beside it: 0 leaves every log over the ground at or above the lowest of the middle.
+ * Plan 010 phase 01: the tree stands on dirt, its own column's top at PF_Z - 1 and every other column's at its foot, as the land
+ * has it, so its trunk columns root into the ground as a generated tree's do. */
 static void pf_paint(uint16_t *blocks, terrain_feature_tree_t kind, uint64_t seed, int16_t foot_gap, uint8_t lift) {
     const terrain_density_box_t box = pf_tree_box();
     const terrain_feature_canvas_t canvas = terrain_feature_canvas_of(&box, blocks);
-    for (uint32_t i = 0u; i < PF_VOXELS; i++) {
-        blocks[i] = BLOCK_ID_AIR;
-    }
     const int16_t foot = (int16_t)(PF_Z - 1 - foot_gap);
+    for (uint32_t i = 0u; i < PF_VOXELS; i++) {
+        const int32_t x = box.origin_x + (int32_t)(i % box.count_x);
+        const int32_t y = box.origin_y + (int32_t)(i / box.count_x % box.count_y);
+        const int32_t z = box.origin_z + (int32_t)(i / (box.count_x * box.count_y));
+        const int32_t top = x == PF_X && y == PF_Y ? PF_Z - 1 : (int32_t)foot;
+        blocks[i] = z <= top ? (uint16_t)BLOCK_ID_DIRT : (uint16_t)BLOCK_ID_AIR;
+    }
     const terrain_feature_tree_site_t site = {
         .seed = seed,
         .x = PF_X,
@@ -226,10 +232,22 @@ static void pf_paint(uint16_t *blocks, terrain_feature_tree_t kind, uint64_t see
     terrain_feature_paint_tree(&canvas, &site);
 }
 
+/* Every log of the tree, its roots too. */
 static uint32_t pf_painted_logs(const uint16_t *blocks, uint16_t log) {
     uint32_t count = 0u;
     for (uint32_t i = 0u; i < PF_VOXELS; i++) {
         count += blocks[i] == log ? 1u : 0u;
+    }
+    return count;
+}
+
+/* Its logs at or above z_from: what a cut at the foot fells, the roots under it staying. */
+static uint32_t pf_painted_logs_from(const uint16_t *blocks, uint16_t log, int32_t z_from) {
+    const terrain_density_box_t box = pf_tree_box();
+    uint32_t count = 0u;
+    for (uint32_t i = 0u; i < PF_VOXELS; i++) {
+        const int32_t z = box.origin_z + (int32_t)(i / (box.count_x * box.count_y));
+        count += blocks[i] == log && z >= z_from ? 1u : 0u;
     }
     return count;
 }
@@ -302,12 +320,14 @@ TEST(the_limit_is_above_the_biggest_tree_of_every_kind_measured) {
     CHECK(2u * biggest < PLAYER_FELLING_LOGS_MAX);
 }
 
-/* Cut at its lowest log: every log goes, each once and with its drop, and the leaves and vines after them. */
+/* Cut at its lowest log over the ground: every log from there up goes, each once and with its drop, and the leaves and vines after
+ * them. The roots under the cut stay. */
 static void pf_fell_one(test_context_t *t, pf_rig_t *rig, uint16_t *blocks, terrain_feature_tree_t kind,
                         uint64_t seed) {
     const uint16_t log = pf_kind_log(kind);
     pf_paint(blocks, kind, seed, 0, pf_lift_of(kind));
-    const uint32_t logs = pf_painted_logs(blocks, log);
+    const uint32_t logs = pf_painted_logs_from(blocks, log, PF_Z);
+    CHECK(pf_painted_logs(blocks, log) > logs); /* it has roots */
     pf_place_tree(t, rig, blocks);
     const uint64_t dropped = rig->logs_dropped, felled = rig->felled, mined = rig->hands.mined_count;
     CHECK(pf_chop(rig, PF_X, PF_Y, PF_Z));
@@ -540,7 +560,7 @@ TEST(no_drop_is_lost_on_the_biggest_tree_with_or_without_anyone_taking_them_at_o
     uint64_t seed = 0u;
     const uint32_t biggest = pf_biggest_of(blocks, TERRAIN_FEATURE_TREE_JUNGLE, &seed);
     pf_paint(blocks, TERRAIN_FEATURE_TREE_JUNGLE, seed, 0, 0u);
-    const uint32_t logs = pf_painted_logs(blocks, BLOCK_ID_JUNGLE_LOG);
+    const uint32_t logs = pf_painted_logs_from(blocks, BLOCK_ID_JUNGLE_LOG, PF_Z);
     REQUIRE(logs > PLAYER_INTERACTION_DROPS);
     REQUIRE(logs <= biggest);
     pf_place_tree(t, rig, blocks);
