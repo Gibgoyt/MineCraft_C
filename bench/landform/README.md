@@ -58,6 +58,10 @@
 
 ## Results
 
+### 2026-11-14, plan 007 phase 06: the tuning
+
+Release, the 8 seeds in two runs (Ahmed's seed `11107447384583428913` with the first), exit 0 each, with the two measure changes of this phase (plateaus on the ground less its knobs; concavity of range peaks only: `measure/README.md`). Min to max: flat / gentle / moderate / steep / very steep / cliff / sheer (profile, whole map) 16.8–22.2 / 33.9–37.6 / 18.2–20.7 / 10.7–13.2 / 7.1–9.2 / 3.4–5.1 / 0.6–1.1 %; real blocks 8.9–11.1 / 27.0–31.6 / 28.9–31.0 / 15.3–18.0 / 7.5–10.0 / 3.3–5.4 / 0.6–1.5 %; largest class difference 8.8–12.6 points; steeper than 1:2 in the top 30% of relief 18.5–21.5%; top decile over the bottom 3 1.52–1.89; concavity of range peaks 2.23–2.67; plateau pieces of 25 km^2 0–5 (2 or more on 4 seeds), the largest 15.6–88.9 km^2; escarpment 706–1722 km; longest range piece at 500 or more 10.4–36.5 km (20 or more on 4); knobs on a base of 250 or more 18.8–43.4%; basins 1.75 a map, floors −50 to −100; sea 24.4–29.9%; top 1123–1135; the profile 0.48–0.53 µs a lattice column. Every try and what is not met is in the plan 007 phase 06 file, Issues found.
+
 ### 2026-11-14, plan 007 phase 05: dry basins below the sea's level
 
 Release, the 8 seeds in two runs (Ahmed's seed `11107447384583428913` with the first), exit 0 each. **Dry basins** (dry columns joined side to side, at least 1 km^2 with a floor below 0) per map: 1, 1, 0, 0 on 2198175988018515243, 12636146071196537873, 5569068473609503046 and 1; 2, 3, 4, 3 on 42, 20261104, 9999999999999 and 18446744073709551557: **1.75 a map on average** (target 1 to 3), 2 on Ahmed's seed. Floors -99 to -100 (target -40 to -100), 1.62 to 5.79 km across (target 2 to 6; one 1.62). Sea 24.7 to 27.0%, and the slope rows within a tenth of a point of phase 04's: the basins are a few km^2 a map. The "lowest dry land below 0" line is the deepest basin floor where a map has a basin, else the windows' lowest dry real block as before. The tuning tries are in the phase file's Issues found.
