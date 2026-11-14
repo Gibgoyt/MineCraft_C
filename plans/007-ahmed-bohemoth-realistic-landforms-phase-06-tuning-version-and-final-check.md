@@ -1,6 +1,6 @@
 # 007-ahmed-bohemoth-realistic-landforms — phase 6: Tuning, version and the final check
 
-**Status:** tuning done (2026-11-14); the version, old worlds, surveys and the full final check are the joint step with plan 006 phase 05, not done here   (updated 2026-11-14)
+**Status:** tuning and the joint final check done (2026-11-14, version 2 closed with plan 006 phase 05); waiting on Ahmed for the old worlds, the lapse, the misses in the table and his walk   (updated 2026-11-14)
 
 Read first: `plans/007-ahmed-bohemoth-realistic-landforms-phase-00-vision-and-plan-files.md`, then the master `plans/007-ahmed-bohemoth-realistic-landforms.md` (sections 2.4, 4, 6, 9, 12), then every earlier phase file's Issues found and gate notes. Then `plans/006-ahmed-bohemoth-biomes-follow-the-climate-phase-05-version-old-worlds-and-final-check.md`, because by default this phase runs **together** with it (master Q2). Every number here comes from the master unless it says otherwise.
 
@@ -131,7 +131,7 @@ Filled by this phase from `bench_landform` on the 8 seeds:
 | Floating rock per km² | 1072–1383 | 707–1690 | ≤ 1729 | Yes, all 8 |
 | `bench_terrain` slowest | 843–944 (bench_landform's tall place) | jungle 975 and 959 | ≥ 1000 | No, by 2.5–4% |
 | `bench_lod` per column | | worst 31.4 ms (shift 2) | ≤ 40 ms | Yes |
-| `bench_climate` cold tile | | not run here (the climate is unchanged) | < 100 ms | For the joint check |
+| `bench_climate` cold tile | 30.3 (plan 004 phase 11) | 42.8 ms (the joint check) | < 100 ms | Yes |
 
 ---
 
@@ -162,16 +162,16 @@ This phase may edit these, plus this file:
 
 - [x] Every earlier phase's open requests from Ahmed listed here
 - [x] Tuning rounds done, each value and its `bench_landform` numbers recorded
-- [ ] Lapse decision recorded; if changed, the constant, the pins, plan 004 phase 11's constants "after" (here), and plan 006's snowline tests re-run
-- [ ] `TERRAIN_GENERATOR_VERSION` closed at 2 (joint) or 3 (alone); `FEA_DIGEST_OF_GENERATOR` row comment naming the plans
-- [ ] Every pin checked against its recorded reason; none moved without one
-- [ ] Old worlds listed with sizes here, then deleted (or those Ahmed named kept)
-- [ ] The full debug suite, the full release suite, a release build; `standards_lint` and `clang_format`
-- [ ] 1 against 16 workers the same bytes on every final pin
-- [ ] `bench_terrain` ≥ 1000, `bench_lod` ≤ 40 ms, `bench_climate` < 100 ms, `bench_atlas` in budget
-- [ ] The before and after table filled; every target met or its miss explained and accepted by Ahmed
+- [ ] Lapse decision recorded; if changed, the constant, the pins, plan 004 phase 11's constants "after" (here), and plan 006's snowline tests re-run: **the default, 0.012, is kept** (Q6); Ahmed's word after he reads F3 on a plateau and a summit (issue 13)
+- [x] `TERRAIN_GENERATOR_VERSION` closed at 2 (joint) or 3 (alone); `FEA_DIGEST_OF_GENERATOR` row comment naming the plans
+- [x] Every pin checked against its recorded reason; none moved without one
+- [ ] Old worlds listed with sizes here, then deleted (or those Ahmed named kept): **listed (issue 12); waiting on Ahmed**, nothing deleted
+- [x] The full debug suite, the full release suite, a release build; `standards_lint` and `clang_format`
+- [x] 1 against 16 workers the same bytes on every final pin
+- [ ] `bench_terrain` ≥ 1000, `bench_lod` ≤ 40 ms, `bench_climate` < 100 ms, `bench_atlas` in budget: `bench_lod` and `bench_climate` met; `bench_terrain` misses at the jungle and `bench_atlas`'s worst-case column top as before (issue 14)
+- [ ] The before and after table filled; every target met or its miss explained and accepted by Ahmed: filled and explained (issue 6); Ahmed's acceptance to come
 - [ ] Ahmed's walk recorded in his words
-- [ ] Status lines of plan 007's files updated
+- [ ] Status lines of plan 007's files updated: this file's only; the other phase files and the master are the orchestrator's (the agents' rule 4)
 
 ## Tests
 
@@ -227,6 +227,7 @@ Appended as they land:
 - `430cdcc6` Re-pin the terrain and climate digests on plan 007 phase 06's tuned land, each with its reason and old value; ...
 - `25e43d2d` Fix the tests plan 007 phase 06's land broke, by reading the land: ...; the eight render pictures and the Atlas's 52 goldens made again and looked at, its plain-terrain hashes re-pinned; clang-format
 - the commit that records this file's results and `bench_landform`'s README
+- The joint final check with plan 006 phase 05: `6365ba2f` Raise TERRAIN_GENERATOR_VERSION to 2 for plan 006's biomes from the climate and plan 007's landforms, once for both ...; `36d8f910` Keep the mask's single columns outside the keep square in a build's mask, and read the outlook's open sea through it, so run_climate_warning's slowest call is back under 20 ms ...; the commit that marks the kept columns by a bit each and records this file's joint check
 
 ## Issues found
 
@@ -334,4 +335,26 @@ Appended as they land:
 
 Done by one agent on main at f5a3f85c, after this file's tuning part, as master Q2's default. Plan 006 phase 05's file holds the shared parts in full (the pins against their reasons, the version, the old worlds, the survey); this file records plan 007's side.
 
-11. **`run_climate_warning`'s 20 ms, brought back under.** The slowest of 100 warnings was 20.1 to 21.5 ms alone in debug (30.2 ms, mean 20.7, in the whole suite at `-j 2`) since phase 05 made each column of the climate's mask dearer (the dry basin's inland gate samples broad continentalness at four nodes for a single column, and phase 06's plateau reads it too). The cause of the many columns: outside the climate's keep square no mask page is kept, so each read is one column of the ground, and the outlook's unborn sums start a typical track from the same square's centre on every day of the week, and check the open sea there, so they read the same cells day after day. Fixed in `run/src/climate/systems/` with no number changed: a build's mask keeps those columns too, 1024 of them direct-mapped by 5 low bits of the cell on each axis (`CLIMATE_SYSTEMS_MASK_POINTS`, in the build's arena, 20 KiB beside the pages' 64; the struct grows from 600 to 616 bytes), and the outlook reads the hurricane rate's open sea through the build's mask (`climate_systems_hurricane_rate_mask`, the same number as `climate_systems_hurricane_rate`). Alone, load 5.9 to 6.6: **slowest 15.0 and 15.7 ms, mean 11.5 and 12.1** (was 20.1 to 21.5); the census's outlook input 314 to 317 ms (was 432 in the suite). `run_climate_systems`, `_systems_rain`, `_weather`, `_layer`, `_cell`, `_constants` (the two bit counts named) and the rest of `run_climate_*`, `run_game_census` and `run_ui_hud` pass on their pins: the heights are the same bits, as the ground is a pure function.
+11. **`run_climate_warning`'s 20 ms, brought back under.** The slowest of 100 warnings was 20.1 to 21.5 ms alone in debug (30.2 ms, mean 20.7, in the whole suite at `-j 2`) since phase 05 made each column of the climate's mask dearer (the dry basin's inland gate samples broad continentalness at four nodes for a single column, and phase 06's plateau reads it too). The cause of the many columns: outside the climate's keep square no mask page is kept, so each read is one column of the ground, and the outlook's unborn sums start a typical track from the same square's centre on every day of the week, and check the open sea there, so they read the same cells day after day. Fixed in `run/src/climate/systems/` with no number changed: a build's mask keeps those columns too, 1024 of them direct-mapped by 5 low bits of the cell on each axis (`CLIMATE_SYSTEMS_MASK_POINTS`, in the build's arena, 20 KiB beside the pages' 64; the struct grows from 600 to 616 bytes), and the outlook reads the hurricane rate's open sea through the build's mask (`climate_systems_hurricane_rate_mask`, the same number as `climate_systems_hurricane_rate`). Alone, load 5.9 to 6.6: **slowest 15.0 and 15.7 ms, mean 11.5 and 12.1** (was 20.1 to 21.5); the census's outlook input 314 to 317 ms (was 432 in the suite). `run_climate_systems`, `_systems_rain`, `_weather`, `_layer`, `_cell`, `_constants` (the two bit counts named) and the rest of `run_climate_*`, `run_game_census` and `run_ui_hud` pass on their pins: the heights are the same bits, as the ground is a pure function. A first form cleared the 1024 kept cells to "empty" at each build's start (16 KiB of stores), and the Atlas's `temperature_now` layer, which builds many lists, read 62 to 92 ms by the median over five runs against 42 to 64 without the cache; the kept form marks entries with a bit each (128 bytes cleared a build; the struct is 624 bytes), and read 42 to 55 ms over four runs (target 60, met; the layer swings from run to run with the other agents' load). After it, in debug, `run_climate_*` with `run_game_census`, `standards_lint` and `clang_format` at `-j 2`, 23 of 23 (the warning's slowest 15.8 ms, mean 12.1); in release the same with `run_ui_atlas` and `run_ui_hud`, 25 of 26: `run_ui_atlas`'s lock wait (2 ms) failed at a load average of 27 from other agents' builds and passed alone after (longest wait 0.247 ms); it reads the Atlas's tile store, not the climate.
+
+12. **The version, the pins and the old worlds** are in plan 006 phase 05's file (its issues 1 to 3), shared. `TERRAIN_GENERATOR_VERSION` is **2**; row 2 of `FEA_DIGEST_OF_GENERATOR` is this file's tuned land, `0xBF67826538D85EA0`, and names plan 006 phases 02 to 04 and plan 007 phases 03 to 05 with this phase's tuning, "Closed 2026-11-14". Every pin that moved since phase 01 matches a recorded reason (plan 006 phase 05's table: plan 007's phases 03 to 06 moved density, cave, ore, hydrology, cell, systems, biome, feature and the Atlas's goldens; none moved here). **The old worlds: nine are listed there with sizes** (`saves/test_1` to `test_8`, and `test_8-2`, made on 2026-11-13 while the version was open), **and none is deleted**: the main thread waits for Ahmed to say which to keep, and the command to delete the rest is written there.
+
+13. **The lapse (Q6): 0.012 °C a block is kept**, the master's default "until Ahmed has tried F3 on a plateau and a summit". Nothing moved for it. At his walk: F3's temperature at the plateau (`/tp -9280 16`, z 653) and the tallest summit (`/tp -25264 -15408`, z 1133), against the table in "The lapse rate question" above; if he picks 0.015 or 0.020, the constant, every climate digest, plan 004 phase 11's constants and plan 006's snowline tests move with it, in a later step.
+
+14. **The benches, the joint check** (release, 2026-11-14, shared machine at load 0.7 to 4; CPU benches, no card clock applies):
+   - **`bench_climate`**: slowest cold tile **42.8 ms** (target 100, met; 30.3 in plan 004 phase 11, as the window's mask pages, 84% of a tile, read the dearer land of phases 03 to 06); `--systems` warm median 0.885 ms (target 2, met).
+   - **`bench_atlas`**: every layer within 60 ms by the median (`temperature_now` 42 to 55 ms, issue 11), main's frame 0.64 ms (2), a column write 0.08 us (5), a column top 13.4 us and 15.1 in a forest (20); **the column top under 320 of leaves 24.8 to 25.7 us against 20 us, missed**, as phase 02 left it (29.3 there, its open todo).
+   - **`bench_terrain`, `bench_lod`, `bench_landform` and floating rock** were run in this file's tuning part on the same land (no land change since: the version bump moved no bit), issue 7 above: `bench_terrain` **jungle 959 and 975 columns a second against 1000, missed by 2.5 to 4%** (the cost is the jungle's trees, the profile 0.1% of a box); `bench_lod` worst 31.4 ms (40, met).
+
+15. **The suites**: plan 006 phase 05's issue 4. Debug 175 of 177 at `-j 2` (the warning's 20 ms, since fixed in issue 11, and `run_ui_atlas`'s lock wait, a timing check under the suite's load that passes alone); release 177 of 177, `run_render_distance_live` included (plan 009 phase 08 had its rd_64 checks failing on phase 04's land; they pass on this one). 1 against 16: each terrain and climate pin is that comparison.
+
+16. **For Ahmed's gate (his walk, above "Gate"):** a **new world** on his seed `11107447384583428913` (version-1 worlds are refused), the Atlas on `M` with its contours, `/fly`, `/time`, F3's temperature at each stop:
+   1. a coastal plain: `/tp 2288 -1024` (z 15). **Look at the lowland**: since this phase it is low, 3 to 22 above the sea before hills, knobs, plateaus and ranges, and riddled with lakes and the sea's pockets (the tired-run test found no dry gentle run within 4 km). Say whether it reads as a coastal plain or as too wet and too flat.
+   2. and 3. the escarpment's face, climbed on foot, and the plateau's top and inland across it: `/tp -9280 16` (z 653, the largest piece, 40.6 km^2, 14 km across), then walk to its edge on the Atlas's contours and down the face.
+   4. a koppie on the plateau: the knobs on the same piece's top.
+   5. and 6. a range, foot to summit on foot, and the view: `/tp -25264 -15408` is the tallest peak (z 1133); the Atlas for its foot, then up on foot.
+   7. a dry basin: `/tp 26512 -12064` (floor z -97, at a range's foot); the other on his seed is shallower, about -51. F3's temperature there (basin heat).
+   - And plan 006's: the `/tp lat 0` to `lat 75` strip, the equator's mountain with no snow, the 45° mountain's snowline, the pole (plan 006 phase 05's issue 7).
+   - His answers asked for: "much much more realistic" or not, and what is still wrong; the lapse (issue 13); the misses in the before and after table (issue 6: flat and gentle, real blocks against the profile, steep ground high up, the concavity, the longest range, knobs on high bases); the old worlds to keep (issue 12).
+
+   *Ahmed's words:* (to come)

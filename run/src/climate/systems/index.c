@@ -24,7 +24,11 @@ static const float64_t SYSTEMS_DIAGONAL = 0.70710678118654752440f64;
 /* The land mask's pages a track keeps, direct-mapped by the low 3 bits of the tile's x and y. */
 enum : uint32_t { SYSTEMS_MASK_LOW_BITS = 3u, SYSTEMS_MASK_LOW_MASK = (1u << SYSTEMS_MASK_LOW_BITS) - 1u };
 /* The kept columns outside the keep square: direct-mapped by this many low bits of the cell on each axis. */
-enum : uint32_t { SYSTEMS_POINT_BITS = 5u, SYSTEMS_POINT_MASK = (1u << SYSTEMS_POINT_BITS) - 1u };
+enum : uint32_t {
+    SYSTEMS_POINT_BITS = 5u,
+    SYSTEMS_POINT_MASK = (1u << SYSTEMS_POINT_BITS) - 1u,
+    SYSTEMS_POINT_WORD_BITS = 64u, /* entries a word of the held bits */
+};
 
 /* ---- Pieces ---------------------------------------------------------------------------------------------------------- */
 
@@ -150,27 +154,31 @@ void climate_systems_mask_start(climate_systems_mask_t *mask, const climate_t *c
         arena_alloc_array(arena, 2ull * CLIMATE_SYSTEMS_MASK_POINTS, sizeof(int64_t), alignof(int64_t));
     mask->borrowed_point_heights =
         arena_alloc_array(arena, CLIMATE_SYSTEMS_MASK_POINTS, sizeof(float32_t), alignof(float32_t));
-    if (mask->borrowed_point_cells != nullptr) {
-        for (uint32_t i = 0u; i < 2u * CLIMATE_SYSTEMS_MASK_POINTS; i++) {
-            mask->borrowed_point_cells[i] = INT64_MIN;
-        }
+    mask->borrowed_point_held = arena_alloc_array(arena, CLIMATE_SYSTEMS_MASK_POINTS / SYSTEMS_POINT_WORD_BITS,
+                                                  sizeof(uint64_t), alignof(uint64_t));
+    if (mask->borrowed_point_held != nullptr) {
+        memset(mask->borrowed_point_held, 0, CLIMATE_SYSTEMS_MASK_POINTS / SYSTEMS_POINT_WORD_BITS * sizeof(uint64_t));
     }
 }
 
 /* One column outside the keep square, kept by its cell: the ground is a pure function, so a kept height is the same bits. */
 static float32_t systems_mask_point(climate_systems_mask_t *mask, int64_t cell_x, int64_t cell_y, float64_t x,
                                     float64_t y) {
-    if (mask->borrowed_point_cells == nullptr || mask->borrowed_point_heights == nullptr) {
+    if (mask->borrowed_point_cells == nullptr || mask->borrowed_point_heights == nullptr ||
+        mask->borrowed_point_held == nullptr) {
         return climate_mask_point(mask->borrowed_climate, x, y);
     }
     const uint32_t entry = (uint32_t)(((uint64_t)cell_x & SYSTEMS_POINT_MASK) |
                                       (((uint64_t)cell_y & SYSTEMS_POINT_MASK) << SYSTEMS_POINT_BITS));
     static_assert((SYSTEMS_POINT_MASK + 1u) * (SYSTEMS_POINT_MASK + 1u) == CLIMATE_SYSTEMS_MASK_POINTS);
     int64_t *const cell = mask->borrowed_point_cells + 2u * entry;
-    if (cell[0] != cell_x || cell[1] != cell_y) {
+    uint64_t *const word = &mask->borrowed_point_held[entry / SYSTEMS_POINT_WORD_BITS];
+    const uint64_t bit = 1ull << (entry % SYSTEMS_POINT_WORD_BITS);
+    if ((*word & bit) == 0u || cell[0] != cell_x || cell[1] != cell_y) {
         mask->borrowed_point_heights[entry] = climate_mask_point(mask->borrowed_climate, x, y);
         cell[0] = cell_x;
         cell[1] = cell_y;
+        *word |= bit;
     }
     return mask->borrowed_point_heights[entry];
 }

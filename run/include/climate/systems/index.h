@@ -297,10 +297,11 @@ typedef struct climate_systems_mask_t {
     int32_t tile_x[CLIMATE_SYSTEMS_MASK_PAGES]; /* 24 */
     int32_t tile_y[CLIMATE_SYSTEMS_MASK_PAGES]; /* 280 */
     uint8_t held[CLIMATE_SYSTEMS_MASK_PAGES];   /* 536 */
-    int64_t *borrowed_point_cells;              /* 600: CLIMATE_SYSTEMS_MASK_POINTS x (x, y), INT64_MIN when empty */
+    int64_t *borrowed_point_cells;              /* 600: CLIMATE_SYSTEMS_MASK_POINTS x (x, y) */
     float32_t *borrowed_point_heights;          /* 608: CLIMATE_SYSTEMS_MASK_POINTS */
+    uint64_t *borrowed_point_held; /* 616: a bit an entry, so starting a build clears 128 bytes, not 20 KiB */
 } climate_systems_mask_t;
-static_assert(sizeof(climate_systems_mask_t) == 616);
+static_assert(sizeof(climate_systems_mask_t) == 624);
 
 /* ---- The list -------------------------------------------------------------------------------------------------------- */
 
