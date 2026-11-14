@@ -29,7 +29,8 @@
 +22 button left up
 +14 screenshot picked_up.png
 # Back to looking level, and to the tree the test finds near the start (tests/run/playthrough/index.c): there by /tp, facing
-# its root, a look up at it and back down, and the left button held with nothing in hand on its root.
+# its first log over the ground, a look up at it and back down, and the left button held with nothing in hand on each log of
+# the trunk's layer there, nearest first: the tree falls on the last (plan 010 phase 02).
 +1 move 0 -500
 @fell
 # Looking up again from the same place, to see what is left.
@@ -37,6 +38,9 @@
 +1 screenshot during.png
 +40 screenshot after.png
 +60 screenshot later.png
+# Down at the stump the fall left, level with the ground (plan 010 phase 02).
++8 move 0 300
++6 screenshot stump.png
 # The inventory, there and back, to have the pointer at 320, 240 for the pause menu. Saved with the tree down, opened again, and out.
 +1 key e down
 +1 key e up

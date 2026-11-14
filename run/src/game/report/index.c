@@ -181,6 +181,11 @@ void game_report(game_t *game) {
         if (game->borrowed_felling != nullptr) {
             LOG_INFO("game: the tree feller felled %" PRIu64 " logs past what was cut",
                      game->borrowed_felling->felled_count);
+            if (game->borrowed_felling->last_layer != UINT32_MAX) {
+                LOG_INFO("game: the last tree cut had %" PRIu32 " logs left in its trunk's layer, and %" PRIu32
+                         " logs of it stayed joined to a root",
+                         game->borrowed_felling->last_layer, game->borrowed_felling->last_stump);
+            }
         }
     }
     if (game->borrowed_entity != nullptr && game->mob_spawn.borrowed_idle != nullptr) {
