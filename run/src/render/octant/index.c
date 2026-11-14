@@ -102,6 +102,7 @@ static void octant_column_empty(render_octant_t *store, render_octant_table_t *t
 /* ---- Level 0 ---------------------------------------------------------------------------------------------------------- */
 
 static void octant_changed_push(render_octant_t *store, int32_t chunk_x, int32_t chunk_y) {
+    store->changes_said++;
     if (store->changed_count == store->changed_capacity) {
         if (store->changed_over == 0u) {
             store->stats.changed_lost++;
@@ -146,12 +147,33 @@ void render_octant_column_clear(render_octant_t *store, uint32_t slot) {
     column->valid = 0u;
 }
 
+/* Whether this handle already holds this octant: then level 0's column has not changed for the level above, and is not said to have. An upload
+ * sends a section again whenever it is published again (a neighbour's load, a tick, light), and most of those leave its octant as it was. */
+static bool octant_holds(const render_octant_t *store, uint32_t handle, const render_encode_octant_t *octant) {
+    if (handle != RENDER_OCTANT_AIR && (handle & RENDER_OCTANT_UNIFORM) == 0u) {
+        return memcmp(&store->borrowed_blocks[handle - 1u], octant, sizeof(*octant)) == 0;
+    }
+    const uint16_t material = (uint16_t)(handle & 0xFFFFu);
+    const uint8_t light = (uint8_t)((handle >> 16) & 0xFFu);
+    for (uint32_t i = 0u; i < RENDER_ENCODE_OCTANT_VOXELS; i++) {
+        /* Air keeps no light, as the store's air handle has none. */
+        if (octant->material[i] != material || (material != 0u && octant->light[i] != light)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 void render_octant_section_set(render_octant_t *store, uint32_t level, uint32_t slot, uint32_t section,
                                const render_encode_octant_t *octant) {
     render_octant_table_t *const table = &store->tables[level];
     render_octant_column_t *const column = &table->borrowed_columns[slot];
     ASSERT_ALWAYS(column->valid != 0u && section < table->sections);
     uint32_t *const handle = &table->borrowed_handles[(uint64_t)slot * table->sections + section];
+    if (level == 0u && octant_holds(store, *handle, octant)) {
+        store->octants_unchanged++;
+        return;
+    }
     octant_handle_free(store, *handle);
     *handle = RENDER_OCTANT_AIR;
     bool uniform = true;
@@ -177,6 +199,10 @@ void render_octant_section_set(render_octant_t *store, uint32_t level, uint32_t 
     if (level == 0u) {
         octant_changed_push(store, column->chunk_x, column->chunk_y);
     }
+}
+
+void render_octant_arriving_set(render_octant_t *store, bool arriving) {
+    store->arriving = arriving ? 1u : 0u;
 }
 
 bool render_octant_changed_next(render_octant_t *store, int32_t *out_chunk_x, int32_t *out_chunk_y) {

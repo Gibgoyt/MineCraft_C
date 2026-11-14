@@ -248,6 +248,16 @@ TEST(the_plan_keeps_every_level_inside_the_render_distance) {
     const render_lod_plan_t at_64_eight = render_lod_plan_by_bands(&eight, 64u);
     CHECK_EQ_U64(at_64_eight.level_count, 4u);
     CHECK_EQ_U64(at_64_eight.radii[0], 7u + RENDER_LOD_MARGIN_COLUMNS);
+    /* Plan 009 phase 08's follow-up: at 360 rows level 1's band ends at 257 blocks and level 2's at 514, a block or two past render distance
+     * 16 and 32. Each is planned to its band's end there, so that it is the same level at 64, and going up to 64 keeps it whole. */
+    const render_lod_bands_t small = render_lod_bands(2.0f64, 16u, lod_test_half_fov(70.0f64), 360u);
+    const render_lod_plan_t small_16 = render_lod_plan_by_bands(&small, 16u);
+    const render_lod_plan_t small_32 = render_lod_plan_by_bands(&small, 32u);
+    const render_lod_plan_t small_64 = render_lod_plan_by_bands(&small, 64u);
+    REQUIRE(small_16.level_count == 1u && small_32.level_count == 2u && small_64.level_count == 3u);
+    CHECK_EQ_U64(small_16.radii[0], small_64.radii[0]);
+    CHECK_EQ_U64(small_32.radii[0], small_64.radii[0]);
+    CHECK_EQ_U64(small_32.radii[1], small_64.radii[1]);
     const render_lod_bands_t fine = render_lod_bands(0.25f64, 16u, lod_test_half_fov(70.0f64), 1080u);
     const render_lod_plan_t capped = render_lod_plan_by_bands(&fine, 512u);
     CHECK(capped.level_count >= 1u);
@@ -426,6 +436,71 @@ TEST(assembled_level_1_equals_direct_reduction) {
     CHECK(assembled > 0u && uniform_sections > 0u);
     /* Blocks go back as columns load again: never more live than one cube's worth. */
     CHECK(store->blocks_live <= 8u);
+    arena_deinit(&arena);
+    heap_release(&region);
+}
+
+/* How many level 0 columns the store says have changed, taking them all. */
+static uint32_t lod_test_changes_take(render_octant_t *store) {
+    uint32_t count = 0u;
+    int32_t x = 0, y = 0;
+    while (render_octant_changed_next(store, &x, &y)) {
+        count++;
+    }
+    return count;
+}
+
+/* Plan 009 phase 08's follow-up: a section the upload sends again with the octant the store holds is not a change, so the pyramid does not make
+ * levels 1 and 2 again for it; one voxel different is. Uniform, air (whatever its light) and stored octants alike. */
+TEST(a_section_sent_again_unchanged_is_no_change) {
+    heap_region_t region;
+    REQUIRE(heap_reserve(render_octant_arena_bytes(4u) + MC_CPU_CACHE_LINE_BYTES, &region));
+    arena_t arena;
+    arena_init(&arena, "octant_test", region.owned_base, region.bytes);
+    render_octant_t *const store = test_alloc(t, sizeof(render_octant_t));
+    render_octant_init(store, &arena, 4u);
+    render_encode_octant_t *const octant = test_alloc(t, sizeof(render_encode_octant_t));
+    render_octant_column_set(store, 0u, 0, 0, 1u);
+    CHECK_EQ_U64(lod_test_changes_take(store), 1u);
+    /* Ground: not one block all through, so it takes a block of the store. */
+    for (uint32_t i = 0u; i < RENDER_ENCODE_OCTANT_VOXELS; i++) {
+        octant->material[i] = i < 256u ? BLOCK_ID_STONE : i < 320u ? BLOCK_ID_GRASS_BLOCK : BLOCK_ID_AIR;
+        octant->light[i] = i < 320u ? (uint8_t)(i & 0x3Fu) : 0u;
+    }
+    render_octant_section_set(store, 0u, 0u, 3u, octant);
+    CHECK_EQ_U64(lod_test_changes_take(store), 1u);
+    const uint32_t live = store->blocks_live;
+    render_octant_section_set(store, 0u, 0u, 3u, octant);
+    CHECK_EQ_U64(lod_test_changes_take(store), 0u);
+    CHECK_EQ_U64(store->blocks_live, live);
+    /* Grass to dirt under a tree: a change. */
+    octant->material[300] = BLOCK_ID_DIRT;
+    render_octant_section_set(store, 0u, 0u, 3u, octant);
+    CHECK_EQ_U64(lod_test_changes_take(store), 1u);
+    /* Light alone is a change too, as level 1 is lit by it. */
+    octant->light[10] ^= 1u;
+    render_octant_section_set(store, 0u, 0u, 3u, octant);
+    CHECK_EQ_U64(lod_test_changes_take(store), 1u);
+    /* One block all through, sent twice. */
+    for (uint32_t i = 0u; i < RENDER_ENCODE_OCTANT_VOXELS; i++) {
+        octant->material[i] = BLOCK_ID_STONE;
+        octant->light[i] = 0x21u;
+    }
+    render_octant_section_set(store, 0u, 0u, 2u, octant);
+    CHECK_EQ_U64(lod_test_changes_take(store), 1u);
+    render_octant_section_set(store, 0u, 0u, 2u, octant);
+    CHECK_EQ_U64(lod_test_changes_take(store), 0u);
+    /* Air, as a column starts, with sky light in it: the store's air keeps no light, so it is the same. */
+    for (uint32_t i = 0u; i < RENDER_ENCODE_OCTANT_VOXELS; i++) {
+        octant->material[i] = BLOCK_ID_AIR;
+        octant->light[i] = 0xF0u;
+    }
+    render_octant_section_set(store, 0u, 0u, 9u, octant);
+    CHECK_EQ_U64(lod_test_changes_take(store), 0u);
+    CHECK_EQ_U64(store->octants_unchanged, 3u);
+    /* A column loaded again starts all air, and is a change. */
+    render_octant_column_set(store, 0u, 0, 0, 2u);
+    CHECK_EQ_U64(lod_test_changes_take(store), 2u);
     arena_deinit(&arena);
     heap_release(&region);
 }

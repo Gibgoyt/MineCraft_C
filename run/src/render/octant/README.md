@@ -10,6 +10,7 @@
 - `render_octant_arena_bytes`, `render_octant_init`, `render_octant_deinit`: the store for a map table of so many slots. `render_octant_bytes_used`: what it holds now.
 - `render_octant_column_set`, `render_octant_column_clear`, `render_octant_section_set`: level 0 as the upload changes the card's table and sends sections, and any level's section as the pyramid makes it.
 - `render_octant_changed_next`, `render_octant_changed_lost_take`: the level 0 columns that changed, for the pyramid to make its level 1 column over them again.
+- `render_octant_arriving_set`: the upload's word that it is part way through a view.
 - `render_octant_levels_forget`: every level above 0 forgotten, when the pyramid's levels change.
 - `render_octant_column_ready`, `render_octant_column_assemble`, `render_octant_level_column_set`: whether the four columns a column of the level above stands on are all here, the sections of that column from them, and a level above 0 starting a column's octants.
 - `render_octant_watch_arm`, `render_octant_watch_note`: a test's eye on one place, as each level is sent.
@@ -28,6 +29,10 @@
 **Generations say what is current.** A level 0 column is used only if the card's table holds it at the very generation stored here, which is the map's load: a column loaded again starts all air, as the card's does (`world_edit_snapshot_column_t.generation`), and its sections come after it. Above level 0 the generation is the one the pyramid's level gave the column when it was sent, so a level 1 column made again from terrain is no longer one level 2 may be made from. `render_octant_levels_forget` drops the levels above 0 when the pyramid's levels change, as their generations start again.
 
 **What changed.** Each level 0 column set, cleared or given a section is pushed on a list, its old place too when a slot changes hands. The pyramid takes the list each frame and marks the level 1 column over each. The list holds twice the map's slots; past that, one flag says everything may have changed.
+
+**Only what really changed** (plan 009 phase 08's follow-up). A level 0 section that comes again with the octant the store already holds is not stored again and not pushed: `octants_unchanged` counts them. The upload sends a section again whenever it is published again: a neighbour's load, a tick that leaves the block as it was, light that does not reach the octant. Before, each made the level 1 column over it again, and that the level 2 column over it: at a still eye on plan 007 phase 04's land 9 in 10 sections sent were of this kind, about 120 a second in a debug build, so levels 1 and 2 were made again without end (plan 008 phase 07: 11 564 columns, 3.7 GiB, in a 90 s still row).
+
+**Arriving.** The upload says at the end of each of its frames whether it is part way through a view (`render_octant_arriving_set`). A column is in the table, all air, from the moment its view is taken, and its sections come over that frame and the next ones; a level 1 column made from it then would be made again as each comes. So the pyramid makes level 1 from level 0 only when the upload is between views. An edit's view is sent within its frame, so it still reaches levels 1 and 2 in the same frame.
 
 ## What it does not do
 

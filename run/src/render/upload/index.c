@@ -221,6 +221,9 @@ gpu_status_t render_upload_frame(render_upload_t *upload) {
     if (sent != GPU_STATUS_OK) {
         return sent;
     }
+    if (upload->borrowed_octants != nullptr) {
+        render_octant_arriving_set(upload->borrowed_octants, !render_upload_idle(upload));
+    }
     return world_buffers_flush(upload->borrowed_buffers);
 }
 

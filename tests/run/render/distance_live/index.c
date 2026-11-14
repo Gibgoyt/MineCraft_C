@@ -714,4 +714,79 @@ TEST(an_edit_reaches_level_1_and_level_2_within_100_ms) {
     dl_rig_end(t, &rig);
 }
 
+/* ---- A still eye stops sending far columns (plan 009 phase 08's follow-up) ------------------------------------------------- */
+
+enum : int64_t {
+    DL_STILL_RUN_NS = 12000000000,  /* the still eye's run, on the game's own threads */
+    DL_STILL_QUIET_NS = 4000000000, /* its last this long: far columns only for level 0 columns that changed */
+};
+enum : uint64_t { DL_STILL_ON_ITS_WAY = 4u };
+
+/* Frames with the eye still, at main's pace, for this long. */
+static bool dl_still_for(game_t *game, display_buffer_t *target, int64_t for_ns) {
+    const render_fly_input_t still = {0};
+    const int64_t started_ns = time_now_ns();
+    while (time_now_ns() - started_ns < for_ns) {
+        if (!game_loop_frame(game, &still, (float32_t)DL_FRAME_NS / (float32_t)TIME_NS_PER_SECOND, target)) {
+            return false;
+        }
+        time_sleep_ns(DL_FRAME_NS);
+    }
+    return true;
+}
+
+/* At render distance 64, settled, the eye still on the game's own threads: once what settling left is sent, a far column goes only for a level 0
+ * column that really changed, at most one of level 1 and one of level 2 for each. The land still changes at a still eye (grass under the
+ * generator's trees turns to dirt, so the octant's top changes), so the count is not 0: it is held to the changes. Before this follow-up the
+ * octant store said a column had changed whenever a section of it was sent again with the octant it held, 9 in 10 of those sent, and levels 1
+ * and 2 were made again for each: at plan 008 phase 07's spot 11 564 columns in a 90 s still row. */
+TEST(a_still_eye_stops_sending_far_columns) {
+    dl_rig_t rig;
+    REQUIRE(dl_rig_begin(t, &rig));
+    game_t *const game = rig.game;
+    const uint64_t bytes = (uint64_t)DL_EDIT_WIDTH * DL_EDIT_HEIGHT * 4u;
+    uint8_t *const screen = dl_aligned(t, bytes);
+    display_buffer_t target = {.owned_map = screen,
+                               .map_bytes = bytes,
+                               .pitch = DL_EDIT_WIDTH * 4u,
+                               .width = DL_EDIT_WIDTH,
+                               .height = DL_EDIT_HEIGHT};
+    game_config_t config = {.render_distance = 64u,
+                            .width = DL_EDIT_WIDTH,
+                            .height = DL_EDIT_HEIGHT,
+                            .features_off = SHADE_FEATURE_DAY_CYCLE | SHADE_FEATURE_AO | SHADE_FEATURE_TAA,
+                            .show_date = 0u};
+    REQUIRE(game_open(game, &config));
+    REQUIRE(game_settle(game));
+    render_t *const render = rig.render;
+    const render_lod_t *const far = render->borrowed_lod;
+    const render_octant_t *const octants = render->borrowed_octants;
+    REQUIRE(far != nullptr && octants != nullptr);
+    const uint64_t built_settled = far->stats.columns_built;
+    const uint64_t unchanged_settled = octants->octants_unchanged;
+    /* Two runs of the game's own threads, read between them with the threads stopped: the first long enough for what settling left to be
+     * sent, the second, still, sending nothing. */
+    uint64_t built_after[2] = {0u, 0u};
+    uint32_t said_after[2] = {0u, 0u};
+    for (uint32_t run = 0u; run < 2u; run++) {
+        REQUIRE(game_loop_start(game, nullptr));
+        REQUIRE(dl_still_for(game, &target, run == 0u ? DL_STILL_RUN_NS - DL_STILL_QUIET_NS : DL_STILL_QUIET_NS));
+        REQUIRE(game_loop_stop(game));
+        built_after[run] = far->stats.columns_built;
+        said_after[run] = octants->changes_said;
+    }
+    const uint64_t sent = built_after[1] - built_after[0];
+    const uint64_t changed = (uint64_t)(uint32_t)(said_after[1] - said_after[0]);
+    printf("  still after settling: %" PRIu64 " far columns sent in the first %.1f s; in the %.1f s after, %" PRIu64
+           " sent for %" PRIu64 " level 0 columns that changed; %" PRIu64
+           " level 0 sections came again with the octant the store held\n",
+           built_after[0] - built_settled, (libc_double_t)dl_seconds(DL_STILL_RUN_NS - DL_STILL_QUIET_NS),
+           (libc_double_t)dl_seconds(DL_STILL_QUIET_NS), sent, changed, octants->octants_unchanged - unchanged_settled);
+    /* Two for each change, and what was already on its way when the second run began: a level 2 column on a worker. */
+    CHECK(sent <= 2u * changed + DL_STILL_ON_ITS_WAY);
+    game_report(game);
+    game_close(game);
+    dl_rig_end(t, &rig);
+}
+
 TEST_MAIN()

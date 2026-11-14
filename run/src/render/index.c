@@ -485,10 +485,11 @@ void render_lod_report(const render_t *render) {
     }
     const float64_t mib = 1048576.0f64;
     LOG_INFO("render: octant store: %.1f MiB held, %" PRIu32 " blocks live of %" PRIu32 ", %" PRIu64
-             " octants stored, %" PRIu64 " refused for room; %" PRIu64 " / %" PRIu64
+             " octants stored, %" PRIu64 " refused for room, %" PRIu64 " sent again unchanged; %" PRIu64 " / %" PRIu64
              " columns of levels 1 / 2 made from them in %.1f ms, %.1f MiB sent",
              (libc_double_t)((float64_t)render_octant_bytes_used(octants) / mib), octants->blocks_live,
              octants->block_capacity, octants->stats.octants_stored, octants->stats.octants_refused,
+             octants->octants_unchanged,
              octants->stats.columns_assembled[0], octants->stats.columns_assembled[1],
              (libc_double_t)((float64_t)octants->stats.assemble_ns * 1.0e-6f64),
              (libc_double_t)((float64_t)octants->stats.bytes_sent / mib));

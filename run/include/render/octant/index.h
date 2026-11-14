@@ -88,7 +88,10 @@ typedef struct render_octant_t {
     uint32_t changed_capacity;   /* 104 */
     uint32_t changed_count;      /* 108 */
     uint8_t changed_over;        /* 112: the list ran over: every column may have changed */
-    uint8_t _pad0[15];           /* 113 */
+    uint8_t arriving;            /* 113: the upload is part way through a view: level 0's columns may be missing sections it holds */
+    uint8_t _pad0[2];            /* 114 */
+    uint32_t changes_said;       /* 116: level 0 columns said to have changed, all told; wraps */
+    uint64_t octants_unchanged;  /* 120: level 0 sections sent again with the octant the store held: not said to have changed */
     render_octant_stats_t stats; /* 128 */
     render_octant_watch_t watch; /* 192 */
 } render_octant_t;
@@ -128,6 +131,10 @@ void render_octant_column_clear(render_octant_t *store, uint32_t slot);
 /* A section of a level's column is now this. Level 0's is said to have changed, for the level above. */
 void render_octant_section_set(render_octant_t *store, uint32_t level, uint32_t slot, uint32_t section,
                                const render_encode_octant_t *octant);
+
+/* Whether the upload is part way through a view, set by it at the end of each of its frames: the columns its table holds may still be waiting
+ * for sections, so the level above is not made from them yet. */
+void render_octant_arriving_set(render_octant_t *store, bool arriving);
 
 /* The next level 0 column that has changed since this was last asked, in chunks, oldest first. */
 bool render_octant_changed_next(render_octant_t *store, int32_t *out_chunk_x, int32_t *out_chunk_y);

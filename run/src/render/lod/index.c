@@ -76,8 +76,12 @@ render_lod_plan_t render_lod_plan_by_bands(const render_lod_bands_t *bands, uint
         if (bands->from[k] >= far_blocks) {
             break; /* its band starts past what is drawn at all */
         }
-        const float64_t edge = bands->from[k + 1u] < far_blocks ? bands->from[k + 1u] : far_blocks;
         const float64_t column_blocks = (float64_t)((uint32_t)COLUMN_SIZE << k);
+        /* A band that ends within one of its columns past the render distance is planned to its end: the render distance is whole chunks
+         * and a band's end is not, so at 360 rows level 2 ends at 514 blocks and render distance 32 at 512. Cut at 512, level 2 had 10
+         * columns each way at 32 and 11 at 64, so going from 32 to 64 made the whole level again, nearest first, and a coarser level drew
+         * its band meanwhile (plan 009 phase 08's follow-up). A column more each way keeps the level the same. */
+        const float64_t edge = bands->from[k + 1u] < far_blocks + column_blocks ? bands->from[k + 1u] : far_blocks;
         const uint32_t wanted = (uint32_t)ceil(edge / column_blocks) + RENDER_LOD_MARGIN_COLUMNS;
         plan.shifts[plan.level_count] = (uint8_t)k;
         plan.radii[plan.level_count] =
@@ -951,7 +955,10 @@ static gpu_status_t render_lod_octants_request(render_lod_t *lod, uint64_t *budg
             if (!render_lod_octant_ready(lod, level, column_x, column_y, slots)) {
                 continue;
             }
-            if (built >= RENDER_LOD_OCTANT_COLUMNS_PER_FRAME || *budget_used >= RENDER_LOD_FRAME_BYTES) {
+            /* Made from level 0 only once the upload has sent all of a view: a column of it is in the table before its sections come,
+             * and one made then would be made again as each comes. */
+            if ((level->shift == 1u && lod->borrowed_octants->arriving != 0u) ||
+                built >= RENDER_LOD_OCTANT_COLUMNS_PER_FRAME || *budget_used >= RENDER_LOD_FRAME_BYTES) {
                 lod->octant_pending++;
                 continue;
             }
