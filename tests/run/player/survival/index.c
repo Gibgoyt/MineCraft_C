@@ -1758,11 +1758,11 @@ static void ps_temp_dir_remove(const ps_temp_dir_t *dir) {
  * world first looks, and 45 s of sprinting and jumping there spends far more than the 5 saturation it starts with. */
 enum : uint32_t {
     PS_RUN_SEED = 11u,
-    PS_RUN_LENGTH = 480u,      /* blocks of dry land ahead: 45 s of sprint jumps covers about 320 */
-    PS_RUN_STEP = 8u,          /* blocks between the columns looked at along it */
-    PS_RUN_RISE = 5u,          /* at most this much up or down between them */
-    PS_RUN_SEARCH_STEP = 64u,  /* blocks between the places tried, ring by ring round the world's middle */
-    PS_RUN_SEARCH_RINGS = 64u, /* 4 km out */
+    PS_RUN_LENGTH = 480u,       /* blocks of dry land ahead: 45 s of sprint jumps covers about 320 */
+    PS_RUN_STEP = 8u,           /* blocks between the columns looked at along it */
+    PS_RUN_RISE = 5u,           /* at most this much up or down between them */
+    PS_RUN_SEARCH_STEP = 64u,   /* blocks between the places tried, ring by ring round the world's middle */
+    PS_RUN_SEARCH_RINGS = 128u, /* 8 km out: plan 007 phase 06's lowland is riddled with lakes */
     PS_RUN_TP_TICK = 20u,
     PS_RUN_LOADED_TICKS = 500u, /* a far jump's columns are drawn within 15 s (plan 006 phase 01) */
     PS_RUN_TICKS = 900u,
@@ -1779,7 +1779,10 @@ static bool ps_run_dry(const terrain_t *terrain, int32_t x, int32_t y) {
         const int32_t cx = x + (int32_t)lround(cos(PS_RUN_YAW) * along);
         const int32_t cy = y + (int32_t)lround(sin(PS_RUN_YAW) * along);
         const terrain_hydrology_column_t column = terrain_hydrology_column_at(terrain->borrowed_hydrology, cx, cy);
+        /* Lowland too, under 120 (plan 007 phase 06): its nearest dry gentle run was a plateau's top at 655, where the body
+         * stopped after 21 blocks and spent none of its saturation. */
         if (column.kind != TERRAIN_HYDROLOGY_KIND_LAND || column.ground < (float32_t)MC_WORLD_Z_SEA + 2.0f32 ||
+            column.ground > (float32_t)MC_WORLD_Z_SEA + 120.0f32 ||
             (i > 0u && fabsf(column.ground - last) > (float32_t)PS_RUN_RISE)) {
             return false;
         }

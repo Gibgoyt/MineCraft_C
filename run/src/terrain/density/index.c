@@ -63,8 +63,8 @@ static const density_knot_t DENSITY_KNOTS_RANGE_LAND[] = {
 /* From how near a column is to a range's line, 1 on the line itself, to how much of the range is there. Wide and nearly
  * straight: plan 007 phase 04's slope shaping puts the concavity on it, so it is not baked in here twice. */
 static const density_knot_t DENSITY_KNOTS_FLANK[] = {
-    {0.0f64, 0.0f64},     {0.60f64, 0.0f64},    {0.70f64, 0.06f64},  {0.80f64, 0.20f64}, {0.88f64, 0.42f64},
-    {0.9333f64, 0.64f64}, {0.9667f64, 0.82f64}, {0.99f64, 0.96f64},  {1.0f64, 1.0f64},
+    {0.0f64, 0.0f64},     {0.60f64, 0.0f64},    {0.70f64, 0.06f64}, {0.80f64, 0.20f64}, {0.88f64, 0.42f64},
+    {0.9333f64, 0.64f64}, {0.9667f64, 0.82f64}, {0.99f64, 0.96f64}, {1.0f64, 1.0f64},
 };
 /* How tall a stretch of range stands, along its length: passes, and here and there the great heights. */
 static const density_knot_t DENSITY_KNOTS_MASSIF[] = {

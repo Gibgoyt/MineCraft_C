@@ -927,8 +927,10 @@ TEST(golden_pictures_of_every_layer_at_two_zooms) {
             }
             /* Plan 007 phase 02 moved the lines onto terrain: terrain_plain is the old terrain, byte for byte. Plan 007 phase 03's
              * plateaus and ranges moved the land under it (from 0x994D128267DEFE6A and 0x494E54C56AFDACA9), and phase 04's slope
-             * shaping, knobs and gentler hills again (from 0xDA55D6047A718C14 and 0x41D71496FAFA1740). */
-            static const uint64_t TERRAIN_BEFORE_CONTOURS[2] = {0xCF0CDF4A758F698Eull, 0xE907F05516EF366Full};
+             * shaping, knobs and gentler hills again (from 0xDA55D6047A718C14 and 0x41D71496FAFA1740), and phase 06's tuning
+             * (a flatter lowland, rarer ranges, plateaus from blended broad continentalness) again (from 0xCF0CDF4A758F698E
+             * and 0xE907F05516EF366F). */
+            static const uint64_t TERRAIN_BEFORE_CONTOURS[2] = {0x9E1B261418078E24ull, 0xA533B1D63AD51BFBull};
             CHECK(strcmp(ui_atlas_layers[layer].key, "terrain_plain") != 0 || hash == TERRAIN_BEFORE_CONTOURS[z]);
             uint64_t want = 0u;
             if (!write && (!golden_lookup(table, name, &want) || want != hash)) {

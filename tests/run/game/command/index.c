@@ -525,17 +525,20 @@ static int32_t gd_tenths(float32_t celsius) {
 static void gd_tuning_check(test_context_t *t, gd_jumps_t *jumps, game_t *game) {
     const game_corner_t *const corner = game_corner_of(game);
     const float64_t *const feet = game->borrowed_player->movement.position;
+    /* The words are of the block the corner last read, which a body still sinking through the sea has left by this tick
+     * (plan 007 phase 06's land puts the last jump in the sea): that block, within one of the feet. */
+    const int32_t z = (int32_t)atomic_load(&corner->tuning_z);
+    CHECK(abs(z - (int32_t)floor(feet[2] - (float64_t)MC_WORLD_Z_SEA)) <= 1);
     climate_normals_at_t normals;
     const calendar_date_t date = game_calendar_date(game);
-    if (!CHECK(climate_normals_at(jumps->borrowed_climate, feet[0], feet[1], (float32_t)(feet[2] - MC_WORLD_Z_SEA),
-                                  (float32_t)date.day_of_year, &normals))) {
+    if (!CHECK(climate_normals_at(jumps->borrowed_climate, feet[0], feet[1], (float32_t)z, (float32_t)date.day_of_year,
+                                  &normals))) {
         return;
     }
     /* Plan 006 phase 02: the words are terrain_climate_at on the sample a column job here has, exactly, and near the
      * climate's own normals (the sample's warp is terrain's own, and it blends integers). */
     terrain_climate_sample_t sample;
     game_corner_tuning_climate(game, feet[0], feet[1], &sample);
-    const int32_t z = (int32_t)floor(feet[2] - (float64_t)MC_WORLD_Z_SEA);
     const terrain_climate_point_t point =
         terrain_climate_at(&sample, (int64_t)floor(feet[0]), (int64_t)floor(feet[1]), z);
     const uint32_t kinds = atomic_load(&corner->tuning_kinds);
@@ -641,7 +644,9 @@ TEST(three_far_jumps_each_redraw_within_fifteen_seconds) {
     jumps.t = t;
     s.tick += 40u;
     for (uint32_t j = 0u; j < GD_JUMPS; j++) {
-        gd_type(&s, j % 2u == 0u ? "/tp ~0 ~30000 ~" : "/tp ~40000 ~ ~");
+        /* Onto the ground: kept at the height it left from, plan 007 phase 06's land put the third arrival in rock under a
+         * plateau, and it was put out into a flooded cave and drowned. */
+        gd_type(&s, j % 2u == 0u ? "/tp ~0 ~30000" : "/tp ~40000 ~");
         gd_key(&s, 2u, "enter");
         jumps.enter_tick[j] = s.tick;
         s.tick += GD_JUMP_WAIT;
@@ -715,7 +720,21 @@ TEST(a_save_mid_jump_reloads_standing_and_fly_is_saved) {
     gd_ticker_t *ticker = gd_ticker(t, game);
     REQUIRE(gd_ticks(ticker, 40u));
     const float32_t health = player->survival.health;
-    REQUIRE(game_command_run(game, "/tp ~3000 ~-2000"));
+    /* A far place on dry land, read from the land (plan 007 phase 06's low lowland put 3000, -2000 from the start in a
+     * lake): east from there in steps of 64 until the column is land a block or more over the sea. */
+    int32_t east = 3000;
+    for (; east < 9000; east += 64) {
+        const terrain_hydrology_column_t column = terrain_hydrology_column_at(
+            rig.terrain->borrowed_hydrology, (int32_t)floor(player->movement.position[0]) + east,
+            (int32_t)floor(player->movement.position[1]) - 2000);
+        if (column.kind == TERRAIN_HYDROLOGY_KIND_LAND && column.ground >= (float32_t)MC_WORLD_Z_SEA + 2.0f32) {
+            break;
+        }
+    }
+    REQUIRE(east < 9000);
+    char far[64];
+    snprintf(far, sizeof(far), "/tp ~%" PRId32 " ~-2000", east);
+    REQUIRE(game_command_run(game, far));
     REQUIRE(gd_ticks(ticker, 1u)); /* the sim takes it: there, and waiting for the ground */
     REQUIRE(player->survival.arriving == PLAYER_SURVIVAL_ARRIVING_WAIT);
     const float64_t there[2] = {player->movement.position[0], player->movement.position[1]};
