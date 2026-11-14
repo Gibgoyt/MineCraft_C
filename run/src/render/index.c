@@ -489,8 +489,7 @@ void render_lod_report(const render_t *render) {
              " columns of levels 1 / 2 made from them in %.1f ms, %.1f MiB sent",
              (libc_double_t)((float64_t)render_octant_bytes_used(octants) / mib), octants->blocks_live,
              octants->block_capacity, octants->stats.octants_stored, octants->stats.octants_refused,
-             octants->octants_unchanged,
-             octants->stats.columns_assembled[0], octants->stats.columns_assembled[1],
+             octants->octants_unchanged, octants->stats.columns_assembled[0], octants->stats.columns_assembled[1],
              (libc_double_t)((float64_t)octants->stats.assemble_ns * 1.0e-6f64),
              (libc_double_t)((float64_t)octants->stats.bytes_sent / mib));
     const render_lod_t *const lod = render->borrowed_lod;

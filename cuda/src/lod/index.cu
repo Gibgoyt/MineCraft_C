@@ -15,7 +15,8 @@ typedef struct lod_turn_args_t {
     uint32_t generation;      /* 20 */
     float32_t
         spread; /* 24: how far apart, as a share of the pixel's own, two rays' starts may be for one to stand for the other */
-    uint32_t reading; /* 28: bit 0: 1 on a turn; bits 8 to 14: this frame's stamp, LOD_TURN_STAMP_MASK of a count of frames */
+    uint32_t
+        reading; /* 28: bit 0: 1 on a turn; bits 8 to 14: this frame's stamp, LOD_TURN_STAMP_MASK of a count of frames */
 } lod_turn_args_t;
 static_assert(sizeof(lod_turn_args_t) == 32);
 
@@ -254,12 +255,15 @@ static __device__ __forceinline__ bool lod_turn_owns(const traverse_camera_t *ca
     float32_t middle[3];
     lod_turn_texel_direction(texel, side, middle);
     const float32_t *const f = camera->forward, *const r = camera->right, *const u = camera->up;
-    const float32_t along = (middle[0] * f[0] + middle[1] * f[1] + middle[2] * f[2]) / (f[0] * f[0] + f[1] * f[1] + f[2] * f[2]);
+    const float32_t along =
+        (middle[0] * f[0] + middle[1] * f[1] + middle[2] * f[2]) / (f[0] * f[0] + f[1] * f[1] + f[2] * f[2]);
     if (!(along > 0.0F)) {
         return false;
     }
-    const float32_t across = (middle[0] * r[0] + middle[1] * r[1] + middle[2] * r[2]) / (r[0] * r[0] + r[1] * r[1] + r[2] * r[2]) / along;
-    const float32_t down = (middle[0] * u[0] + middle[1] * u[1] + middle[2] * u[2]) / (u[0] * u[0] + u[1] * u[1] + u[2] * u[2]) / along;
+    const float32_t across =
+        (middle[0] * r[0] + middle[1] * r[1] + middle[2] * r[2]) / (r[0] * r[0] + r[1] * r[1] + r[2] * r[2]) / along;
+    const float32_t down =
+        (middle[0] * u[0] + middle[1] * u[1] + middle[2] * u[2]) / (u[0] * u[0] + u[1] * u[1] + u[2] * u[2]) / along;
     const float32_t x = (across + 1.0F) * 0.5F * (float32_t)camera->width;
     const float32_t y = (1.0F - down) * 0.5F * (float32_t)camera->height;
     return x >= 0.0F && y >= 0.0F && (uint32_t)x == pixel_x && (uint32_t)y == pixel_y;
@@ -270,12 +274,11 @@ static __device__ __forceinline__ bool lod_turn_owns(const traverse_camera_t *ca
  * its middle falls in (lod_turn_owns), and is read only on a later frame, by the stamp of the frame that wrote it in the top of its hit's sun
  * byte. Before, any pixel of the texel wrote it, the last one in won, and a pixel could read what another wrote that same frame, so a settled
  * row that turns (bench_world's orbits) drew a different picture each run. */
-static __device__ __forceinline__ void lod_far_ray(const lod_view_t *view, const lod_reach_t *bands,
-                                                   const lod_origin_t *origin, const float32_t guarded[3],
-                                                   float32_t t_from, bool shadows, const float32_t sun[3],
-                                                   const lod_turn_args_t *turn, lod_hit_t *out,
-                                                   traverse_counts_t *counts, uint32_t pixel,
-                                                   const traverse_camera_t *camera, uint32_t pixel_x, uint32_t pixel_y) {
+static __device__ __forceinline__ void
+lod_far_ray(const lod_view_t *view, const lod_reach_t *bands, const lod_origin_t *origin, const float32_t guarded[3],
+            float32_t t_from, bool shadows, const float32_t sun[3], const lod_turn_args_t *turn, lod_hit_t *out,
+            traverse_counts_t *counts, uint32_t pixel, const traverse_camera_t *camera, uint32_t pixel_x,
+            uint32_t pixel_y) {
     if (turn->texels == nullptr) {
         lod_hit_write(view, bands, origin, guarded, t_from, true, shadows, sun, out, counts, pixel);
         return;
@@ -287,7 +290,8 @@ static __device__ __forceinline__ void lod_far_ray(const lod_view_t *view, const
     const uint4 raw = *slot;
     memcpy(&texel, &raw, sizeof(texel));
     const bool current = texel.generation == turn->generation;
-    const bool read = (turn->reading & 1u) != 0u && current && ((uint32_t)texel.hit.sun & LOD_TURN_STAMP_MASK) != stamp &&
+    const bool read = (turn->reading & 1u) != 0u && current &&
+                      ((uint32_t)texel.hit.sun & LOD_TURN_STAMP_MASK) != stamp &&
                       fabsf(texel.from - t_from) <= turn->spread * t_from;
     lod_turn_count(turn->tally, read);
     if (read) {
@@ -368,8 +372,8 @@ lod_frame_kernel_body(const lod_view_t *view, const traverse_view_t *fine, const
     const float32_t sun[3] = {sun_x, sun_y, sun_z};
     const float32_t t_from = fminf(fminf(t_out, t_end), lod_square_exit(fine, 0u, &origin, guarded));
     const lod_reach_t bands = {fine->band_base, factor, (float32_t)MC_TUNE_RENDER_LOD_NEAR_GUARANTEE, {0}};
-    lod_far_ray(view, &bands, &origin, guarded, t_from, shadows, sun, turn, &out[index], counts, (uint32_t)index, camera,
-                pixel_x, pixel_y);
+    lod_far_ray(view, &bands, &origin, guarded, t_from, shadows, sun, turn, &out[index], counts, (uint32_t)index,
+                camera, pixel_x, pixel_y);
 }
 
 __global__ void lod_frame_kernel(const lod_view_t view, const traverse_view_t fine, const traverse_camera_t camera,

@@ -154,7 +154,7 @@ typedef struct lod_turn_cache_t {
     uint8_t shadows;                      /* 68: this generation's lod_light_t.shadows */
     uint8_t turning;                      /* 69: the last frame was a turn, and read texels */
     uint8_t cleared;                      /* 70: the block has been zeroed on the card */
-    uint8_t stamp;                        /* 71: frames, LOD_TURN_STAMP_MASK of them: a texel is read only on a frame after it was written */
+    uint8_t stamp; /* 71: frames, LOD_TURN_STAMP_MASK of them: a texel is read only on a frame after it was written */
 } lod_turn_cache_t;
 static_assert(sizeof(lod_turn_cache_t) == 72);
 static_assert(alignof(lod_turn_cache_t) == 8);

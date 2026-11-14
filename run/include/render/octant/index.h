@@ -80,18 +80,20 @@ static_assert(sizeof(render_octant_watch_t) == 64);
 typedef struct render_octant_t {
     render_octant_table_t tables[RENDER_OCTANT_LEVELS_MAX]; /* 0 */
     render_encode_octant_t *borrowed_blocks;                /* 72: block_capacity */
-    int32_t *borrowed_changed;   /* 80: x, y pairs of level 0 columns: changed_capacity of them */
-    uint32_t block_capacity;     /* 88 */
-    uint32_t block_carved;       /* 92: never handed out from here on */
-    uint32_t block_free;         /* 96: 1 + a block given back, whose first word is the next, or 0 */
-    uint32_t blocks_live;        /* 100 */
-    uint32_t changed_capacity;   /* 104 */
-    uint32_t changed_count;      /* 108 */
-    uint8_t changed_over;        /* 112: the list ran over: every column may have changed */
-    uint8_t arriving;            /* 113: the upload is part way through a view: level 0's columns may be missing sections it holds */
-    uint8_t _pad0[2];            /* 114 */
-    uint32_t changes_said;       /* 116: level 0 columns said to have changed, all told; wraps */
-    uint64_t octants_unchanged;  /* 120: level 0 sections sent again with the octant the store held: not said to have changed */
+    int32_t *borrowed_changed; /* 80: x, y pairs of level 0 columns: changed_capacity of them */
+    uint32_t block_capacity;   /* 88 */
+    uint32_t block_carved;     /* 92: never handed out from here on */
+    uint32_t block_free;       /* 96: 1 + a block given back, whose first word is the next, or 0 */
+    uint32_t blocks_live;      /* 100 */
+    uint32_t changed_capacity; /* 104 */
+    uint32_t changed_count;    /* 108 */
+    uint8_t changed_over;      /* 112: the list ran over: every column may have changed */
+    uint8_t
+        arriving; /* 113: the upload is part way through a view: level 0's columns may be missing sections it holds */
+    uint8_t _pad0[2];      /* 114 */
+    uint32_t changes_said; /* 116: level 0 columns said to have changed, all told; wraps */
+    uint64_t
+        octants_unchanged; /* 120: level 0 sections sent again with the octant the store held: not said to have changed */
     render_octant_stats_t stats; /* 128 */
     render_octant_watch_t watch; /* 192 */
 } render_octant_t;

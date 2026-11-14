@@ -25,9 +25,10 @@ typedef enum world_map_state_t : uint8_t {
 
 /* What the map knows about one place in the table. Zero bytes are an empty slot. */
 typedef struct world_map_slot_t {
-    int32_t chunk_x;       /* 0 */
-    int32_t chunk_y;       /* 4 */
-    uint32_t generation;   /* 8: counts every request for this slot not given back, so a new occupant is never taken for the last */
+    int32_t chunk_x; /* 0 */
+    int32_t chunk_y; /* 4 */
+    uint32_t
+        generation; /* 8: counts every request for this slot not given back, so a new occupant is never taken for the last */
     uint32_t active_index; /* 12: its place in borrowed_active, unless empty */
     uint8_t state;         /* 16: world_map_state_t */
     uint8_t leaving;       /* 17: READY and out of range: see world_map_stream_leaving */
