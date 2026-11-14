@@ -925,7 +925,16 @@ static gpu_status_t render_lod_octant_build(render_lod_t *lod, uint32_t index, i
             (void)render_encode_section_octant(&source, &octant);
             render_octant_section_set(octants, shift, slot, section, &octant);
         }
-        render_lod_shift_column_changed(lod, shift + 1u, job.chunk_x >> 1, job.chunk_y >> 1);
+        /* The level above is made again only if it can be made from octants now. One made from terrain does not read this level, so making it
+         * again on a worker would send the same bytes, some frames later by however busy the workers are: at a still eye, with the land
+         * changing under level 0, that moved the far field's revision on at frames that differed from run to run, and with it what the turn
+         * cache held (plan 009 phase 08's follow-up). An edit reaches a column made from terrain through render_lod_column_changed. */
+        const uint32_t above = render_lod_level_of_shift(lod, shift + 1u);
+        uint32_t above_slots[4];
+        if (above != UINT32_MAX &&
+            render_lod_octant_ready(lod, &lod->levels[above], job.chunk_x >> 1, job.chunk_y >> 1, above_slots)) {
+            render_lod_shift_column_changed(lod, shift + 1u, job.chunk_x >> 1, job.chunk_y >> 1);
+        }
     }
     octants->stats.assemble_ns += (uint64_t)(time_now_ns() - started_ns);
     return GPU_STATUS_OK;
@@ -1232,7 +1241,6 @@ gpu_status_t render_lod_frame(render_lod_t *lod, const float64_t position[3]) {
             return status;
         }
     }
-    render_lod_revise(lod);
     render_lod_turn_take(lod);
     return GPU_STATUS_OK;
 }
@@ -1251,6 +1259,9 @@ bool render_lod_idle(const render_lod_t *lod) {
 }
 
 void render_lod_scene(render_lod_t *lod, lod_scene_t *out) {
+    /* Once a picture, not once a render_lod_frame: a run with no threads settles before each picture with as many of those as its workers
+     * take, so counting them moved the revision on at pictures that differed from run to run (plan 009 phase 08's follow-up). */
+    render_lod_revise(lod);
     memset(out, 0, sizeof(*out));
     out->borrowed_hits = lod->borrowed_hits;
     out->level_count = lod->level_count;

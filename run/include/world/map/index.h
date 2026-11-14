@@ -27,7 +27,7 @@ typedef enum world_map_state_t : uint8_t {
 typedef struct world_map_slot_t {
     int32_t chunk_x;       /* 0 */
     int32_t chunk_y;       /* 4 */
-    uint32_t generation;   /* 8: counts every request for this slot, so a new occupant is never taken for the last */
+    uint32_t generation;   /* 8: counts every request for this slot not given back, so a new occupant is never taken for the last */
     uint32_t active_index; /* 12: its place in borrowed_active, unless empty */
     uint8_t state;         /* 16: world_map_state_t */
     uint8_t leaving;       /* 17: READY and out of range: see world_map_stream_leaving */
@@ -168,6 +168,10 @@ column_t *world_map_stream_commit(world_map_t *map, const world_map_request_t *r
 
 /* For a request that will never come back. False if it is out of date. If still wanted, it will be offered again. */
 bool world_map_stream_cancel(world_map_t *map, const world_map_request_t *request);
+
+/* For a request just taken that went nowhere: no job or copy has it. As cancel, and the slot's generation goes back too, so a column offered and
+ * not taken is no load, and the same world settles to the same generations however busy the workers were. False if it is out of date. */
+bool world_map_stream_give_back(world_map_t *map, const world_map_request_t *request);
 
 /* Offers a column that is out of range, or returns false if there is none. It goes on being offered until unloaded, and
  * stops being offered if the center comes back before then. Whoever needs a last look at it takes it now: this is how an

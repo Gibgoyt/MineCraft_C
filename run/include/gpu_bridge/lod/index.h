@@ -109,8 +109,15 @@ enum : uint32_t {
  * jitter, which moves it by under one. A frame that is not a turn traces as before, so a still camera's picture is the same to the bit. */
 #define LOD_TURN_PIXELS F32(2.0)
 
+/* A texel keeps its hit's sun in the top bit of the sun byte and the stamp of the frame that wrote it in the rest (plan 009 phase 08's
+ * follow-up): lod_hit_t's sun is only ever LOD_SUN_SEEN or LOD_SUN_HIDDEN. */
+enum : uint32_t {
+    LOD_TURN_SUN_BIT = 0x80u,
+    LOD_TURN_STAMP_MASK = 0x7Fu,
+};
+
 /* One direction's answer: what the far ray from the generation's eye found, where it started, and under which generation. 16 bytes, read
- * and written whole. */
+ * and written whole. Written once in a generation, by one pixel. */
 typedef struct lod_turn_texel_t {
     lod_hit_t hit;       /* 0 */
     float32_t from;      /* 8: blocks from the eye where the ray started looking */
@@ -147,7 +154,7 @@ typedef struct lod_turn_cache_t {
     uint8_t shadows;                      /* 68: this generation's lod_light_t.shadows */
     uint8_t turning;                      /* 69: the last frame was a turn, and read texels */
     uint8_t cleared;                      /* 70: the block has been zeroed on the card */
-    uint8_t _pad0;                        /* 71 */
+    uint8_t stamp;                        /* 71: frames, LOD_TURN_STAMP_MASK of them: a texel is read only on a frame after it was written */
 } lod_turn_cache_t;
 static_assert(sizeof(lod_turn_cache_t) == 72);
 static_assert(alignof(lod_turn_cache_t) == 8);
@@ -162,7 +169,7 @@ static_assert(offsetof(lod_turn_cache_t, revision) == 64);
 static_assert(offsetof(lod_turn_cache_t, shadows) == 68);
 static_assert(offsetof(lod_turn_cache_t, turning) == 69);
 static_assert(offsetof(lod_turn_cache_t, cleared) == 70);
-static_assert(offsetof(lod_turn_cache_t, _pad0) == 71);
+static_assert(offsetof(lod_turn_cache_t, stamp) == 71);
 
 static inline uint64_t lod_turn_cache_bytes(uint32_t side) {
     return (uint64_t)LOD_TURN_FACES * side * side * sizeof(lod_turn_texel_t) + sizeof(lod_turn_tally_t);

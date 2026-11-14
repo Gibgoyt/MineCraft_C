@@ -12,7 +12,7 @@
 - `world_map_slot_in_window`, `world_map_slot_of`: a chunk's slot, with no division.
 - `world_map_column_at`: the live column at a chunk, or `nullptr`.
 - `world_map_set_center`, `world_map_set_view_radius`: move the window, and how far columns are wanted.
-- `world_map_stream_take`, `world_map_stream_commit`, `world_map_stream_cancel`: requests for the nearest missing columns, and what comes back.
+- `world_map_stream_take`, `world_map_stream_commit`, `world_map_stream_cancel`, `world_map_stream_give_back`: requests for the nearest missing columns, and what comes back.
 - `world_map_stream_leaving`, `world_map_unload`: columns out of range, and ending one.
 - `world_map_block_get`, `world_map_voxel_get`, `world_map_light_get`: one voxel at world coordinates, or why not. The block id alone, or with its state: see `column_block_get`.
 
@@ -29,7 +29,7 @@ Nothing here builds a column. It says what is wanted, nearest first by circular 
 
 1. `world_map_stream_take` gives requests, as many as the caller has room for. Each place is then `PENDING`.
 2. `world_map_stream_commit` turns a request that came back into an empty live column, ready to fill, or returns `nullptr` if the center has moved on, so that a slow job's result is simply dropped. A request carries the slot's generation, so an old one is never taken for a new occupant.
-3. `world_map_stream_cancel` is for one that will never come back. If still wanted, it will be offered again.
+3. `world_map_stream_cancel` is for one that will never come back. If still wanted, it will be offered again. `world_map_stream_give_back` is for one just taken that went nowhere, no job holding it: its slot's generation goes back too. The game gives back a column it is offered but cannot start yet (its climate tiles not ready, no worker of its share free, the shared queue full), which happens more or less often with how busy the workers are; with cancel each of those used a generation, so the same world settled to different generations from run to run, and the AO cache, which keys a face by its column's generation, drew a settled picture differently each time with the far field on (plan 009 phase 08's follow-up).
 4. `world_map_stream_leaving` offers each live column out of range until it is unloaded, so that the caller can save it. It stops offering one the center has come back to. `world_map_unload` ends it, and a place it held is offered again.
 
 Columns stay `WORLD_MAP_KEEP_EXTRA` chunks past the view radius, so that walking to and fro over one line does not stream the same ones out and in. The table caps that: nothing outside the window is kept, since its slot belongs to someone else.

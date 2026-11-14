@@ -285,6 +285,26 @@ TEST(a_cancelled_request_is_offered_again_and_the_old_one_is_out_of_date) {
     map_test_end(test);
 }
 
+/* Plan 009 phase 08's follow-up: a request given back went nowhere, so the slot hands out the same generation again, and however often a column
+ * is offered and given back, it loads at the generation it would have had at once. */
+TEST(a_request_given_back_leaves_the_generation_as_it_was) {
+    map_test_t *const test = map_test_begin(t, 2u, 0, 0);
+    world_map_t *const map = &test->map;
+    world_map_request_t first;
+    REQUIRE(world_map_stream_take(map, &first, 1u) == 1u);
+    for (uint32_t i = 0u; i < 5u; i++) {
+        CHECK(world_map_stream_give_back(map, &first));
+        CHECK_EQ_U64(map->pending_count, 0u);
+        CHECK(!world_map_stream_give_back(map, &first));
+        REQUIRE(world_map_stream_take(map, &first, 1u) == 1u);
+    }
+    world_map_request_t other;
+    REQUIRE(world_map_stream_take(map, &other, 1u) == 1u);
+    CHECK_EQ_U64(first.generation, other.generation); /* both slots' first load */
+    CHECK(world_map_stream_commit(map, &first) != nullptr);
+    map_test_end(test);
+}
+
 TEST(a_request_the_center_has_left_behind_is_dropped) {
     map_test_t *const test = map_test_begin(t, 5u, 0, 0);
     world_map_t *const map = &test->map;

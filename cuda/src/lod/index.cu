@@ -15,7 +15,7 @@ typedef struct lod_turn_args_t {
     uint32_t generation;      /* 20 */
     float32_t
         spread; /* 24: how far apart, as a share of the pixel's own, two rays' starts may be for one to stand for the other */
-    uint32_t reading; /* 28: 1 on a turn */
+    uint32_t reading; /* 28: bit 0: 1 on a turn; bits 8 to 14: this frame's stamp, LOD_TURN_STAMP_MASK of a count of frames */
 } lod_turn_args_t;
 static_assert(sizeof(lod_turn_args_t) == 32);
 
@@ -246,35 +246,65 @@ static __device__ __forceinline__ void lod_turn_count(lod_turn_tally_t *tally, b
     }
 }
 
-/* The far ray of one pixel, from t_from: with the turn cache, its direction's texel if this is a turn and the texel stands for it, or traced
- * and written to the texel. Two pixels of a frame may write one texel; their answers are a texel apart, and either does. */
+/* Whether this pixel is the one a texel's middle falls in on this frame's camera: one pixel or none for each texel, worked out alike by every
+ * pixel, so at most one pixel of a frame writes a texel. The camera's right and up are taken as square to forward, as the frame makes them; were
+ * they not, it would be another pixel, still only one. */
+static __device__ __forceinline__ bool lod_turn_owns(const traverse_camera_t *camera, uint32_t texel, uint32_t side,
+                                                     uint32_t pixel_x, uint32_t pixel_y) {
+    float32_t middle[3];
+    lod_turn_texel_direction(texel, side, middle);
+    const float32_t *const f = camera->forward, *const r = camera->right, *const u = camera->up;
+    const float32_t along = (middle[0] * f[0] + middle[1] * f[1] + middle[2] * f[2]) / (f[0] * f[0] + f[1] * f[1] + f[2] * f[2]);
+    if (!(along > 0.0F)) {
+        return false;
+    }
+    const float32_t across = (middle[0] * r[0] + middle[1] * r[1] + middle[2] * r[2]) / (r[0] * r[0] + r[1] * r[1] + r[2] * r[2]) / along;
+    const float32_t down = (middle[0] * u[0] + middle[1] * u[1] + middle[2] * u[2]) / (u[0] * u[0] + u[1] * u[1] + u[2] * u[2]) / along;
+    const float32_t x = (across + 1.0F) * 0.5F * (float32_t)camera->width;
+    const float32_t y = (1.0F - down) * 0.5F * (float32_t)camera->height;
+    return x >= 0.0F && y >= 0.0F && (uint32_t)x == pixel_x && (uint32_t)y == pixel_y;
+}
+
+/* The far ray of one pixel, from t_from: with the turn cache, its direction's texel if this is a turn and the texel stands for it, or traced.
+ * The same picture whatever order the pixels run in (plan 009 phase 08's follow-up): a texel is written once in a generation, by the one pixel
+ * its middle falls in (lod_turn_owns), and is read only on a later frame, by the stamp of the frame that wrote it in the top of its hit's sun
+ * byte. Before, any pixel of the texel wrote it, the last one in won, and a pixel could read what another wrote that same frame, so a settled
+ * row that turns (bench_world's orbits) drew a different picture each run. */
 static __device__ __forceinline__ void lod_far_ray(const lod_view_t *view, const lod_reach_t *bands,
                                                    const lod_origin_t *origin, const float32_t guarded[3],
                                                    float32_t t_from, bool shadows, const float32_t sun[3],
                                                    const lod_turn_args_t *turn, lod_hit_t *out,
-                                                   traverse_counts_t *counts, uint32_t pixel) {
+                                                   traverse_counts_t *counts, uint32_t pixel,
+                                                   const traverse_camera_t *camera, uint32_t pixel_x, uint32_t pixel_y) {
     if (turn->texels == nullptr) {
         lod_hit_write(view, bands, origin, guarded, t_from, true, shadows, sun, out, counts, pixel);
         return;
     }
-    uint4 *const slot = (uint4 *)(void *)&turn->texels[lod_turn_texel_of(guarded, turn->side)];
+    const uint32_t index = lod_turn_texel_of(guarded, turn->side);
+    uint4 *const slot = (uint4 *)(void *)&turn->texels[index];
+    const uint32_t stamp = (turn->reading >> 8) & LOD_TURN_STAMP_MASK;
     lod_turn_texel_t texel;
-    bool read = false;
-    if (turn->reading != 0u) {
-        const uint4 raw = *slot;
-        memcpy(&texel, &raw, sizeof(texel));
-        read = texel.generation == turn->generation && fabsf(texel.from - t_from) <= turn->spread * t_from;
-    }
+    const uint4 raw = *slot;
+    memcpy(&texel, &raw, sizeof(texel));
+    const bool current = texel.generation == turn->generation;
+    const bool read = (turn->reading & 1u) != 0u && current && ((uint32_t)texel.hit.sun & LOD_TURN_STAMP_MASK) != stamp &&
+                      fabsf(texel.from - t_from) <= turn->spread * t_from;
     lod_turn_count(turn->tally, read);
-    if (!read) {
-        lod_hit_write(view, bands, origin, guarded, t_from, true, shadows, sun, &texel.hit, counts, pixel);
+    if (read) {
+        texel.hit.sun = (texel.hit.sun & LOD_TURN_SUN_BIT) != 0u ? (uint8_t)LOD_SUN_SEEN : (uint8_t)LOD_SUN_HIDDEN;
+        *out = texel.hit;
+        return;
+    }
+    lod_hit_write(view, bands, origin, guarded, t_from, true, shadows, sun, out, counts, pixel);
+    if (!current && lod_turn_owns(camera, index, turn->side, pixel_x, pixel_y)) {
+        texel.hit = *out;
+        texel.hit.sun = (uint8_t)((out->sun != LOD_SUN_HIDDEN ? LOD_TURN_SUN_BIT : 0u) | stamp);
         texel.from = t_from;
         texel.generation = turn->generation;
-        uint4 raw;
-        memcpy(&raw, &texel, sizeof(raw));
-        *slot = raw;
+        uint4 written;
+        memcpy(&written, &texel, sizeof(written));
+        *slot = written;
     }
-    *out = texel.hit;
 }
 
 /* The second: the far rays lod_past_kernel asked for, and for one past a see-through surface only if shade's own ray, followed as shade
@@ -338,7 +368,8 @@ lod_frame_kernel_body(const lod_view_t *view, const traverse_view_t *fine, const
     const float32_t sun[3] = {sun_x, sun_y, sun_z};
     const float32_t t_from = fminf(fminf(t_out, t_end), lod_square_exit(fine, 0u, &origin, guarded));
     const lod_reach_t bands = {fine->band_base, factor, (float32_t)MC_TUNE_RENDER_LOD_NEAR_GUARANTEE, {0}};
-    lod_far_ray(view, &bands, &origin, guarded, t_from, shadows, sun, turn, &out[index], counts, (uint32_t)index);
+    lod_far_ray(view, &bands, &origin, guarded, t_from, shadows, sun, turn, &out[index], counts, (uint32_t)index, camera,
+                pixel_x, pixel_y);
 }
 
 __global__ void lod_frame_kernel(const lod_view_t view, const traverse_view_t fine, const traverse_camera_t camera,
@@ -436,6 +467,7 @@ static gpu_status_t lod_turn_begin(gpu_error_t *error, lod_turn_cache_t *cache, 
     const float32_t dot = f[0] * g[0] + f[1] * g[1] + f[2] * g[2];
     const float32_t pixel = 2.0F * up / (fmaxf(f_length, 1e-20F) * (float32_t)camera->height);
     cache->turning = g_length > 0.0F && (dot < 0.0F || sine > LOD_TURN_PIXELS * pixel) ? 1u : 0u;
+    cache->stamp = (uint8_t)((cache->stamp + 1u) & LOD_TURN_STAMP_MASK);
     for (uint32_t i = 0u; i < 3u; i += 1u) {
         cache->forward[i] = f[i];
     }
@@ -445,7 +477,7 @@ static gpu_status_t lod_turn_begin(gpu_error_t *error, lod_turn_cache_t *cache, 
                            cache->side,
                            cache->generation,
                            0.0F,
-                           cache->turning};
+                           (uint32_t)cache->turning | ((uint32_t)cache->stamp << 8)};
     return GPU_STATUS_OK;
 }
 

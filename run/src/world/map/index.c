@@ -240,6 +240,15 @@ bool world_map_stream_cancel(world_map_t *map, const world_map_request_t *reques
     return true;
 }
 
+bool world_map_stream_give_back(world_map_t *map, const world_map_request_t *request) {
+    if (!world_map_stream_cancel(map, request)) {
+        return false;
+    }
+    /* The next take of this slot hands out the same generation again: this request was the only one with it, and it went nowhere. */
+    map->borrowed_slots[request->slot].generation--;
+    return true;
+}
+
 bool world_map_stream_leaving(world_map_t *map, world_map_leaving_t *out) {
     if (map->leaving_count == 0u) {
         return false;

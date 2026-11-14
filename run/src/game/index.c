@@ -1164,7 +1164,7 @@ static void game_columns_request(game_t *game) {
         const int32_t west = request.chunk_x * (int32_t)COLUMN_SIZE, south = request.chunk_y * (int32_t)COLUMN_SIZE;
         if (climate != nullptr && !climate_area_ready(climate, west, south, west + (int32_t)COLUMN_SIZE - 1,
                                                       south + (int32_t)COLUMN_SIZE - 1)) {
-            (void)world_map_stream_cancel(map, &request);
+            (void)world_map_stream_give_back(map, &request);
             atomic_fetch_add_explicit(&game_fill_of(game)->climate_waits, 1u, memory_order_relaxed);
             return;
         }
@@ -1175,14 +1175,14 @@ static void game_columns_request(game_t *game) {
         const bool near = dx >= -(int32_t)GAME_NEAR_CHUNKS && dx <= (int32_t)GAME_NEAR_CHUNKS &&
                           dy >= -(int32_t)GAME_NEAR_CHUNKS && dy <= (int32_t)GAME_NEAR_CHUNKS;
         if (!near && game_columns_leave_far_room(game)) {
-            (void)world_map_stream_cancel(map,
-                                          &request); /* offered again next step, when a worker of its share is free */
+            (void)world_map_stream_give_back(map,
+                                             &request); /* offered again next step, when a worker of its share is free */
             return;
         }
         job->near = near ? 1u : 0u;
         if (!job_try_submit_at(game->borrowed_job, &game->group, near ? JOB_PRIORITY_NEAR : JOB_PRIORITY_COLUMN,
                                game_column_job_run, job)) {
-            (void)world_map_stream_cancel(map, &request); /* the shared queue is full: it is offered again next step */
+            (void)world_map_stream_give_back(map, &request); /* the shared queue is full: it is offered again next step */
             return;
         }
         job->in_use = 1u;
