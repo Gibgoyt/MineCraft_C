@@ -1,6 +1,6 @@
 # 009-ahmed-bohemoth-game-engine-optimizations — phase 8: The final check
 
-**Status:** measured and checked; most targets missed (said plainly below); every gate is still Ahmed's   (updated 2026-11-14)
+**Status:** measured and checked; most targets missed (said plainly below); every gate is still Ahmed's. Follow-up: Issues 4, 5 and 7's release failure fixed (Issues found, "Follow-up")   (updated 2026-11-14)
 
 Read first: the phase 00 file, then the master: sections 7 (targets), 8 (tests), 9 (risks) and 12 (open questions). Then every earlier phase file's Results, Gate answers and Issues found, and `bench/world/README.md`, "Reading these numbers".
 
@@ -99,7 +99,7 @@ A level 1 column from octants is **12.7 %** of the bytes of the blocks under it,
 ## Todo
 
 - [x] Ahmed's game is closed before any card work (`pgrep -af 'build/release/bin/minecraft_c'` prints nothing), or he is asked and waited for
-- [ ] Debug suite, sanitize suite, release build: all pass. Debug 177/177 and the release build pass. The release suite is 176/177: `run_render_distance_live`'s `rd_64` checks fail on plan 007 phase 04's land (Issues found 7). Sanitize was not run (Issues found 8)
+- [ ] Debug suite, sanitize suite, release build: all pass. Debug 177/177 and the release build pass. The release suite is 176/177: `run_render_distance_live`'s `rd_64` checks fail on plan 007 phase 04's land (Issues found 7). Sanitize was not run (Issues found 8). The follow-up fixed that failure (Issues found 10, F2)
 - [x] `bench_world` full run at 32 and at `--render-distance 64`, recorded with the commit and `MC_TUNE_HASH`
 - [x] `ahmed_slope/night-64` and `day-64` with `--steps`; the targets table filled, each row met or missed said plainly. The spot is on new land, so the comparison is not like with like (Targets)
 - [x] Near-guarantee test on every place at the chosen E, FOV 70 and 30, render scale 100 and 75. `render_feature_lod_bands` covers E 2 and 8 at FOV 70 and 30. Render scale 75 at E 2 is E 2.67 to the bands, which falls between the two (Issues found 3)
@@ -161,6 +161,12 @@ Appended as they land:
 - `0701b816` Record the final rows at Ahmed's x and y on plan 007's land, in `bench/world/slope/history.tsv`.
 - this branch, after it: bench_world's final rows at 32 and 64, in `bench/world/history.tsv`; and this file.
 - Dropped in the rebase: my fix to `run_terrain_feature_own`'s 23 KiB frame in the release build. Plan 008 phase 07 landed the same fix first (`d0eb3162`).
+
+### Follow-up (2026-11-14, on `main` at `c30f6210`)
+
+- `5ecd6bb8` Stop plan 009's pyramid remaking far columns at a still eye, and keep a far level whole when the render distance goes up.
+- `16253100` Make the far field's settled picture the same from run to run.
+- this commit: this file.
 
 ## Issues found
 
@@ -255,3 +261,69 @@ The phase's Verification lists the sanitize preset. It was not run: `/home` had 
 ### 9. The disk
 
 `/tmp`'s quota filled once during this phase (the shared scratchpad held 19 GiB) and lost one command's output. The orchestrator cleared it. `/home` is at 94 %.
+
+### 10. Follow-up: Issues 4, 5 and 7's release failure (2026-11-14)
+
+On `main` at `f78cdee8`, then rebased onto `c30f6210` (plan 007 phase 05's basins). Each problem was traced with counters printed once a second or once a picture (taken out again before the commits), not guessed.
+
+#### F1. The pyramid remade columns at a still eye (Issue 5, plan 008 phase 07's finding 2): fixed
+
+**Cause.** Not the pool: at the spot -80 134 418 (seed 14148492376765118422, render distance 64) no column had no room, and the octant store refused nothing. A count of what marked each level 1 column stale showed that nearly all of it came from the octant store saying a level 0 column had changed, and that **9 in 10 of those level 0 sections came with the very octant the store already held**. The upload sends a section again whenever it is published again: a neighbour's load, a tick that leaves a block as it was, light. Each one remade the level 1 column over it from octants, and that remade the level 2 column over it, from octants or on a worker. At the still eye that was about 120 sections a second in a debug build, for ever. Two more causes made it worse while level 0 loads:
+
+- A column is in level 0's table, all air, from the moment its view is taken, and its sections come over that frame and the next. A level 1 column was made from it at once, and then again as each section came.
+- A level 1 column made from octants marked the level 2 column over it even when that one is made from terrain, which does not read level 1: so a worker made the same bytes again.
+
+**Fix** (`5ecd6bb8`, `16253100`):
+
+- `render_octant_section_set` does not store or push a level 0 section whose octant it already holds (`octant_holds`; counted in `render_octant_t.octants_unchanged`, and in `render_lod_report`'s line).
+- The upload says at the end of each frame whether it is part way through a view (`render_octant_arriving_set`), and level 1 is made from level 0 only between views. An edit's view goes in one frame, so `an_edit_reaches_level_1_and_level_2_within_100_ms` still holds (22.6 ms and 23.3 ms in release).
+- The level above is marked only when it can be made from octants now (`render_lod_octant_build`).
+
+**What is left at a still eye is real.** The land changes there: grass under the generator's trees turns to dirt (the octant's top block goes from `grass_block` to `dirt`, 39 of 43 changed voxels sampled), and each such column remakes one level 1 and one level 2 column, by design, so that an edit reaches the far field at once. So a still camera does not reach exactly zero sends; it reaches **two far columns for each level 0 column that really changed**. That is what the new test holds, rather than zero.
+
+**Test.** `run_render_distance_live`'s `a_still_eye_stops_sending_far_columns`: settled at render distance 64 and 1920 x 1080, 8 s and then 4 s still on the game's threads, read with the threads stopped. In the last 4 s at most 2 far columns per level 0 column that changed (`render_octant_t.changes_said`), plus 4 on their way. And `run_render_lod`'s `a_section_sent_again_unchanged_is_no_change`, the store on its own.
+
+**Numbers.**
+
+| | Before | After |
+|---|---|---|
+| Debug `bench_world_slope` at -80 134 418, rd 64 (same build but for the fix) | 4590 / 2363 columns of levels 1 / 2 from octants, 1880 MiB sent from them | 2643 / 888 and 899 MiB with the first fix only |
+| Release (profile before, from Issue 5) `bench_world_slope` at the spot, rd 64, 148 to 149 MHz | 5109 / 2978 columns from octants, 1.9 GiB in a 34 s run | **1427 / 738** columns, **544 MiB** from octants, 674 MiB from the far field in all, in a 26.8 s run; picture hash `9BFBCD0A9FB9149B`, the same as before the fix |
+| The still test, release, default seed, 1050 to 1575 MHz | (not measurable before: the store had no count of real changes) | 58 far columns in the first 8 s after settling, then **28 for 14 real level 0 changes** in 4 s; 348 sections came again unchanged and sent nothing |
+
+Of the 1427 level 1 columns, about 800 are the first making of each column over level 0; the rest are real changes while the land loads (neighbours' sections that do change an octant).
+
+#### F2. Release `run_render_distance_live`'s `rd_64` and `rd_64_again` (Issue 7): fixed, checks not loosened
+
+**Cause.** Not the churn: with F1 alone the numbers did not move (rd_64 50 %, rd_64_again -108 %). A count of each level's columns every 250 ms showed that every render distance change **made level 2 (32 to 64) or level 1 (16 to 64) again from nothing**. At 640 x 360 the bands are 128, 257, 514 and 1028 blocks. `render_lod_plan_by_bands` cut a level's far edge at the render distance: level 2 at 512 blocks at render distance 32 is 10 columns each way, at 64 it reaches 514 and is 11; level 1 at 16 (256 blocks) is 10, at 64 (257) 11. A level whose radius changes is not adopted by `render_replan_lod`, so the whole level was made again on workers (level 2's jungle columns at about 48 ms each, 3 to 4 s), and meanwhile the coarser level, which comes first, drew its band: in the shots a mountain on the horizon at 1 s that is larger than in the last picture, so the picture moved away and back.
+
+**Fix** (`5ecd6bb8`). A band that ends within one of its own columns past the render distance is planned to its end. Levels 1 and 2 are then the same at 16, 32 and 64 at 360 rows, and a change of render distance keeps them. Elsewhere nothing changes: at 1080 rows level 1 ends at 771 blocks and level 2 at 1542, far from 512 and 1024. It costs one column each way of table and pool in those cases. `run_render_lod`'s plan test holds it.
+
+**Result.** Release, 1575 MHz at the end: `rd_64` 100 % of the change by 1 s (was 50 %), all drawn at 1.17 s (was 4.23); `rd_64_again` 73 % by 1 s (was -108 %), all drawn at 3.70 s (was 5.49). The whole test passes.
+
+Not done, and worth its own phase: a change that does change a level's radius (at 1080 rows, 32 to 64 makes level 1 go from 18 to 27 columns each way) still makes it all again. Adopting a level of another radius means moving its pool's slabs into a larger pool on the card.
+
+#### F3. `jungle/orbit` and `plains/orbit` hashes changed from run to run with the far field on (Issue 4): fixed
+
+**Cause.** Not which columns come from octants: digests of every level's table (each column's place, top and section hashes) were the same in every run, as were the shown squares. Four other things were not:
+
+1. **Map generations.** The game gave back a column it could not start yet (climate tiles not ready, no worker of its share, the shared queue full) with `world_map_stream_cancel`, which uses a generation of the slot each time. How often that happens depends on how busy the workers are, and the far field's jobs make them busier, so the same world settled to other generations (a digest of them differed run to run with the far field on, and matched with it off). The AO cache keys a face by its column's generation, so its slots, and so its first guesses, moved. Fix: `world_map_stream_give_back`, which also puts the generation back, for a request that went nowhere. The map's random walk test still holds, and `a_request_given_back_leaves_the_generation_as_it_was` is new.
+2. **Level 2 remade on a worker** for nothing (F1's third cause), at a frame set by the workers.
+3. **The far field's revision counted `render_lod_frame` calls.** A run with no threads settles before each picture with as many of those as its workers take, so the revision moved at different pictures. It now moves once a picture, in `render_lod_scene`.
+4. **The turn cache's races.** Every pixel of a texel wrote it and the last one in won, and a pixel could read what another wrote in the same frame (its comment said "either does"). Now one pixel owns each texel on a frame (the one the texel's middle falls in, worked out alike by every pixel), it writes the texel only when it holds nothing of this generation, and a texel is read only on a later frame, by a 7-bit stamp in the top of its hit's sun byte (`LOD_TURN_STAMP_MASK`). A still frame still traces every far ray, so a still picture is exact as before.
+
+With turn cache and AO first guess both off the hashes matched after fix 1; with the turn cache off they matched after fix 1 (the AO first guess was fix 1's); with both on they matched only after fix 4.
+
+**Result** (release): `jungle/orbit` at 32 gave `18E9EEAEBBF51AAD` twice, `plains/orbit` `BC917532F8F9F824` twice. The orbits' card times are not compared here: the card swung between 300 and 1680 MHz and 70 to 85 °C over these runs, and `bench_world`'s settled rows do not print the clock.
+
+#### F4. What was run (after the rebase onto `c30f6210`)
+
+Every heavy command through `tools/test-or-build.sh`, with Ahmed's game closed before each card run.
+
+- **Debug**, 31 of 31: `render_feature_.*` (15, `render_feature_lod_bands` among them: the near guarantee holds to the bit), `run_render_.*` (5, with `run_render_distance_live`'s three tests), `run_game.*` (10), `run_world_map`, `cuda_traverse`. Before the rebase also `run_render_lod`, `run_world_edit` and `run_settings*`.
+- **Release**, 7 of 7: `run_render_distance_live` (all three tests), `render_feature_lod`, `render_feature_lod_bands`, `render_feature_lod_shadows`, `render_feature_lod_turn`, `run_render_lod`, `run_world_map`. The 16 KiB frame limit builds clean.
+- `run_render_distance_live` in release on `c30f6210` (300 to 1365 MHz over the run): `rd_64` 100 % by 1 s, all at 1.47 s; `rd_64_again` 73 % by 1 s, all at 4.77 s; the still eye 56 far columns in its first 8 s, then 27 for 14 real changes in 4 s, with 349 sections sent again unchanged; an edit at levels 1 and 2 in 22.1 and 22.3 ms.
+- `bench_world --only =jungle/orbit` in release on `c30f6210`: `18E9EEAEBBF51AAD` twice, the hash it gave before the rebase.
+- Not run: the whole debug and release suites, and sanitize.
+
+The release build directory was deleted after the runs, for the disk.
