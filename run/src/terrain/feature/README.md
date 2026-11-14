@@ -15,6 +15,8 @@
 - `terrain_feature_cold_column`: the ice and snow below, for one column with nothing grown on it: what the far field's levels too coarse for features lay (plan 006 phase 04).
 - `terrain_feature_rain_factor`, `terrain_feature_rate_scaled`: the rain's scale of a row's rate, below, as arithmetic.
 - `terrain_feature_tree_reach`, `terrain_feature_tree_is_wide`, `terrain_feature_canvas_of`, `terrain_feature_paint_tree`, `terrain_feature_lake_depth`: the shapes, as plain arithmetic, for `tests/run/terrain/feature/` to hold to account.
+  The tree shapes (`terrain_feature_tree_reach`, `terrain_feature_tree_is_wide`, `terrain_feature_paint_tree`) are in `tree/`, moved there in plan 010 phase 01 with no byte of the land changed (see its README).
+- `terrain_feature_put`: one voxel onto a canvas, by the table "What may go over what" below, which `tree/` draws with.
 
 **May be called by:** `terrain` and its parts, and `run/src/render/lod/` for its samples of the ground.
 **Depends on:** `terrain/biome`, `terrain/cave`, `terrain/density`, `terrain/hydrology`, `terrain/surface` and `terrain/rng` (its siblings), `arena`, `assert`, `machine`, `types`, and the generated `tables/biomes/` and `tables/blocks/`.

@@ -1,6 +1,6 @@
 # 010-ahmed-bohemoth-initial-game-fixes-round-3 — phase 1: Roots and stumps in world generation
 
-**Status:** not started   (updated 2026-11-14)
+**Status:** in progress: the tree code moved to `feature/tree/`, every terrain digest held   (updated 2026-11-14)
 
 Read first: `plans/010-ahmed-bohemoth-initial-game-fixes-round-3-phase-00-vision-and-plan-files.md`, then the master `plans/010-ahmed-bohemoth-initial-game-fixes-round-3.md` (sections 0, 2.1, 2.2, 2.4, 3 to 7 and 9). Every number here comes from the master. Where this file adds one, it says so and why.
 
@@ -185,7 +185,7 @@ This phase may edit these, plus this file:
 
 From the master (section 9, phase 01):
 
-- [ ] Move the tree shapes from `run/src/terrain/feature/index.c` to `run/src/terrain/feature/tree/`, no byte of output changed (every digest holds)
+- [x] Move the tree shapes from `run/src/terrain/feature/index.c` to `run/src/terrain/feature/tree/`, no byte of output changed (every digest holds)
 - [ ] `TERRAIN_FEATURE_ROOT_DEPTH` 2, `FEATURE_PUT_ROOT` and the ground class; roots under the trunk, each wide column and each mangrove prop root
 - [ ] `tests/run/terrain/feature/roots/`: the root tests of section 5
 - [ ] `TERRAIN_GENERATOR_VERSION` 3, `FEA_DIGEST_OF_GENERATOR[3]`, every terrain pin that moved re-pinned with its reason; `run_save_world` refuses 2
@@ -264,4 +264,5 @@ Appended as they land:
 
 ## Issues found
 
-None.
+1. **Q1: Ahmed chose version 3, 2026-11-14; old worlds deleted by the orchestrator.** The nine generator 1 worlds are gone; `saves/test_8-3` (generator 2) is left for the orchestrator to delete once this lands. This phase touches nothing in `saves/`. The version change is still its own last commit, so it reads alone.
+2. **The move (step 1).** `terrain_feature_put` and its modes (`terrain_feature_put_t`, `TERRAIN_FEATURE_PUT_*`, renamed from the file's static `feature_put` and `FEATURE_PUT_*`) are now declared in `run/include/terrain/feature/index.h`, and stay in `feature/index.c`, since lakes, plants and spikes put with them too. `FEATURE_CLASSES` stays private to `feature/`. `feature_row_reach` asks `terrain_feature_tree_reach` for a tree's reach, as the table moved with the trees. `feature/index.c` went from 1473 lines to 1193, `tree/index.c` is 276. Every `run_terrain_.*` test passed on the moved code (14 of 14, the digests unchanged), before any root went in.

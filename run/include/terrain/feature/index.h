@@ -161,6 +161,20 @@ bool terrain_feature_tree_is_wide(terrain_feature_tree_t kind, uint64_t seed);
 /* All of a box, as a canvas. */
 terrain_feature_canvas_t terrain_feature_canvas_of(const terrain_density_box_t *box, uint16_t *blocks);
 
+/* What a voxel put on a canvas may go over: the README's "What may go over what". */
+typedef enum terrain_feature_put_t : uint8_t {
+    TERRAIN_FEATURE_PUT_LOG = 0,   /* over all but solid ground and other logs: water too, for a mangrove */
+    TERRAIN_FEATURE_PUT_LEAF = 1,  /* over air, plants and vines */
+    TERRAIN_FEATURE_PUT_VINE = 2,  /* over air */
+    TERRAIN_FEATURE_PUT_PLANT = 3, /* over air */
+    TERRAIN_FEATURE_PUT_WATER = 4, /* a sea plant: over water */
+} terrain_feature_put_t;
+
+/* Puts block at (x, y, z) if that voxel is inside the canvas and what is there may be gone over, by mode. Decided by that voxel
+ * alone. run/src/terrain/feature/tree/ draws with it. */
+void terrain_feature_put(const terrain_feature_canvas_t *canvas, int32_t x, int32_t y, int32_t z, uint16_t block,
+                         terrain_feature_put_t mode);
+
 /* Draws a tree on a canvas. What is drawn is a pure function of the site and of what is on the canvas at each voxel. */
 void terrain_feature_paint_tree(const terrain_feature_canvas_t *canvas, const terrain_feature_tree_site_t *site);
 

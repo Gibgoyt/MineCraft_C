@@ -92,7 +92,7 @@ run/include/world/
 Headers mirror source paths, with two kinds of exception, each saying so in its README. A header with no C behind it:
 `run/include/types/`, `run/include/simd/<kernel>/` (`asm/` implements it) and `run/include/gpu_bridge/<area>/` (`cuda/`
 implements it, and its `run/src/` directory holds only a README). A part declared with its Owner: `run/src/game/input/`,
-`report/`, `settle/` and `tick/`, in `run/include/game/index.h`, and `run/src/save/world/record/`, in `run/include/save/world/index.h`. Include roots: `run/include`, `compile/include`, `cuda/include`,
+`report/`, `settle/` and `tick/`, in `run/include/game/index.h`, `run/src/save/world/record/`, in `run/include/save/world/index.h`, and `run/src/terrain/feature/tree/`, in `run/include/terrain/feature/index.h`. Include roots: `run/include`, `compile/include`, `cuda/include`,
 `asm/include`, and `build/<preset>/generated`.
 
 ### Every `README.md` states
@@ -254,7 +254,7 @@ Layout: `run/src/<system>/<part>/index.c`, `run/include/<system>/<part>/index.h`
 | | `hydrology` | Sea level 0, rivers, oceans, beaches, aquifers, the lava level under the world at `-230` | 10.4 |
 | | `cave ore` | Cheese, spaghetti and noodle caves cut from any box; deepslate by depth, and the table of rock and ore veins by depth, generated from `config/ores/` (plan 005 phase 11) | 10.5 |
 | | `biome surface` | All Overworld biomes, chosen from the climate by `config/biomes/`; what each lays on the ground and lines its caves with | 10.6 |
-| | `feature` | Trees, plants, lakes, ice and snow, cross-chunk placement. `terrain_generate_box` in the Owner runs every stage | 10.7 |
+| | `feature` | Trees, plants, lakes, ice and snow, cross-chunk placement. `terrain_generate_box` in the Owner runs every stage. The tree shapes are in `feature/tree/` (plan 010 phase 01) | 10.7 |
 | | `climate_sample` | The climate a column job may read: 6 by 6 cells of plain integers, copied in by `climate_terrain_sample` or worked out by the fallback from latitude alone; `terrain_climate_at` blends, warps and applies the lapse. A seam, so terrain never includes `climate` | 006 phase 2 |
 
 ### Gameplay
