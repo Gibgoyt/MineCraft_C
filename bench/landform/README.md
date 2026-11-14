@@ -13,7 +13,7 @@
 
 | File | What |
 |---|---|
-| `<seed>_relief_64km.png` | The map, 4096 by 4096 at 16 blocks a pixel: shaded relief, sea by depth, contours every 50 thin and every 500 thick. Crosses: red the tallest peak, brown the longest range piece's middle, yellow the largest plateau's middle, magenta a knob on a base of 250 or more, cyan the plains place. x goes right, y down |
+| `<seed>_relief_64km.png` | The map, 4096 by 4096 at 16 blocks a pixel: shaded relief, sea by depth, contours every 50 thin and every 500 thick; a dry basin is land, however low (plan 007 phase 05), so its contours ring the hollow. Crosses: red the tallest peak, brown the longest range piece's middle, yellow the largest plateau's middle, magenta a knob on a base of 250 or more, cyan the plains place, white the deepest dry basin floor. x goes right, y down |
 | `<seed>_slope_64km.png` | The same map by slope class (below) |
 | `<seed>_plateaus_64km.png` | Grey relief; plateau land yellow with a dark rim, its escarpment edge red; range pieces at 500 or over tan with a brown rim |
 | `<seed>_profiles.png` | Four cross-sections at true scale, a block a pixel both ways, 4096 blocks long, a grid every 100: through the tallest peak along x and along y, across the largest plateau's edge (or, with none, through the plains place), and along the longest range piece's longest direction |
@@ -35,7 +35,7 @@
 
 ## How it knows
 
-- **The profile** is the 2D height before the 3D noise, rivers and caves: `terrain_height_estimate_area`, bit for bit what the density's lattice gets. Land is where it is above 0. The map reads 5 values a column (the column, and 4 blocks either way in x and y), about 100 million a seed.
+- **The profile** is the 2D height before the 3D noise, rivers and caves: `terrain_height_estimate_area`, bit for bit what the density's lattice gets, and its `dry`. Land is where it is above 0, or dry: a dry basin (plan 007 phase 05). The map reads 5 values a column (the column, and 4 blocks either way in x and y), about 100 million a seed.
 - **Real blocks** are what Ahmed walks on, from the same stages `bench_world_map` runs (no features, no ore), the top solid block with what grows looked through. Land is where no water lies on top. They are read only in the 64 windows, 258 by 258 columns each with their border.
 - **The windows** lie one in the middle of each eighth of the map each way, 16-aligned. Their slope classes are counted both from the profile and from real blocks, over the same columns, 8 blocks across; the largest class difference is a row of the table.
 - **The measures** themselves are in `measure/README.md`.
@@ -57,6 +57,10 @@
 **The plateau's numbers differ from plan 007 phase 01's** (26.2 km^2, 5.12 km across, 20.5 km of escarpment). A plateau here takes its edge down to 80 below its top (`measure/README.md`), which on a 1:2 edge is 40 blocks more each side: 5.2 km across, 27.04 km^2, 20.8 km round. Measuring only the flat top exactly would need a rule that cuts any rim, which would also cut a real plateau's.
 
 ## Results
+
+### 2026-11-14, plan 007 phase 05: dry basins below the sea's level
+
+Release, the 8 seeds in two runs (Ahmed's seed `11107447384583428913` with the first), exit 0 each. **Dry basins** (dry columns joined side to side, at least 1 km^2 with a floor below 0) per map: 1, 1, 0, 0 on 2198175988018515243, 12636146071196537873, 5569068473609503046 and 1; 2, 3, 4, 3 on 42, 20261104, 9999999999999 and 18446744073709551557: **1.75 a map on average** (target 1 to 3), 2 on Ahmed's seed. Floors -99 to -100 (target -40 to -100), 1.62 to 5.79 km across (target 2 to 6; one 1.62). Sea 24.7 to 27.0%, and the slope rows within a tenth of a point of phase 04's: the basins are a few km^2 a map. The "lowest dry land below 0" line is the deepest basin floor where a map has a basin, else the windows' lowest dry real block as before. The tuning tries are in the phase file's Issues found.
 
 ### 2026-11-13, plan 007 phase 04: slope shaping, summit rock, knobs, gentler hills
 

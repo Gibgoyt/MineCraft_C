@@ -1,6 +1,6 @@
 # 007-ahmed-bohemoth-realistic-landforms — phase 5: Dry basins below sea level
 
-**Status:** in progress: basins, rim, dry voxels, hydrology, climate built and tested   (updated 2026-11-14)
+**Status:** done, but for F3 at a real basin (Ahmed's gate) and the slice picture: see Issues found   (updated 2026-11-14)
 
 Read first: `plans/007-ahmed-bohemoth-realistic-landforms-phase-00-vision-and-plan-files.md`, then the master `plans/007-ahmed-bohemoth-realistic-landforms.md` (sections 0 "What is in the way", 3.2, 3.8, 4, 8, 12 Q4). Then:
 
@@ -177,11 +177,11 @@ This phase may edit these, plus this file:
 - [x] `terrain_height_estimate_area`'s `dry` out-array; the climate's callback passes it; `climate_cell` water rule `h <= 0 && !dry`
 - [ ] A climate test on a synthetic dry hollow gives plan 004's worked example 3; at a real basin, F3's temperature at the floor equals the formula
 - [x] `TERRAIN_DENSITY_HEIGHT_MIN` still -116; the limits test passes
-- [ ] Every moved pin re-pinned with this phase's reason; 1 against 16 workers the same bytes
-- [ ] `bench_landform` on 8 seeds: 1 to 3 basins per map averaged, floors -40 to -100
-- [ ] `bench_terrain` at least 1000 everywhere
-- [ ] Pictures looked at and described here
-- [ ] READMEs (`hydrology/`, `density/`, `landform/`, `climate/cell/`)
+- [x] Every moved pin re-pinned with this phase's reason; 1 against 16 workers the same bytes
+- [x] `bench_landform` on 8 seeds: 1 to 3 basins per map averaged, floors -40 to -100
+- [x] `bench_terrain` at least 1000 everywhere
+- [x] Pictures looked at and described here
+- [x] READMEs (`hydrology/`, `density/`, `landform/`, `climate/cell/`)
 
 ## Tests
 
@@ -241,6 +241,116 @@ He answers master Q4: how many, how deep, and whether he wants a salt lake later
 
 Appended as they land:
 
+- `40e8e057` Sink dry basins below the sea's level, plan 007 phase 05: landform/basin on the lattice, the depression and flat floor in the density with the rim at softness + 3, dry columns whose open voxels at or below 0 are air, hydrology's TERRAIN_HYDROLOGY_KIND_BASIN (land to biomes), rivers stopped short of a rim, the sea's rule and its wall for dry columns, and the climate's mask counting a dry basin as land so basin heat fires; ... (rebased onto main at f78cdee8)
+- the commit that records this file's results, `bench_landform`'s basin measure READMEs and its results
+
 ## Issues found
 
-None.
+Open questions took their defaults: master Q4, 1 to 3 basins a 64 km map, floors -40 to -100, **bone dry** (no salt lake);
+`TERRAIN_GENERATOR_VERSION` stays 1 (phase 06 raises it). **Worlds made from this branch's land are test worlds.**
+
+1. **Changed from the plan: the gates are subtracted from B, not multiplied into the depression.** The ring field
+   `R = B - 0.4 (1 - smoothstep(b2; -0.1, 0.2)) - 0.4 smoothstep(U; -0.95, -0.85)` and the basin field
+   `F = R - 0.4 min(1, P / 65)`; dry where `F > T`, `sink = S_B((F - T) / (1 - T))`, depression `(base + 100) sink`. So the edge
+   of the dry land is a contour of one smooth field and the rim a band of another that always lies between it and anything
+   else, and no gate leaves a dry column with no rim round it (with the plan's multiplied gates a dry column could stand next
+   to a sea pocket the inland gate had zeroed, water against air). The rim: `R >= T - 0.08` and `F <= T` stand at least
+   `softness + 3`, blended in over `R` from `T - 0.10` and out over `F` to `T + 0.02` (the plan's fallback blend, used from
+   the start, so no levee wall). The depression has no `max(0, ...)`: a sea pocket inside a basin is raised to the floor, and a
+   floor below -100 is lifted to -100, blended in as the rim blends out (the first build without it had floors at -115, the
+   sea bed of pockets the coarse inland gate let in). The density README's "Dry basins" has the whole formula.
+2. **Changed from the plan: the threshold is 0.86, and an uplift gate is new.** `B` (cell 8192, 2 octaves) passes any
+   threshold in a dozen or more places a 64 km map; no threshold gives 1 to 3. Every try, `bench_landform --step 32` on the 8
+   seeds, basins per map (at least 1 km^2, floor below 0):
+
+   | Try | Per map, the 8 seeds | Mean | Floors | Across, km |
+   |---|---|---|---|---|
+   | T 0.80 (plan), inland on `b` at the column | 22 32 12 33 19 25 28 31 | 25 | -100 to -6 | 1.4 to 9.4 |
+   | T 0.90 | 15 21 8 24 13 20 21 18 | 17.5 | -100 to -29 | 1.3 to 7.3 |
+   | T 0.96 | 10 13 8 16 9 14 16 10 | 12 | -100 to -14 | 1.4 to 6.5 |
+   | B 1 octave (limit 0.54), T 0.90, 3 seeds | 15 14 21 | 17 | -100 to -9 | 1.5 to 13.5 |
+   | B cell 16384, T 0.86 / 0.90 / 0.94 | means 14.4 / 11.6 / 8.1 | | -100 to -11 | 1.4 to 12.6 |
+   | Plateau gate off, T 0.90 | 29 28 17 25 29 23 28 29 | 26 | | |
+   | Inland gate on `b2` (2048-block nodes), T 0.80 | 27 21 16 20 31 27 29 29 | 25 | -115 to -6 | 1.3 to 13.8 |
+   | + uplift gate U -0.5 to -0.2, T 0.80 / 0.86 | means 10.9 / 9 | | -100 to -6 | |
+   | + U -0.6 to -0.3, T 0.80 | 6 12 2 14 5 14 14 10 | 9.6 | | |
+   | + U -0.85 to -0.7, T 0.86 | 1 5 0 1 3 7 8 4 | 3.6 | -100 to -71 | 1.3 to 6.0 |
+   | **+ U -0.95 to -0.85, T 0.86 (kept)** | **1 1 0 0 2 3 4 3** | **1.75** | -100 to -99 | 1.6 to 5.8 |
+   | + U -0.95 to -0.85, T 0.80 | 2 2 0 0 2 5 5 3 | 2.4 | -100 to -6 | 1.5 to 6.1 |
+
+   The uplift `U` is the landform's (cell 24576): basins sink where the land is least lifted, far from any plateau. The
+   threshold moved 0.06, not 0.02 a try, as each try waited on the shared lock for most of an hour.
+3. **Changed from the plan: the inland gate reads broad continentalness at nodes 2048 blocks apart, blended (`b2`), not `c`
+   or `b` at the column.** Broad continentalness's finest octave has a cell of 768 (weight 2 of 3.3): read at the column it
+   broke each basin into pieces round every sea pocket, and changed `R` faster than the rim can follow. The first rim test (T
+   0.8, `b` at the column) found 19 wet lattice columns beside dry ones under softness + 3 on 8 seeds; with `b2` and the final
+   gates, none.
+4. **Changed from the plan: a voxel is dry if any of the four lattice columns round it is dry**, not the nearest. In a cell with
+   a dry corner every open voxel at or below 0 is air; on the lattice line it shares with an all-wet cell its voxels blend only
+   wet corners, which are rim columns, so stone at or below 0. Hydrology's column, the height estimate and the surface take
+   the same rule. With the nearest rule a voxel at t = 0.25 next to a deep dry corner was open and wet beside open air.
+5. **Changed from the plan: rivers fade out over `R` from `T - 0.16` to `T - 0.10`** (`rivers`, a new profile value bilinear
+   in hydrology), not a step at `B >= 0.72`: a step left a cut wall where a river ended. `rivers_stop_at_a_basin_s_rim`: 128,889
+   columns round the basins of 8 seeds, 803 river, none on a rim or in a basin.
+6. **Changed from the plan: the profile is 24 bytes** (`rivers` and the ring field `R` as floats, `dry` a byte), not 16 with
+   `dry` in the padding; `R` is there for the tests and tools, so no test types the gates out again. New
+   `terrain_density_profile_area_arrays` and `_points_arrays` hand out every value; the old functions are wrappers.
+7. **Changed from the plan: the climate gets `dry` through the mask, not as an array into `climate_cell`.** `climate_ground_fn_t`
+   gains a `uint8_t *dry` (zeroed by the caller; a ground with no basins leaves it), and the new `climate_mask_ground` holds a
+   dry cell's mask height at 1 at the least, so the cell's water rule (`h <= 0`), the rain's walk and the storms' land test all
+   count a basin as land with no change of their own; the cells' own ground samples, which the heat reads, keep the true
+   height. That touched `run/src/climate/mask/` (one function), every ground function in the tests and `bench/climate`
+   (a parameter each, `tests/run/game/census/fixtures/weather.h` among them) and `compile/src/standards_lint/indirect_calls.yaml`.
+8. **Outside the owned paths, small:** `run/src/terrain/surface/` took its "the sea or air over the box" per column (air in a
+   dry basin; it was a box-wide memset, which would have laid wet materials on a basin floor in some boxes and not others),
+   from a `dry` byte the biome column now carries in its old padding.
+9. **The tests.** `a_basin_s_rim_is_closed_dry_land` (debug, 8 seeds, every basin the 64 km map at 128 finds): 23 basins,
+   28,392 ring columns at 32, none under softness + 3; 66,331 wet lattice columns beside dry ones, at 4 in every 32-block cell
+   where dry and wet meet, none under softness + 3; the flood through ground at or below 0 from each deepest column never
+   reached a wet column (27 dry columns on a box's edge, a basin cut by the map's edge). Changed from the plan: the flood is at
+   32 blocks, and the lattice check is the proof of the closed rim. `no_water_touches_a_basin_s_air`: 16 boxes, 64 by 64 by 160
+   across rims (4 ways from the deepest column of up to 4 basins a seed) on 3 seeds, real blocks with caves, flood and features
+   (`terrain_generate_box_fallback`): 1,335,183 air voxels at or below 0, 92,926 water, none touching; the whole-box flood on
+   the same boxes passes too. `a_basin_column_is_dry_and_land`: 4 deepest columns on 3 seeds, kind `BASIN`, biome land, no
+   water from the near-surface band to 0, top below 0 in all 4. `a_dry_basin_s_column_is_the_readme_s` (density): 90,405
+   synthetic columns against the README typed out again. `the_climate_counts_a_dry_basin_as_land`: a dry hollow to -100, 3 km
+   across, 28 N, 4000 inland: its cell is land, day 196 at -100 32.771 and at 0 29.071 (3.700 warmer; example 3 at -150 is
+   34.63, at -100 the lapse gives 0.6 less and the basin term 1.25 less: 32.78); the same hollow wet is a lake.
+10. **Not done: F3 at a real basin** (todo 7's second half, left unticked). The synthetic test reads `climate_normals_at`, which
+    F3 calls with the player's z; Ahmed's gate below checks it in a world.
+11. **Pins moved, each with this phase's line:** `BIO_COLUMNS_PIN` (biome, a wide map with basins: kind and the dry byte) and
+    `SYS_DIGEST_PIN` (climate systems: storms meet a basin as land). Both are in tests that check 1 against 16 workers, which
+    pass. **Unmoved:** density, hydrology columns and flood, cave, ore, seed, fields, feature and `FEA_DIGEST_OF_GENERATOR`,
+    climate cell, the Atlas goldens and render pictures: no basin in their boxes. Tests changed with reasons: hydrology's
+    every-kind checks skip `BASIN` on maps of 16 km; the limits test allows lift down to -200 (a basin's sinking comes off it);
+    the density's bedrock test allows air below 0 in a dry column.
+12. **The verification.** Debug: the whole suite, 177 tests, passes; `run_climate_warning` (timing, three times under load,
+    then alone), `run_ui_atlas` (timing) and `run_terrain_feature` (300 s timeout at -j 3) passed alone. `standards_lint` and
+    `clang_format` pass. Release: the 14 terrain tests pass. `TERRAIN_DENSITY_HEIGHT_MIN` stays -116.
+13. **`bench_landform`, release, default (64 km at 16, 64 windows):** basins per map 1, 1, 0, 0 / 2, 3, 4, 3 on the 8 seeds,
+    **1.75 on average** (target 1 to 3), 2 on Ahmed's seed; floors -99 to -100 (target -40 to -100: every basin is deep, as
+    the basin spline is at 0.8 a third of the way in and the uplift gate keeps only the strongest highs of `B`); 1.62 to 5.79 km across (one under 2). Sea 24.7 to 27.0%, slope rows
+    as phase 04's. The profile costs 0.46 to 0.51 us a lattice column (phase 04 0.38 to 0.43 by phase 03's count; the inland
+    nodes and 2 more octaves a landform node).
+14. **`bench_terrain`, release, CPU (no card clock applies):** slowest jungle 1077 at load 3 (all places over 1000); 958 in a
+    first run at load 20. Phase 04 had 900 to 968.
+15. **Pictures, looked at.** `bench_landform`'s relief at 32 and 16 blocks a pixel on seeds 2198175988018515243, 20261104,
+    9999999999999 and Ahmed's: basins are dark green hollows 2 to 6 km across in the lowland, ringed by their contours (the
+    50-block lines crowd on the steep sides into a dark outline), each with a thin band of raised rim round it at softness + 3
+    where it meets low ground or a lake; a range crossing one splits it into lobes (Ahmed's, beside a range's foot). Before the
+    `b2` gate they were clusters of pieces round sea pockets. **Not drawn:** a slice through a basin from `bench_world_map`,
+    which has no option for a place; `bench_landform`'s profiles go through peaks and plateaus.
+16. **Not checked here: the biome family on a real basin floor.** The tests choose biomes with the fallback climate; a basin's
+    climate (hot, and dry where its latitude is) picking desert or steppe is for Ahmed's look in a world, with F3 and the
+    Atlas.
+17. **For phase 06:** the basins are all deep (-99 to -100); a shallower spread would need `S_B` reached more slowly or `T`
+    lower with a stricter uplift gate. A lake inside a basin (master Q4's option) is not built.
+
+**For Ahmed's gate**, in a new world with his seed `11107447384583428913`:
+
+    /tp 26160 -14912
+
+the deepest dry basin floor (profile z -100), one of the two basins on his 64 km map, at the foot of a range; the other lies
+just south of it, past the ridge. From the floor F3 should read z about -100 and a temperature 3.7 warmer than at the sea's
+level at the same place (`2.5 + 1.2` per 100 blocks below 0). Climb north to the rim and look back; open the Atlas: the
+contours ring the hollow.
