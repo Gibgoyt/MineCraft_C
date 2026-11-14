@@ -73,10 +73,12 @@ static const uint64_t FEA_DIGEST_OF_GENERATOR[] = {
     /* 2: plan 006 phases 02 to 04 (biomes, snow, ice, sand and trees from the climate) and plan 007 phases 03 to 05
      * (plateaus, escarpments, ranges, slope profiles, knobs, dry basins), with plan 007 phase 06's tuning; each move is
      * recorded in row 1's comment above and in those phases' files. Closed 2026-11-14 by the joint final check of plan 006
-     * phase 05 and plan 007 phase 06.
-     * Plan 010 phase 01: trees root two blocks into the ground: 0x8A84C8086A5091A5, putting back 0xBF67826538D85EA0, the land
-     * of version 2 as it was closed. Written here while the version stays 2, until that phase's last step raises it to 3 and
-     * gives this value row 3. */
+     * phase 05 and plan 007 phase 06. Plan 010 phase 01's roots were written here while it was the version, and went to row
+     * 3 when the version was raised. */
+    0xBF67826538D85EA0ull,
+    /* 3: plan 010 phase 01, trees root two blocks into the ground: every trunk column, each of a wide trunk's four and each
+     * mangrove prop root, 2 logs into its own ground. Nothing else moved (run_terrain_feature_roots' masked land holds).
+     * Ahmed chose the version over keeping saves/test_8-3, 2026-11-14. */
     0x8A84C8086A5091A5ull,
 };
 static_assert(sizeof(FEA_DIGEST_OF_GENERATOR) / sizeof(FEA_DIGEST_OF_GENERATOR[0]) == TERRAIN_GENERATOR_VERSION + 1u);

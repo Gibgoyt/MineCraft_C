@@ -1,6 +1,6 @@
 # 010-ahmed-bohemoth-initial-game-fixes-round-3 — phase 1: Roots and stumps in world generation
 
-**Status:** in progress: roots drawn and tested, the pins of the new land in row 2 while the version is 2; the version change to 3 is the last commit   (updated 2026-11-14)
+**Status:** done, waiting on Ahmed's gate: roots drawn and tested, `TERRAIN_GENERATOR_VERSION` 3 (its own last commit), benches recorded   (updated 2026-11-14)
 
 Read first: `plans/010-ahmed-bohemoth-initial-game-fixes-round-3-phase-00-vision-and-plan-files.md`, then the master `plans/010-ahmed-bohemoth-initial-game-fixes-round-3.md` (sections 0, 2.1, 2.2, 2.4, 3 to 7 and 9). Every number here comes from the master. Where this file adds one, it says so and why.
 
@@ -188,10 +188,10 @@ From the master (section 9, phase 01):
 - [x] Move the tree shapes from `run/src/terrain/feature/index.c` to `run/src/terrain/feature/tree/`, no byte of output changed (every digest holds)
 - [x] `TERRAIN_FEATURE_ROOT_DEPTH` 2, `FEATURE_PUT_ROOT` and the ground class; roots under the trunk, each wide column and each mangrove prop root
 - [x] `tests/run/terrain/feature/roots/`: the root tests of section 5
-- [ ] `TERRAIN_GENERATOR_VERSION` 3, `FEA_DIGEST_OF_GENERATOR[3]`, every terrain pin that moved re-pinned with its reason; `run_save_world` refuses 2
+- [x] `TERRAIN_GENERATOR_VERSION` 3, `FEA_DIGEST_OF_GENERATOR[3]`, every terrain pin that moved re-pinned with its reason; `run_save_world` refuses 2
 - [x] `run_playthrough`'s finder aims at the first log over the ground; the scripts still fell their tree
 - [x] `tests/run/player/felling/` paints its trees on solid ground; the limit test measures with roots
-- [ ] Benches: `bench_terrain`, `bench_lod`, before and after
+- [x] Benches: `bench_terrain`, `bench_lod`, before and after
 - [x] READMEs: `run/src/terrain/feature/`, its new `tree/`, `plans/REPO_STRUCTURE.md`
 - [x] List `saves/` with sizes and generators in the phase file, and ask Ahmed (Q1)
 
@@ -202,7 +202,7 @@ Expanded:
 - [x] Height, density, hydrology, biome, cave and ore digests unchanged
 - [x] `run_terrain_feature_own` (box against chunk) and 1 against 16 workers: same bytes
 - [x] Goldens that moved made again and described here
-- [ ] `standards_lint`, `clang_format`, the whole debug suite pass; `pgrep -af "$PWD/build"` prints nothing
+- [x] `standards_lint`, `clang_format`, the whole debug suite pass; `pgrep -af "$PWD/build"` prints nothing
 
 ## Tests
 
@@ -261,6 +261,8 @@ Ahmed opens a new world, finds a tree, digs the block beside its trunk at the gr
 Appended as they land:
 
 - c1047426 Move the tree shapes from terrain/feature into terrain/feature/tree, with no byte of the land changed (plan 010 phase 01 step 1)
+- a5e40cac Root every generated tree two logs into the ground (plan 010 phase 01): the trunk, each wide column from its own foot and each mangrove prop root, over ground only
+- (this commit) Raise TERRAIN_GENERATOR_VERSION to 3 for plan 010 phase 01's roots: the version, row 3, run_save_world refusing generators 1 and 2
 
 ## Issues found
 
@@ -276,3 +278,6 @@ Appended as they land:
 10. **`saves/` (2026-11-14, read only):** `test_8-3`, generator 2 (`blocks/manifest` offset 52), 91879095 bytes (89M), newest file 2026-11-14 11:05. The generator 1 worlds are already gone (issue 1).
 11. **Benches before roots** (release, on step 1's code, the land byte for byte main's; load average up to 43 from other agents' builds during the run): `bench_terrain` slowest place jungle 953 chunk columns/s on 16 workers (plains 1828, forest 2125, mangrove swamp 1100, jagged peaks 1216, plateau top 1322), so already under 1000 before any root went in. `bench_lod`: worst column 30.90 ms (shift 2), shift 1 22.79 ms.
 12. **A tree for the gate, on Ahmed's seed 11107447384583428913** (found with the playthrough's finder on that seed's real climate): a jungle tree of 62 logs over the ground, its trunk at x -131, y -560, the first log over the ground at z 4, so the flush root is at z 3, level with the grass, and the second at z 2. `/tp -133 -561 4` stands 2 blocks off it, facing it; dig the block beside the trunk at z 3 and the one under it.
+13. **The version (step 5), its own last commit.** `TERRAIN_GENERATOR_VERSION` 3. `FEA_DIGEST_OF_GENERATOR` row 3 is `0x8A84C8086A5091A5` (the land with roots), row 2 back to `0xBF67826538D85EA0`, row 1 unchanged. `run_save_world`: `static_assert(TERRAIN_GENERATOR_VERSION == 3u)`, a new manifest says 3, generators 0, 1, 2 and 4 refused with the list's words; its comment was kept to one line more than before, as the file is at the 2000-line limit (the first full run's `standards_lint` caught 2001). `run/src/terrain/README.md` names version 3.
+14. **Benches after roots** (release, on the roots commit; the version number does not change a block). `bench_terrain`'s jungle place on 16 workers, the two builds run one after the other at a load average of 1 to 4, the "before" being the same code with the root loop's depth set to 0: before 988, 790, 965, 957; after 958, 956, 950, 949. The 790 is one stray run of the before build. So the roots cost about 1% (medians about 961 and 953), within the run-to-run spread, and the jungle place was already under 1000 before any root went in (953 at load 43 earlier in the day, issue 11). The master's fallback, folding the root writes into the trunk loop, would save part of 2 to 8 puts per tree and cannot win back the 40 to 50 a second the place is short; that shortfall is main's, not this phase's, and is left for the orchestrator. Other places after: plains 1800, forest 2180, mangrove swamp 1023 to 1129, jagged peaks 1156, plateau top 1319, deep ocean 2508. `bench_lod` after: worst column 33.32 ms (shift 2), shift 1 24.22 ms, under the 40 ms budget (at load 40, when the shifts with no features moved by as much: 11.68 to 12.45 ms at shift 6). `build/release` was deleted after.
+15. **The whole debug suite at -j 2 on the version commit:** 176 of 178 passed in the full run. `run_climate_warning`'s 20 ms timing failed under load and passed alone (7.3 s run), and `standards_lint` failed on `tests/run/save/world/index.c` at 2001 lines, fixed, then `standards_lint`, `clang_format`, `run_save_world` and `run_climate_warning` passed together. On the roots commit before it, `run_ui_atlas`'s lock wait and `run_climate_warning` had failed under load in the full run and passed alone; the 4 goldens were made again and `render_feature_lod`, `run_render_frame`, `run_player_felling`, `run_save_world` and `run_terrain_feature*` passed. `pgrep -af "$PWD/build"` prints nothing.
