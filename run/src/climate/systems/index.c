@@ -23,6 +23,8 @@ static const float64_t SYSTEMS_OPEN_SEA_STEPS[SYSTEMS_OPEN_SEA_POINTS][2] = {
 static const float64_t SYSTEMS_DIAGONAL = 0.70710678118654752440f64;
 /* The land mask's pages a track keeps, direct-mapped by the low 3 bits of the tile's x and y. */
 enum : uint32_t { SYSTEMS_MASK_LOW_BITS = 3u, SYSTEMS_MASK_LOW_MASK = (1u << SYSTEMS_MASK_LOW_BITS) - 1u };
+/* The kept columns outside the keep square: direct-mapped by this many low bits of the cell on each axis. */
+enum : uint32_t { SYSTEMS_POINT_BITS = 5u, SYSTEMS_POINT_MASK = (1u << SYSTEMS_POINT_BITS) - 1u };
 
 /* ---- Pieces ---------------------------------------------------------------------------------------------------------- */
 
@@ -144,6 +146,33 @@ void climate_systems_mask_start(climate_systems_mask_t *mask, const climate_t *c
     mask->borrowed_stats = stats;
     mask->borrowed_pages = arena_alloc_array(arena, (uint64_t)CLIMATE_SYSTEMS_MASK_PAGES * CLIMATE_TILE_CELL_COUNT,
                                              sizeof(float32_t), alignof(float32_t));
+    mask->borrowed_point_cells =
+        arena_alloc_array(arena, 2ull * CLIMATE_SYSTEMS_MASK_POINTS, sizeof(int64_t), alignof(int64_t));
+    mask->borrowed_point_heights =
+        arena_alloc_array(arena, CLIMATE_SYSTEMS_MASK_POINTS, sizeof(float32_t), alignof(float32_t));
+    if (mask->borrowed_point_cells != nullptr) {
+        for (uint32_t i = 0u; i < 2u * CLIMATE_SYSTEMS_MASK_POINTS; i++) {
+            mask->borrowed_point_cells[i] = INT64_MIN;
+        }
+    }
+}
+
+/* One column outside the keep square, kept by its cell: the ground is a pure function, so a kept height is the same bits. */
+static float32_t systems_mask_point(climate_systems_mask_t *mask, int64_t cell_x, int64_t cell_y, float64_t x,
+                                    float64_t y) {
+    if (mask->borrowed_point_cells == nullptr || mask->borrowed_point_heights == nullptr) {
+        return climate_mask_point(mask->borrowed_climate, x, y);
+    }
+    const uint32_t entry = (uint32_t)(((uint64_t)cell_x & SYSTEMS_POINT_MASK) |
+                                      (((uint64_t)cell_y & SYSTEMS_POINT_MASK) << SYSTEMS_POINT_BITS));
+    static_assert((SYSTEMS_POINT_MASK + 1u) * (SYSTEMS_POINT_MASK + 1u) == CLIMATE_SYSTEMS_MASK_POINTS);
+    int64_t *const cell = mask->borrowed_point_cells + 2u * entry;
+    if (cell[0] != cell_x || cell[1] != cell_y) {
+        mask->borrowed_point_heights[entry] = climate_mask_point(mask->borrowed_climate, x, y);
+        cell[0] = cell_x;
+        cell[1] = cell_y;
+    }
+    return mask->borrowed_point_heights[entry];
 }
 
 float32_t climate_systems_mask_height(climate_systems_mask_t *mask, float64_t x, float64_t y) {
@@ -164,7 +193,7 @@ float32_t climate_systems_mask_height(climate_systems_mask_t *mask, float64_t x,
     if (mask->held[entry] == 0u || mask->tile_x[entry] != tile_x || mask->tile_y[entry] != tile_y) {
         if (!climate_mask_page_kept(mask->borrowed_climate, tile_x, tile_y)) {
             /* Outside the keep square no page is kept, so one column, the page's value there, costs 1/256 of one. */
-            return climate_mask_point(mask->borrowed_climate, x, y);
+            return systems_mask_point(mask, cell_x, cell_y, x, y);
         }
         (void)climate_mask_page_read(mask->borrowed_climate, tile_x, tile_y, page);
         mask->held[entry] = 1u;
@@ -234,6 +263,11 @@ static float32_t systems_hurricane_rate(const climate_t *climate, climate_system
 float32_t climate_systems_hurricane_rate(const climate_t *climate, arena_t *arena, float64_t x, float64_t y,
                                          float64_t t) {
     return systems_hurricane_rate(climate, nullptr, arena, x, y, t);
+}
+
+float32_t climate_systems_hurricane_rate_mask(const climate_t *climate, climate_systems_mask_t *mask, float64_t x,
+                                              float64_t y, float64_t t) {
+    return systems_hurricane_rate(climate, mask, nullptr, x, y, t);
 }
 
 /* s_h cos(2 pi (d - 200) / 365): -1 in the depth of the local winter, +1 in its summer. */

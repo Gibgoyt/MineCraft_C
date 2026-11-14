@@ -285,6 +285,10 @@ static_assert(sizeof(climate_systems_stats_t) == 64);
  * the climate's table, or claimed and built there, or built privately: the same heights whichever way. */
 enum : uint32_t {
     CLIMATE_SYSTEMS_MASK_PAGES = 64u, /* this phase: 64 KiB; a track crosses at most a few dozen pages */
+    /* Outside the keep square no page is kept, and each read is one column of the ground. The outlook's sums start a typical
+     * track from the same square's centre on each day of the week, so they read the same cells day after day: the columns
+     * are kept here, direct-mapped by the cell's low bits (plan 006 phase 05: a dry basin's gate made each column dearer). */
+    CLIMATE_SYSTEMS_MASK_POINTS = 1024u,
 };
 typedef struct climate_systems_mask_t {
     const climate_t *borrowed_climate;          /* 0 */
@@ -293,8 +297,10 @@ typedef struct climate_systems_mask_t {
     int32_t tile_x[CLIMATE_SYSTEMS_MASK_PAGES]; /* 24 */
     int32_t tile_y[CLIMATE_SYSTEMS_MASK_PAGES]; /* 280 */
     uint8_t held[CLIMATE_SYSTEMS_MASK_PAGES];   /* 536 */
+    int64_t *borrowed_point_cells;              /* 600: CLIMATE_SYSTEMS_MASK_POINTS x (x, y), INT64_MIN when empty */
+    float32_t *borrowed_point_heights;          /* 608: CLIMATE_SYSTEMS_MASK_POINTS */
 } climate_systems_mask_t;
-static_assert(sizeof(climate_systems_mask_t) == 600);
+static_assert(sizeof(climate_systems_mask_t) == 616);
 
 /* ---- The list -------------------------------------------------------------------------------------------------------- */
 
@@ -321,6 +327,9 @@ void climate_system_state_at(const climate_system_t *system, float64_t t, climat
 /* 7.2's rates, exposed for tests, the outlook (phase 07) and the bench. Spawns per square per day, at a point and time. */
 float32_t climate_systems_hurricane_rate(const climate_t *climate, arena_t *arena, float64_t x, float64_t y,
                                          float64_t t);
+/* The same, reading the land through a build's mask: the same number. */
+float32_t climate_systems_hurricane_rate_mask(const climate_t *climate, climate_systems_mask_t *mask, float64_t x,
+                                              float64_t y, float64_t t);
 float32_t climate_systems_low_rate(const climate_t *climate, float64_t y, float64_t t);
 float32_t climate_systems_high_rate(const climate_t *climate, arena_t *arena, float64_t x, float64_t y, float64_t t);
 /* 7.2.1 at a 1 km square's centre on day D, before thinning by fronts and highs. Writes false to *ready if its tile is not

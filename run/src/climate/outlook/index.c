@@ -219,7 +219,7 @@ void climate_outlook_unborn(const climate_t *climate, arena_t *scratch, climate_
                     break; /* born after every instant asked: it adds nothing, nor does any later day */
                 }
                 const float32_t rate = kind == CLIMATE_SYSTEM_HURRICANE
-                                           ? climate_systems_hurricane_rate(climate, scratch, cx, cy, born)
+                                           ? climate_systems_hurricane_rate_mask(climate, mask, cx, cy, born)
                                            : climate_systems_low_rate(climate, cy, born);
                 if (!(rate > 0.0f32)) {
                     continue;
