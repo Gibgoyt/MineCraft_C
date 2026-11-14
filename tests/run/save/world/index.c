@@ -507,7 +507,7 @@ TEST(a_new_world_is_one_manifest_and_its_bytes_are_known) {
     memcpy(&word, file + 48u, 4u);
     CHECK_EQ_U64(word, 0u);
     memcpy(&word, file + 52u, 4u);
-    CHECK_EQ_U64(word, TERRAIN_GENERATOR_VERSION);
+    CHECK_EQ_U64(word, 2u); /* TERRAIN_GENERATOR_VERSION; a_world_reloads_byte_for_byte_over_many_saves reopens it */
     memcpy(&value, file + 56u, 8u);
     CHECK_EQ_U64(value, sw_fnv(file, 56u));
     CHECK_EQ_U64(sw_directory_count(blocks, "r.", ""), 0u);
@@ -943,8 +943,11 @@ TEST(what_cannot_be_trusted_is_refused_and_left_as_it_was) {
     sw_manifest_forge(t, manifest, 40u, &older, sizeof(older));
     CHECK_EQ_U64(sw_open_status(save, root, SW_SEED), SAVE_WORLD_ERROR_GENERATOR);
     CHECK_EQ_U64(file_write_atomic(manifest, good, good_bytes), FILE_OK);
-    /* Land from a generator older or newer than this game's, in this format. Refused, and the manifest is left saying so. */
-    static const uint32_t other_generators[] = {0u, TERRAIN_GENERATOR_VERSION - 1u, TERRAIN_GENERATOR_VERSION + 1u};
+    /* Land from a generator older or newer than this game's, in this format. Refused, and the manifest is left saying so.
+     * Generator 1 is plan 006 phase 05's and plan 007 phase 06's old worlds (saves/test_1 to test_8), told the list's words. */
+    static_assert(TERRAIN_GENERATOR_VERSION == 2u);
+    CHECK(strcmp(save_world_status_name(SAVE_WORLD_ERROR_GENERATOR), "its land is from another game version") == 0);
+    static const uint32_t other_generators[] = {0u, 1u, TERRAIN_GENERATOR_VERSION + 1u};
     for (uint32_t i = 0u; i < 3u; i++) {
         sw_manifest_forge(t, manifest, offsetof(save_world_manifest_header_t, generator), &other_generators[i],
                           sizeof(other_generators[i]));

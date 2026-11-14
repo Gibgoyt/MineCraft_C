@@ -58,15 +58,22 @@ static const uint64_t FEA_DIGEST_OF_GENERATOR[] = {
      * this row's old value, 0x963084164D7E4DAE).
      * Plan 006 phase 03 moved the biomes (biomes follow the climate) and so the land: 0x3FDD8CCBDFEA453B, putting back this
      * row's old value, 0xCFD3A129B38458E6. Plan 007 phase 03's plateaus, escarpments and long ranges moved the land again,
-     * and the biomes read the biome height, ground less lift: the value below, putting back 0x3FDD8CCBDFEA453B. Both are
+     * and the biomes read the biome height, ground less lift: 0xA73E3EF2016E4EE3, putting back 0x3FDD8CCBDFEA453B. Both are
      * written here for now, while the version stays 1: the joint final check of plan 006 phase 05 and plan 007 phase 06
-     * raises it once and gives this value row 2. Meanwhile a world saved on the old land opens on the new.
+     * raises it once and gives the last value row 2. Meanwhile a world saved on the old land opens on the new.
      * Plan 006 phase 04: snow, ice, sand and trees follow the climate (snow by the snowline, ice by the coldest month,
      * every feature rate scaled by the rain, and the wide jungle tree's crown trimmed to the leaves the game keeps): the
      * value 0xD794182E99A19489, putting back 0xA73E3EF2016E4EE3. Plan 007 phase 04's slope shaping, summit rock,
      * knobs, gentler hills and no foothills moved it again: 0x8E24FEE1F26EEAF2, putting back 0xD794182E99A19489.
      * Plan 007 phase 06's tuning (a flatter lowland, rarer ranges, plateaus from blended broad continentalness, basin
-     * floors by ruggedness) moved it again: the value below, putting back 0x8E24FEE1F26EEAF2. */
+     * floors by ruggedness) moved it again: 0xBF67826538D85EA0, putting back 0x8E24FEE1F26EEAF2. That land is version 2's,
+     * so this row goes back to 0xCFD3A129B38458E6, the land of version 1 as it stood before plan 006 phase 03, which worlds
+     * saved by generator 1 were cut from. */
+    0xCFD3A129B38458E6ull,
+    /* 2: plan 006 phases 02 to 04 (biomes, snow, ice, sand and trees from the climate) and plan 007 phases 03 to 05
+     * (plateaus, escarpments, ranges, slope profiles, knobs, dry basins), with plan 007 phase 06's tuning; each move is
+     * recorded in row 1's comment above and in those phases' files. Closed 2026-11-14 by the joint final check of plan 006
+     * phase 05 and plan 007 phase 06. */
     0xBF67826538D85EA0ull,
 };
 static_assert(sizeof(FEA_DIGEST_OF_GENERATOR) / sizeof(FEA_DIGEST_OF_GENERATOR[0]) == TERRAIN_GENERATOR_VERSION + 1u);

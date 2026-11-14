@@ -30,8 +30,9 @@ enum : uint32_t {
     /* Noise fields one world can have. */
     TERRAIN_NOISE_FIELDS_MAX = 64u,
     /* Which land a seed makes. Raised by any change that gives any seed other blocks: a save holds only what changed, so a world saved on other land is refused, and
-     * never stitched to a different landscape. tests/run/terrain/feature/ holds this number to the land. */
-    TERRAIN_GENERATOR_VERSION = 1u,
+     * never stitched to a different landscape. tests/run/terrain/feature/ holds this number to the land. 2: plan 006's biomes from
+     * the climate and plan 007's landforms, raised once for both. */
+    TERRAIN_GENERATOR_VERSION = 2u,
 };
 static_assert(TERRAIN_NOISE_FIELDS_MAX * sizeof(terrain_noise_field_t) + sizeof(terrain_fields_t) +
                   sizeof(terrain_landform_t) + sizeof(terrain_density_t) + sizeof(terrain_hydrology_t) +

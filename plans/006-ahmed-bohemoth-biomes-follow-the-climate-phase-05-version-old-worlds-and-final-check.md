@@ -1,6 +1,6 @@
 # 006-ahmed-bohemoth-biomes-follow-the-climate — phase 5: Version, old worlds and the final check
 
-**Status:** not started   (updated 2026-11-12)
+**Status:** in progress: version 2 in, joint with plan 007 phase 06; the old worlds wait on Ahmed   (updated 2026-11-14)
 
 Read first: `plans/006-ahmed-bohemoth-biomes-follow-the-climate-phase-00-vision-and-plan-files.md`, then the master `plans/006-ahmed-bohemoth-biomes-follow-the-climate.md` (sections 0 "Ahmed's decisions", 3, 4, 5, 7 and 9). Every number here comes from the master. Where this file adds a number the master does not give, it says so and why.
 
@@ -126,7 +126,7 @@ Before is plan 004 phase 11 (its Results, recorded by 2026-11-08, 8 seeds, its n
 
 From the master (section 9, phase 05):
 
-- [ ] `TERRAIN_GENERATOR_VERSION` 2; version-2 rows for every terrain pin, each with its reason
+- [x] `TERRAIN_GENERATOR_VERSION` 2; version-2 rows for every terrain pin, each with its reason
 - [ ] List `saves/test_1` to `test_8` with sizes in the phase file, then delete them (unless Ahmed names one to keep)
 - [ ] The full debug and release suites; a release build; the 1 against 16 worker check on the new pins
 - [ ] Update plan 004's phase 11 table "after" column from the new survey, in plan 006's phase file (plan 004's files are left as they are)
@@ -134,9 +134,9 @@ From the master (section 9, phase 05):
 
 Expanded:
 
-- [ ] Every pin that moved since phase 01 matched to a recorded reason (step 1)
-- [ ] `FEA_DIGEST_OF_GENERATOR` row 2 at `tests/run/terrain/feature/index.c`; its `static_assert` holds
-- [ ] A version-1 save refused with the existing message; version 2 round-trips
+- [x] Every pin that moved since phase 01 matched to a recorded reason (step 1)
+- [x] `FEA_DIGEST_OF_GENERATOR` row 2 at `tests/run/terrain/feature/index.c`; its `static_assert` holds
+- [x] A version-1 save refused with the existing message; version 2 round-trips
 - [ ] The saves list refreshed on the day of deletion; Ahmed's answer on keeping any recorded; no game running while deleting
 - [ ] The survey table above filled
 - [ ] `pgrep -af "$PWD/build"` prints nothing
@@ -186,4 +186,19 @@ Appended as they land:
 
 ## Issues found
 
-None.
+**Done jointly with plan 007 phase 06's version and final-check part** (2026-11-14, one agent, on main at f5a3f85c), as both masters' default (plan 007 Q2). Open questions took their defaults; plan 007's lapse stays 0.012 (its Q6). The one exception to "take the default" is the old worlds, which wait on Ahmed's word (issue 3).
+
+1. **The pins that moved since phase 01 began (2026-11-12, `01bb5f76`), each to its recorded reason.** No terrain pin moved without one, and the version bump itself moved none: row 2 holds the land's last digest, and every `run_terrain_*` and `run_save_*` test passed on it unchanged (22 of 22, debug). The commits that changed a pinned value in `tests/run/terrain/` or `tests/run/climate/`:
+
+   | Commit | Plan, phase | Pins | Reason recorded in |
+   |---|---|---|---|
+   | `2bd6e96b`, `7c85777a` | 006-03 | biome, biome columns, feature row 1, forest | phase 03's Issues: biomes from the climate |
+   | `ae33abef`, `cdee825d` | 007-03 | cell, systems, hydrology (3), landform; biome, feature (biome height) | plan 007 phase 03's Issues 9 to 11 |
+   | `7d301a20`, `ef0821e4` | 006-04 | climate_rules, biome, feature row 1, forest | phase 04's Issues: snow, ice, sand and trees from the climate |
+   | `b3baa77b`, `2024cecb`, `677c45e8` | 007-04 | density, cave, ore, hydrology (3), cell, systems; biome, feature after rebasing on 006-04 | plan 007 phase 04's Issue 11 |
+   | `40e8e057` | 007-05 | biome columns, systems (basins on their maps) | plan 007 phase 05's Issues |
+   | `430cdcc6` | 007-06 | all of the above once more (tuning) | plan 007 phase 06's Issue 8 |
+
+   Plan 006's own phases moved only the biome, biome-columns, feature, forest and climate_rules pins, as master section 3 asks; the density, hydrology, cave and ore pins moved by plan 007's landforms (phases 03 to 06), each with its line. Phase 02 moved none (`fda5f4e2`, `256d313e`: "no terrain digest moved", "no climate digest moved"). The Atlas goldens and the render pictures moved with plan 007 phases 02 to 06, recorded there.
+
+2. **Version 2** (`run/include/terrain/index.h`). `FEA_DIGEST_OF_GENERATOR` row 2 is `0xBF67826538D85EA0`, the land plan 007 phase 06 left, with a comment naming plan 006 phases 02 to 04 and plan 007 phases 03 to 05 with 06's tuning, closed 2026-11-14; the `static_assert` holds at 3 rows (the build passes). Row 1 goes back to `0xCFD3A129B38458E6`, version 1's land as it stood before plan 006 phase 03 moved it, which is what worlds saved by generator 1 were cut from; its comment keeps every value it held, so the history stays. `run_save_world` now names generator 1 (`what_cannot_be_trusted_is_refused_and_left_as_it_was`: generators 0, **1** and 3 each refused with `SAVE_WORLD_ERROR_GENERATOR`, the manifest left as it was, and the list's words checked to be "its land is from another game version"), and holds a new world's manifest to generator **2** (`a_new_world_is_one_manifest_and_its_bytes_are_known`), which `a_world_reloads_byte_for_byte_over_many_saves` reopens four times byte for byte. Both are pinned to the number by a `static_assert(TERRAIN_GENERATOR_VERSION == 2u)`, so the next bump has to look at them. The phase's two named tests were folded into those two, as the file sits at the coding standard's 2000-line limit (exactly 2000). `tests/fuzz/save/` follows the constant. `run/src/terrain/README.md` says what version 2 is.
