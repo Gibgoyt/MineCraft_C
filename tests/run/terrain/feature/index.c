@@ -64,8 +64,10 @@ static const uint64_t FEA_DIGEST_OF_GENERATOR[] = {
      * Plan 006 phase 04: snow, ice, sand and trees follow the climate (snow by the snowline, ice by the coldest month,
      * every feature rate scaled by the rain, and the wide jungle tree's crown trimmed to the leaves the game keeps): the
      * value 0xD794182E99A19489, putting back 0xA73E3EF2016E4EE3. Plan 007 phase 04's slope shaping, summit rock,
-     * knobs, gentler hills and no foothills moved it again: the value below, putting back 0xD794182E99A19489. */
-    0x8E24FEE1F26EEAF2ull,
+     * knobs, gentler hills and no foothills moved it again: 0x8E24FEE1F26EEAF2, putting back 0xD794182E99A19489.
+     * Plan 007 phase 06's tuning (a flatter lowland, rarer ranges, plateaus from blended broad continentalness, basin
+     * floors by ruggedness) moved it again: the value below, putting back 0x8E24FEE1F26EEAF2. */
+    0xBF67826538D85EA0ull,
 };
 static_assert(sizeof(FEA_DIGEST_OF_GENERATOR) / sizeof(FEA_DIGEST_OF_GENERATOR[0]) == TERRAIN_GENERATOR_VERSION + 1u);
 /* Plan 003 phase 8 stage 3 moved the coast and the rivers. */
@@ -90,7 +92,8 @@ static_assert(sizeof(FEA_DIGEST_OF_GENERATOR) / sizeof(FEA_DIGEST_OF_GENERATOR[0
 /* Plan 006 phase 04: snow, ice, sand and trees follow the climate; the forest's trees are scaled by its rain. Its old
  * value 0x7745E8634869CCBA. */
 /* Plan 007 phase 04: slope shaping, summit rock, knobs, gentler hills and no foothills moved the ground. Its old value 0x28D864B0AD53007B. */
-static const uint64_t FEA_FOREST_PIN = 0xC5DB779526D235D8ull;
+/* Plan 007 phase 06's tuning (a flatter lowland, rarer ranges, plateaus from blended broad continentalness, basin floors by ruggedness) moved the land. Its old value 0xC5DB779526D235D8. */
+static const uint64_t FEA_FOREST_PIN = 0x0A2981C595D9ACA2ull;
 
 static uint64_t fea_digest(uint64_t hash, const void *memory, uint64_t bytes) {
     const uint8_t *const data = memory;

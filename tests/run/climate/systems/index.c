@@ -29,7 +29,8 @@
  * 0xF3A6A0AFA861A1D2. */
 /* Plan 007 phase 05: dry basins are land to the mask (climate_mask_ground), which storms read for land, so where a basin lies
  * a track meets land. Its old value 0x70F3E27238A79D91. */
-static const uint64_t SYS_DIGEST_PIN = 0xD45F884BC9ED1382ull;
+/* Plan 007 phase 06's tuning (a flatter lowland, rarer ranges, plateaus from blended broad continentalness, basin floors by ruggedness) moved the land. Its old value 0xD45F884BC9ED1382. */
+static const uint64_t SYS_DIGEST_PIN = 0x31B4C8C8455FDF56ull;
 static const uint64_t SYS_SEED = 0x1234567890ABCDEFull;
 static const uint64_t SYS_ARENA_BYTES = 8ull << 20;
 /* 15 degrees north, 45 north, 45 south and 45 north in a strip mirrored past the pole (e = -1). */

@@ -52,7 +52,8 @@ static const uint64_t ORE_WORLD = 0x1234567890ABCDEFull;
 /* Plan 005 phase 6 added twelve station blocks. The land is the same, as the digest over the numbers before them showed: the numbers of
  * the blocks after them in the alphabet moved. */
 /* Plan 007 phase 04: slope shaping, summit rock, knobs, gentler hills and no foothills moved the ground, and the rock the veins lie in with it. Its old value 0x7E24EC83BDAC1B5B. */
-static const uint64_t ORE_DIGEST_PIN = 0xF20FF176125D18AEull;
+/* Plan 007 phase 06's tuning (a flatter lowland, rarer ranges, plateaus from blended broad continentalness, basin floors by ruggedness) moved the land. Its old value 0xF20FF176125D18AE. */
+static const uint64_t ORE_DIGEST_PIN = 0x2868FA18E56A5E8Cull;
 
 static uint64_t ore_digest(uint64_t hash, const void *memory, uint64_t bytes) {
     const uint8_t *const data = memory;

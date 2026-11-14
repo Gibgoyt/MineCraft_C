@@ -41,7 +41,8 @@ static const uint64_t CAVE_SEED_LIST[CAVE_SEEDS] = {0x1234567890ABCDEFull, 1ull,
 /* Plan 003 phase 8 stage 4 raised the land and made its ranges, valleys and wetlands. */
 /* Plan 003 phase 8 stage 5 brought spaghetti closer together and dried out most aquifer cells. */
 /* Plan 007 phase 04: slope shaping, summit rock, knobs, gentler hills and no foothills moved the ground, and the caves under it with it (they reach up to the ground). Its old value 0x50BBC3BDBF35A1E4. */
-static const uint64_t CAVE_DIGEST_PIN = 0x5E10440E68CDB35Aull;
+/* Plan 007 phase 06's tuning (a flatter lowland, rarer ranges, plateaus from blended broad continentalness, basin floors by ruggedness) moved the land. Its old value 0x5E10440E68CDB35A. */
+static const uint64_t CAVE_DIGEST_PIN = 0xAA8CEDD5EF20F007ull;
 
 static uint64_t cave_digest(uint64_t hash, const void *memory, uint64_t bytes) {
     const uint8_t *const data = memory;

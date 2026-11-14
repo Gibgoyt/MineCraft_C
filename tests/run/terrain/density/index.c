@@ -63,7 +63,8 @@ static const uint64_t DENSITY_SEEDS[DENSITY_WIDE_SEEDS] = {
 /* Plan 005 phase 6 added twelve station blocks. The land is the same, as the digest over the numbers before them showed: the numbers of
  * the blocks after them in the alphabet moved. */
 /* Plan 007 phase 04: slope shaping, summit rock, knobs, gentler hills and no foothills moved the ground. Its old value 0x86525EAFA0922E11. */
-static const uint64_t DENSITY_DIGEST_PIN = 0xE3EBEDF560C5F6E1ull;
+/* Plan 007 phase 06's tuning (a flatter lowland, rarer ranges, plateaus from blended broad continentalness, basin floors by ruggedness) moved the land. Its old value 0xE3EBEDF560C5F6E1. */
+static const uint64_t DENSITY_DIGEST_PIN = 0x02FC2ECAA373D0A1ull;
 
 static uint64_t density_digest(uint64_t hash, const void *memory, uint64_t bytes) {
     const uint8_t *const data = memory;
@@ -572,6 +573,23 @@ static float32_t density_scalar_field(const terrain_noise_field_t *field, float6
     return sum;
 }
 
+/* What the plateau reads for broad continentalness (plan 007 phase 06): three quarters the basins' inland gate, broad at the
+ * four nodes 2048 apart round the column blended x then y, and a quarter broad at the column. */
+static float32_t density_plateau_broad(const terrain_t *terrain, int32_t x, int32_t y, float32_t broad) {
+    const float64_t node_x = floor((float64_t)x / 2048.0f64), node_y = floor((float64_t)y / 2048.0f64);
+    float64_t node[4];
+    for (uint32_t k = 0u; k < 4u; k++) {
+        terrain_fields_point_t at_node;
+        terrain_fields_at(terrain->borrowed_fields, (int32_t)((node_x + (float64_t)(k & 1u)) * 2048.0f64),
+                          (int32_t)((node_y + (float64_t)(k >> 1u)) * 2048.0f64), &at_node);
+        node[k] = (float64_t)at_node.broad;
+    }
+    const float64_t t_x = (float64_t)x / 2048.0f64 - node_x, t_y = (float64_t)y / 2048.0f64 - node_y;
+    const float64_t south = node[0] + t_x * (node[1] - node[0]), north = node[2] + t_x * (node[3] - node[2]);
+    const float32_t inland = (float32_t)(south + t_y * (north - south));
+    return (float32_t)((float64_t)inland + 0.25f64 * ((float64_t)broad - (float64_t)inland));
+}
+
 /* The density at a lattice point, from the README and the scalar kernel. */
 static float32_t density_expected_corner(const terrain_t *terrain, int32_t x, int32_t y, int32_t z) {
     const terrain_density_t *const density = terrain->borrowed_density;
@@ -594,8 +612,12 @@ static float32_t density_expected_corner(const terrain_t *terrain, int32_t x, in
     }
     const float64_t t_x = at_x / 2048.0f64 - node_x, t_y = at_y / 2048.0f64 - node_y;
     const float64_t south = node[0] + t_x * (node[1] - node[0]), north = node[2] + t_x * (node[3] - node[2]);
+    /* Plan 007 phase 06: the plateau reads three quarters of the gate's blend and a quarter of broad at the column. */
+    const float32_t inland = (float32_t)(south + t_y * (north - south));
+    const float32_t plateau_broad =
+        (float32_t)((float64_t)inland + 0.25f64 * ((float64_t)fields.broad - (float64_t)inland));
     const terrain_landform_shape_t shape =
-        terrain_landform_shape_from(terrain->borrowed_landform, uplift, (float64_t)fields.broad);
+        terrain_landform_shape_from(terrain->borrowed_landform, uplift, (float64_t)plateau_broad);
     /* So are the knob and summit fields. Read everywhere: where the density skips them, they multiply 0. */
     float32_t knobs = 0.0f32, knob_size = 0.0f32, peak = 0.0f32;
     terrain_landform_knobs_points(terrain->borrowed_landform, &at_x, &at_y, 1u, &knobs, &knob_size);
@@ -616,7 +638,7 @@ static float32_t density_expected_corner(const terrain_t *terrain, int32_t x, in
         .crest = density_expected_spread(density_scalar_field(density->borrowed_crest, x, y, 0.0f64), 0.35f64),
         .broad = fields.broad,
         .basin = (float32_t)basin,
-        .inland = (float32_t)(south + t_y * (north - south)),
+        .inland = inland,
         .uplift = (float32_t)uplift,
     };
     const terrain_density_profile_t profile = density_expected_profile(density, &inputs);
@@ -951,8 +973,9 @@ TEST(plateau_tops_have_one_surface) {
         terrain_landform_uplift_points(terrain.borrowed_landform, &xs[i], &ys[i], 1u, &uplift);
         terrain_fields_point_t fields;
         terrain_fields_at(terrain.borrowed_fields, (int32_t)xs[i], (int32_t)ys[i], &fields);
-        const terrain_landform_shape_t shape =
-            terrain_landform_shape_from(terrain.borrowed_landform, uplift, (float64_t)fields.broad);
+        const terrain_landform_shape_t shape = terrain_landform_shape_from(
+            terrain.borrowed_landform, uplift,
+            (float64_t)density_plateau_broad(&terrain, (int32_t)xs[i], (int32_t)ys[i], fields.broad));
         const float64_t z = 0.0f64;
         float32_t range = 0.0f32;
         terrain_noise_sample_points(density->borrowed_range, &xs[i], &ys[i], &z, 1u, &range);
@@ -1036,7 +1059,8 @@ TEST(the_world_has_seas_plains_and_mountains_in_believable_shares) {
     CHECK((float64_t)low_land / all > 0.2f64);
     /* Plan 007 phase 03 lifted plateaus of 300 and 650 on about a third of the land, so more of the world is high than plan 003
      * phase 8's 15 to 32% at 150 and 7 to 20% at 300: it measured 37.9% and 29.5% on these seeds. */
-    CHECK((float64_t)high / all > 0.25f64 && (float64_t)high / all < 0.45f64);
+    /* Plan 007 phase 06 took the land's own rise from 100 to 22.4 and made ranges rarer: 24.7% at 150 on these seeds. */
+    CHECK((float64_t)high / all > 0.2f64 && (float64_t)high / all < 0.45f64);
     CHECK((float64_t)very_high / all > 0.15f64 && (float64_t)very_high / all < 0.35f64);
     CHECK(highest > 1000.0f32);
     CHECK(highest < (float32_t)MC_WORLD_Z_MAX - 26.0f32);
@@ -1058,7 +1082,7 @@ TEST(mountain_ranges_run_on_for_a_distance_and_are_common) {
     float32_t *const softness = test_alloc(t, (uint64_t)RANGE_COLUMNS * sizeof(float32_t));
     uint32_t *const stack = test_alloc(t, (uint64_t)RANGE_COLUMNS * sizeof(uint32_t));
     uint8_t *const seen = test_alloc(t, (uint64_t)RANGE_COLUMNS);
-    uint32_t long_seeds = 0u;
+    uint32_t long_seeds = 0u, many_seeds = 0u;
     for (uint32_t s = 0u; s < DENSITY_WIDE_SEEDS; s++) {
         terrain_t terrain;
         REQUIRE(terrain_init(&terrain, DENSITY_SEEDS[s]));
@@ -1111,7 +1135,10 @@ TEST(mountain_ranges_run_on_for_a_distance_and_are_common) {
         printf("seed %" PRIu64 ": %" PRIu32 " pieces of 150 or more of at least 1 km^2, %" PRIu32
                " at least 4 km long, the longest %" PRIu32 " blocks\n",
                DENSITY_SEEDS[s], big, long_ones, widest * RANGE_STEP);
-        CHECK(big >= 3u);
+        /* Plan 007 phase 06: ranges are rarer (a belt from nearness 0.60, cell 12288), and high ground joins into fewer and
+         * larger pieces: one seed has one piece of 1 km^2 here, 16 km long. At least 3 on most seeds. */
+        CHECK(big >= 1u);
+        many_seeds += big >= 3u ? 1u : 0u;
         /* Plan 007 phase 03: ranges stand on plateaus, so high ground joins into fewer and larger pieces. Plan 007 phase 04:
          * a range's feet are gentle, so less of its belt stands at 150, and on one seed of the eight no piece in these 16 km
          * is 4 km long (2816 blocks at most): most seeds, not every one. */
@@ -1120,6 +1147,7 @@ TEST(mountain_ranges_run_on_for_a_distance_and_are_common) {
     printf("%u of %u seeds with a piece of 150 or more at least 4 km long and 5 km across\n", long_seeds,
            (uint32_t)DENSITY_WIDE_SEEDS);
     CHECK(long_seeds >= 6u);
+    CHECK(many_seeds >= 6u);
 }
 
 /* What climbs a range has to be ground and not a wall: the height's own steps stay small enough for that, over nearly all of the land. */

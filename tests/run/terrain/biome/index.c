@@ -71,7 +71,8 @@ static const int32_t BIO_CAVE_LEVEL_Z[BIO_CAVE_LEVELS] = {-210, -170, -100, -60,
 /* Plan 006 phase 04: snow, ice, sand and trees follow the climate: a snow biome lays its own top below the snowline.
  * Its old value 0x25D0412DAF6F66DD. */
 /* Plan 007 phase 04: slope shaping, summit rock, knobs, gentler hills and no foothills moved the ground. Its old value 0x15285D7F380A63E5. */
-static const uint64_t BIO_DIGEST_PIN = 0x5E9CB4D0FB38A5EBull;
+/* Plan 007 phase 06's tuning (a flatter lowland, rarer ranges, plateaus from blended broad continentalness, basin floors by ruggedness) moved the land. Its old value 0x5E9CB4D0FB38A5EB. */
+static const uint64_t BIO_DIGEST_PIN = 0x45E0B6464532298Dull;
 /* Plan 003 phase 8 stage 3 moved the coast and the rivers. */
 /* Plan 003 phase 8 stage 4 raised the land and made its ranges, valleys and wetlands. */
 /* Plan 003 phase 8 stage 6 moved the biomes' boxes to the coast and the height the terrain now has. */
@@ -83,7 +84,8 @@ static const uint64_t BIO_DIGEST_PIN = 0x5E9CB4D0FB38A5EBull;
 /* Plan 007 phase 04: slope shaping, summit rock, knobs, gentler hills and no foothills moved the ground. Its old value 0x393C1B15967EB4B5. */
 /* Plan 007 phase 05: dry basins sink below the sea's level on this map, their columns land and dry (a byte that was padding).
  * Its old value 0x44F89064B2F0DDDB. */
-static const uint64_t BIO_COLUMNS_PIN = 0x7252304069545F9Full;
+/* Plan 007 phase 06's tuning (a flatter lowland, rarer ranges, plateaus from blended broad continentalness, basin floors by ruggedness) moved the land. Its old value 0x7252304069545F9F. */
+static const uint64_t BIO_COLUMNS_PIN = 0x001261CC1FC31977ull;
 
 static uint64_t bio_digest(uint64_t hash, const void *memory, uint64_t bytes) {
     const uint8_t *const data = memory;
@@ -103,6 +105,9 @@ static terrain_density_box_t bio_tall_box(int32_t x, int32_t y, uint32_t across)
         .count_z = BIO_LAYERS,
     };
 }
+
+/* Chunk offsets nearest first, for a search round a place. */
+static const int32_t BIO_RING[15] = {0, -1, 1, -2, 2, -3, 3, -4, 4, -5, 5, -6, 6, -7, 7};
 
 static bool bio_is_open(uint16_t block) {
     return block == BLOCK_ID_AIR || block == BLOCK_ID_WATER || block == BLOCK_ID_LAVA;
@@ -640,8 +645,10 @@ static void bio_search(test_context_t *t, const terrain_t *terrain, bio_found_t 
             const terrain_biome_column_t *const column = &columns[ix];
             const int32_t x = area.origin_x + (int32_t)(ix * BIO_SEARCH_STEP);
             /* Plan 006 phase 03: a family's border can leave a biome a lone column of the search, so where a test looks
-             * for it is somewhere it has room, if there is one. */
-            if (ix > 0u && columns[ix - 1u].biome == column->biome && found->beside[column->biome] == 0u) {
+             * for it is somewhere it has room, if there is one; from plan 007 phase 06, on dry ground over the sea's level, as
+             * the low lowland is riddled with lakes that take land biomes. */
+            if (ix > 0u && columns[ix - 1u].biome == column->biome && found->beside[column->biome] == 0u &&
+                column->ground > 2.0f32) {
                 found->beside[column->biome] = 1u;
                 found->at[column->biome].x = x;
                 found->at[column->biome].y = area.origin_y;
@@ -826,7 +833,9 @@ TEST(the_biomes_follow_the_terrain) {
         CHECK_EQ_U64(far_under_peaks, 0u);
         CHECK_EQ_U64(high_not_peak, 0u);
         /* The oddest stretches of coast, and not anywhere inland. */
-        CHECK(mushrooms_by_sea * 100u > mushrooms * 85u);
+        /* Plan 007 phase 06: the low lowland is riddled with lakes and the sea's pockets, so fewer of its mushroom fields are
+         * within 256 blocks of the open sea: 72.0 to 82.9% on these seeds (85% before). */
+        CHECK(mushrooms_by_sea * 100u > mushrooms * 70u);
         /* Under the tree line, most of the land has woods. */
         CHECK(low_wooded * 2u > low);
     }
@@ -1298,9 +1307,11 @@ TEST(each_biome_shows_its_own_top_in_a_real_world) {
         }
         /* Where it was found may be all lake, so round there too, until some of it is dry. */
         uint32_t seen = 0u;
-        for (int32_t step = 0; step < 25 && seen == 0u; step++) {
-            const int32_t cx = (found->at[b].x & ~15) + (step % 5 - 2) * (int32_t)BIO_CHUNK;
-            const int32_t cy = (found->at[b].y & ~15) + (step / 5 - 2) * (int32_t)BIO_CHUNK;
+        /* Plan 007 phase 06: the low lowland is riddled with lakes and the sea's pockets, which take land biomes, so the chunks
+         * looked in are 15 by 15, every third chunk, about 2.2 km across (5 by 5 next to each other before). */
+        for (int32_t step = 0; step < 225 && seen == 0u; step++) {
+            const int32_t cx = (found->at[b].x & ~15) + BIO_RING[step % 15] * 3 * (int32_t)BIO_CHUNK;
+            const int32_t cy = (found->at[b].y & ~15) + BIO_RING[step / 15] * 3 * (int32_t)BIO_CHUNK;
             const terrain_density_box_t box = bio_tall_box(cx, cy, BIO_CHUNK);
             terrain_hydrology_fill_box(terrain.borrowed_hydrology, &box, blocks);
             terrain_surface_fill_box(terrain.borrowed_surface, nullptr, &box, blocks);

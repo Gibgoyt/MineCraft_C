@@ -26,7 +26,8 @@ static const uint64_t CELL_SEED = 0x1234567890ABCDEFull;
 /* Plan 007 phase 03: plateaus, escarpments and long ranges moved the ground the cells read through the height estimate. */
 /* Plan 007 phase 04: slope shaping, summit rock, knobs, gentler hills and no foothills moved the ground the cells read. Its
  * old value 0x7B07FA060A4F840E. */
-static const uint64_t CELL_DIGEST_PIN = 0x809BAD24EE9E4DA8ull;
+/* Plan 007 phase 06's tuning (a flatter lowland, rarer ranges, plateaus from blended broad continentalness, basin floors by ruggedness) moved the land. Its old value 0x809BAD24EE9E4DA8. */
+static const uint64_t CELL_DIGEST_PIN = 0xE27D71453ED7D029ull;
 /* Phase 03's own flags, what these tests check: phase 05 adds the monsoon and hurricane-coast flags beside them. */
 static const uint8_t CELL_KIND_FLAGS = CLIMATE_CELL_SEA | CLIMATE_CELL_LAKE | CLIMATE_CELL_LAKE_SMALL;
 

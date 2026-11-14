@@ -59,12 +59,14 @@ static const int32_t HYDRO_MAP_MIN = -3;
 /* Plan 005 phase 6 added twelve station blocks. The land is the same, as the digest over the numbers before them showed: the numbers of
  * the blocks after them in the alphabet moved. */
 /* Plan 007 phase 04: slope shaping, summit rock, knobs, gentler hills and no foothills moved the ground. Its old value 0xA9A8D4C2374442E2. */
-static const uint64_t HYDRO_DIGEST_PIN = 0x7F7DCC0FBB1885CAull;
+/* Plan 007 phase 06's tuning (a flatter lowland, rarer ranges, plateaus from blended broad continentalness, basin floors by ruggedness) moved the land. Its old value 0x7F7DCC0FBB1885CA. */
+static const uint64_t HYDRO_DIGEST_PIN = 0x826E69AC6913B5FAull;
 /* Plan 003 phase 8 stage 3 moved the coast and the rivers. */
 /* Plan 003 phase 8 stage 4 raised the land and made its ranges, valleys and wetlands. */
 /* Plan 007 phase 03: plateaus, escarpments and long ranges moved the land. */
 /* Plan 007 phase 04: slope shaping, summit rock, knobs, gentler hills and no foothills moved the ground. Its old value 0x9890511852C9EC2A. */
-static const uint64_t HYDRO_COLUMNS_PIN = 0x7B19743C198ED0F8ull;
+/* Plan 007 phase 06's tuning (a flatter lowland, rarer ranges, plateaus from blended broad continentalness, basin floors by ruggedness) moved the land. Its old value 0x7B19743C198ED0F8. */
+static const uint64_t HYDRO_COLUMNS_PIN = 0x3E260C48629B4EE2ull;
 /* Plan 003 phase 8 stage 3 moved the coast and the rivers. */
 /* Plan 003 phase 8 stage 4 raised the land and made its ranges, valleys and wetlands. */
 /* Plan 003 phase 8 stage 5 brought spaghetti closer together and dried out most aquifer cells. */
@@ -81,7 +83,8 @@ static const uint64_t HYDRO_COLUMNS_PIN = 0x7B19743C198ED0F8ull;
  * the blocks after them in the alphabet moved. */
 /* Plan 007 phase 03: plateaus, escarpments and long ranges moved the land. */
 /* Plan 007 phase 04: slope shaping, summit rock, knobs, gentler hills and no foothills moved the ground. Its old value 0x090061BEF1C572D1. */
-static const uint64_t HYDRO_FLOOD_PIN = 0xFE61DC57722A8EC5ull;
+/* Plan 007 phase 06's tuning (a flatter lowland, rarer ranges, plateaus from blended broad continentalness, basin floors by ruggedness) moved the land. Its old value 0xFE61DC57722A8EC5. */
+static const uint64_t HYDRO_FLOOD_PIN = 0xB8DE1D30846759D5ull;
 
 static uint64_t hydro_digest(uint64_t hash, const void *memory, uint64_t bytes) {
     const uint8_t *const data = memory;
@@ -647,14 +650,18 @@ TEST(rivers_hold_water_and_reach_the_sea_and_the_coast_has_beaches) {
            " crossings, mean %.1f blocks across\n",
            rivers, rivers_reaching, runs, (libc_double_t)mean_width);
     printf("coast: %" PRIu64 " edges, %" PRIu64 " straight onto land\n", coast_edges, bare_coast_edges);
-    CHECK(totals[TERRAIN_HYDROLOGY_KIND_RIVER] * 100u > all);
+    /* Plan 007 phase 06: the lowland's rise is a fifth of what it was, so its rivers run shorter to a nearer sea or lake:
+     * 0.95% of these maps (more than 1% before). */
+    CHECK(totals[TERRAIN_HYDROLOGY_KIND_RIVER] * 1000u > all * 7u);
     CHECK(totals[TERRAIN_HYDROLOGY_KIND_RIVER] * 100u < all * 15u);
     /* Plan 007 phase 03: ranges on a cell of 8192 run on for tens of kilometres, and a river met by one ends at its foot, as
      * the README says, so fewer reach the sea: 78.5% on these 4 maps, 85.9% on 24 (90.9% on the same 24 with the cell at
      * 4096). Held at 75% until a river may cut through a range (the phase file's Issues found). */
     CHECK(rivers_reaching * 100u >= rivers * 75u);
     CHECK(mean_width > 6.0f64 && mean_width < 60.0f64);
-    CHECK(totals[TERRAIN_HYDROLOGY_KIND_OCEAN] * 100u >= all * 9u); /* 10.10% since plan 007 phase 03 */
+    /* 10.10% since plan 007 phase 03; 6.78% since plan 007 phase 06, whose low lowland holds more of the sea's pockets as
+     * lakes (3.72%) and whose shelf is deeper (deep ocean 16.35%). */
+    CHECK(totals[TERRAIN_HYDROLOGY_KIND_OCEAN] * 100u >= all * 6u);
     CHECK(totals[TERRAIN_HYDROLOGY_KIND_DEEP_OCEAN] * 10u > all);
     CHECK(totals[TERRAIN_HYDROLOGY_KIND_BEACH] * 200u > all);
     CHECK(bare_coast_edges * 10u < coast_edges);
